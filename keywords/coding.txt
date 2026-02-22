@@ -1,0 +1,724 @@
+codice
+debug
+errore
+funzione
+python
+algoritmo
+correggi
+compilazione
+compilare 
+runtime
+memory leak
+stack overflow
+recursion
+programmazione
+variabile
+variabili
+classe
+oggetto
+ereditarietà
+OOP
+astrazione
+incapsulamento
+polimorfismo
+interfaccia
+metodo
+costruttore
+overloading
+override
+decoratore
+closure
+modularità
+paradigma
+procedurale
+dinamico
+fortemente tipizzato
+struttura dati
+array
+lista
+dizionario
+hashmap
+set
+puntatore
+stringa
+stack
+coda
+heap
+deque
+albero
+albero binario
+AVL
+B-tree
+tries
+grafi
+ricorsione
+iterazione
+loop
+condizione
+if
+else
+switch
+try
+catch
+exception
+bfs
+dfs
+dijkstra
+kruskal
+prim
+bellman-ford
+sorting
+bubble sort
+selection sort
+quick sort
+merge sort
+insertion sort
+counting sort
+radix sort
+bucket sort
+heap sort
+O grande
+Big O 
+Omega
+Teta
+binary search
+hashing
+tabelle hash
+compressione
+backtracking
+programmazione dinamica
+programma
+sorgente
+standard input 
+standard output
+memoization
+modulo
+import
+libreria
+framework
+django
+flask
+fastapi
+nodejs
+express
+react
+componente
+componente base
+vue
+angular
+API
+REST
+CRUD
+endpoint
+socket
+WebSocket
+HTTP
+HTTPS
+SSL
+TLS
+middleware
+design pattern
+singleton
+factory
+observer
+MVC
+MVVM
+microservizi
+event-driven
+scalabilità
+CQRS
+scope
+scope delle variabili
+serverless
+database
+SQL
+NoSQL
+query
+join
+index
+normalizzazione
+denormalizzazione
+trigger
+stored procedure
+ACID
+transazione
+PostgreSQL
+MySQL
+SQLite
+MongoDB
+Redis
+Cassandra
+Sharding
+replica
+consistency
+CAP theorem
+server
+cloud
+deploy
+Docker
+Kubernetes
+container
+scalabilità
+CI/CD
+continuous integration
+continuous deployment
+terraform
+Ansible
+AWS
+Azure
+Google Cloud
+Lambda
+serverless
+monitoring
+load balancing
+orchestrazione
+autoscaling
+SRE
+Git
+GitHub
+versioning
+merge
+pull request
+commit
+branch
+test
+unit test
+TDD
+debugging
+profiling
+refactoring
+mocking
+assert
+pytest
+JUnit
+Selenium
+load testing
+integration test
+fuzzing
+coverage
+cybersecurity
+hashing
+crittografia
+AES
+RSA
+SHA
+MD5
+XSS
+SQL injection
+buffer overflow
+exploit
+firewall
+penetration testing
+zero-day
+forensic
+sandboxing
+hacking etico
+OWASP
+honeypot
+certificati digitali
+MITM
+autenticazione a due fattori
+intelligenza artificiale
+machine learning
+deep learning
+reti neurali
+pytorch
+tensorflow
+scikit-learn
+pandas
+numpy
+matplotlib
+data science
+big data
+hadoop
+spark
+clustering
+K-means
+SVM
+random forest
+gradient boosting
+backpropagation
+CNN
+RNN
+LSTM
+GAN
+transformer
+reinforcement learning
+fuzzy logic
+evolutionary algorithms
+processo
+thread
+scheduling
+deadlock
+mutua esclusione
+paging
+swapping
+kernel
+user mode
+syscall
+interrupt
+protocolli
+protocollo
+tcp
+tcp/ip
+tcp ip
+indirizzo
+ip
+indirizzo ip
+udp
+dns
+icmp
+arp
+nat
+firewall
+proxy
+vpn
+QoS
+routing
+BGP
+OSI model
+html
+css
+javascript
+typescript
+json
+xml
+ajax
+dom
+npm
+yarn
+webpack
+babel
+java
+c++
+c
+c#
+ruby
+php
+swift
+kotlin
+go
+rust
+perl
+scala
+dart
+r language
+spring boot
+hibernate
+.net
+entity framework
+laravel
+symfony
+android
+ios
+mobile development
+flutter
+react native
+xamarin
+ionic
+sdk
+jdk
+jre
+ide
+visual studio
+vs code
+intellij
+eclipse
+xcode
+android studio
+gitlab
+bitbucket
+jira
+trello
+agile
+scrum
+kanban
+sprint
+backlog
+user story
+solid principles
+clean code
+refactoring
+uml
+diagramma classi
+design system
+ui
+ux
+wireframe
+mockup
+prototipo
+jwt
+oauth
+sso
+cors
+csrf
+blockchain
+smart contract
+solidity
+web3
+iot
+internet of things
+arduino
+raspberry pi
+embedded system
+firmware
+bios
+driver
+shell
+bash
+powershell
+terminale
+riga di comando
+cli
+gui
+file system
+path
+directory
+cartella
+permessi
+chmod
+chown
+ssh
+ftp
+sftp
+regola firewall
+port forwarding
+localhost
+ip address
+mac address
+subnet
+vlan
+router
+switch
+sottorete
+latenza
+banda
+ping
+traceroute
+curl
+wget
+regex
+espressioni regolari
+espressione regolare
+variabile locale
+variabile globale
+variabile statica
+passaggio per valore
+passaggio per riferimento
+garbage collector
+memory leak
+allocazione dinamica
+puntatore null
+segmentation fault
+core dump
+log
+logging
+breakpoint
+step into
+step over
+call stack
+watch window
+vim
+emacs
+nano
+grep
+sed
+awk
+pipe
+redirect
+stdin
+stdout
+stderr
+daemon
+cron
+crontab
+systemd
+processo zombie
+kill
+ps aux
+htop
+netstat
+nmap
+wireshark
+metasploit
+reverse engineering
+assembly
+disassembler
+hex editor
+buffer
+heap
+stack frame
+unity
+unreal engine
+godot
+shader
+ray tracing
+rendering
+texture
+mesh
+collision detection
+physics engine
+framerate
+fps
+game loop
+sprite
+asset
+virtualenv
+venv
+conda
+anaconda
+jupyter
+notebook
+pip
+requirements.txt
+package.json
+node_modules
+dipendenza
+dependency injection
+inversion of control
+middleware
+routing
+controller
+view
+template engine
+orm
+migration
+seed
+faker
+mock
+stub
+spy
+cypress
+playwright
+jest
+mocha
+chai
+karma
+webpack
+rollup
+vite
+parcel
+transpiler
+minification
+obfuscation
+bundle
+assets
+cdn
+content delivery network
+dns record
+a record
+cname
+mx record
+ns record
+ttl
+handshake
+ssl certificate
+chiave privata
+chiave pubblica
+crittografia asimmetrica
+blockchain
+mining
+crypto
+wallet
+nft
+smart contract
+gas fee
+ethereum
+bitcoin
+ledger
+distribuito
+decentralizzato
+peer to peer
+p2p
+torrent
+magnet link
+etl
+extract transform load
+data warehouse
+data lake
+big query
+snowflake
+redshift
+kafka
+rabbitmq
+activemq
+pub/sub
+message broker
+event sourcing
+event bus
+microkernel
+monolite
+server side rendering
+ssr
+client side rendering
+csr
+static site generator
+ssg
+jamstack
+headless cms
+cms
+wordpress
+woocommerce
+magento
+shopify
+plugin
+tema
+widget
+shortcode
+seo tecnico
+sitemap
+robots.txt
+bottone
+canonical
+redirect 301
+errore 404
+errore 500
+gateway
+proxy inverso
+nginx
+apache
+iis
+caddy
+load balancer
+round robin
+cluster
+nodo
+pod
+replica set
+deployment
+service
+ingress
+volume
+persistent volume
+configmap
+secret
+namespace
+helm
+chart
+prometheus
+grafana
+kibana
+elasticsearch
+logstash
+elk stack
+splunk
+datadog
+new relic
+sentry
+bug tracking
+ticket
+issue
+milestone
+release
+tag
+versionamento semantico
+semver
+changelog
+readme
+license
+open source
+proprietario
+prop
+freeware
+shareware
+saas
+paas
+iaas
+cloud provider
+region
+availability zone
+lamba function
+cloud function
+azure functions
+google app engine
+heroku
+netlify
+vercel
+railway
+digitalocean
+droplet
+vps
+virtual private server
+rag
+retrieval augmented generation
+prompt engineering
+embedding vector
+vector database
+pinecone
+chromadb
+langchain
+llamaindex
+hugging face
+model fine tuning
+quantizzazione
+gguf
+safetensors
+inference
+token
+context window
+allucinazione
+bias
+overfitting
+underfitting
+training set
+validation set
+test set
+epoch
+batch size
+learning rate
+funzione di costo
+costo computazionale
+loss function
+gpu computing
+tpu
+primary key
+foreign key
+inner join
+outer join
+left join
+right join
+stored procedure
+vista materializzata
+indice cluster
+acid transactions
+cap theorem
+sharding
+replica set
+failover
+wal
+write ahead log
+injection attack
+xss attack
+csrf attack
+man in the middle
+dos
+ddos
+brute force
+rainbow table
+hashing salt
+pepper
+chiave simmetrica
+certificato ssl
+tls handshake
+vpn tunnel
+dark web
+tor network
+proxy chain
+rootkit
+keylogger
+spyware
+ransomware
+trojan
+worm
+phishing
+social engineering
+pentesting
+kali linux
+burp suite
+owasp top 10
+zero day exploit
+cve
+payload
+backdoor
+obfuscation
+reverse shell

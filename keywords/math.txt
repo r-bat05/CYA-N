@@ -1,0 +1,792 @@
+derivata
+integrale
+matematica
+esercizio
+teoria
+algebra
+geometria
+trigonometria
+funzione
+successione
+convergente
+divergente 
+serie 
+serie numerica
+polinomio di Taylor
+Taylor
+McLaurin
+polinomio di McLaurin
+limite
+serie
+logaritmo
+esponenziale
+radice
+polinomio
+equazione
+sistema
+induzione
+dimostrazione
+assioma
+teorema
+corollario
+determinante
+matrice
+autovalore
+autovettore
+spazio vettoriale
+base
+dimensione
+tensore
+trasformazione lineare
+norma
+prodotto scalare
+prodotto vettoriale
+sottomatrice
+rank
+orto-normalizzazione
+diagonalizzazione
+eigen decomposition
+fattorizzazione LU
+gradiente
+divergenza
+rotore
+campo vettoriale
+curva
+superficie
+topologia
+spazio metrico
+spazio topologico
+punto di accumulazione
+analisi complessa
+funzione olomorfa
+funzione meromorfa
+statistica
+media
+varianza
+deviazione standard
+covarianza
+probabilità
+distribuzione
+gaussiana
+binomiale
+poisson
+bayesiano
+Markov
+Monte Carlo
+inferenza
+campionamento
+teoria dei grafi
+cammino minimo
+Dijkstra
+flusso massimo
+programmazione lineare
+simplex
+problema del commesso viaggiatore
+rilassamento lagrangiano
+ricerca operativa
+equazioni differenziali
+PDE
+ODE
+problema ai limiti
+soluzione fondamentale
+dinamica
+meccanica quantistica
+relatività
+teoria dei campi
+anello
+campo
+gruppo
+omomorfismo
+isomorfismo
+polinomi irriducibili
+decomposizione in fattori
+radice quadrata
+radice cubica
+equazioni polinomiali
+equazioni lineari
+equazioni quadratiche
+sistemi lineari
+determinante di Vandermonde
+eliminazione di Gauss
+riduzione di Gauss-Jordan
+spazio affino
+chiusura algebrica
+estensione di campo
+geometria differenziale
+geometria algebrica
+geometria proiettiva
+geometria euclidea
+geometria iperbolica
+geometria analitica
+geometria computazionale
+geometria discreta
+isometria
+omotetia
+similitudine
+coordinata omogenea
+conica
+iperbole
+ellisse
+parabola
+triangolazione
+area
+volume
+teorema di Pitagora
+teorema di Euclide
+cerchio
+sfera
+ellissoide
+paraboloide
+iperboloide
+superficie minima
+calotta
+catenaria
+curva di Bézier
+spline
+analisi reale
+continuità
+convergenza puntuale
+convergenza uniforme
+integrabilità di Riemann
+integrabilità di Lebesgue
+misura di Lebesgue
+sigma-algebra
+spazio misurabile
+funzione caratteristica
+teorema di Fubini
+teorema di Tonelli
+limite superiore
+limite inferiore
+supremo
+infimo
+funzione monotona
+funzione continua
+punto di discontinuità
+serie di Taylor
+serie di Laurent
+espansione in serie
+integrale improprio
+integrale doppio
+integrale triplo
+teorema di Lagrange
+teorema del valor medio
+teorema di Rolle
+teorema di Weierstrass
+analisi complessa
+funzione analitica
+polo
+residuo
+calcolo dei residui
+principio del massimo modulo
+mappa conforme
+teorema di Cauchy
+integrale di linea
+formula integrale di Cauchy
+teorema di Morera
+trasformata di Möbius
+variabile casuale
+spazio campionario
+funzione di densità
+funzione di distribuzione
+evento
+probabilità condizionata
+indipendenza
+teorema di Bayes
+legge dei grandi numeri
+teorema del limite centrale
+processo stocastico
+martingala
+distribuzione uniforme
+distribuzione esponenziale
+distribuzione di Poisson
+distribuzione binomiale
+distribuzione geometrica
+distribuzione ipergeometrica
+entropia
+informazione
+teoria dell'informazione
+combinatoria
+permutazione
+disposizione
+combinazione
+coefficiente binomiale
+principio di inclusione-esclusione
+principio dei cassetti
+ricorrenza
+funzione generatrice
+identità di Pascal
+spazio topologico
+compattezza
+connessità
+connessione per archi
+spazio connesso
+spazio semplicemente connesso
+omotopia
+omologia
+coomologia
+topologia algebrica
+spazio di Hausdorff
+separazione
+base topologica
+mappa continua
+homeomorfismo
+teorema di Urysohn
+teorema di Tietze
+dimensione topologica
+spazio metricabile
+teoria dei numeri
+fattorizzazione
+aritmetica modulare
+congruenza
+residuo
+funzione totiente
+cerchio di Eulero
+congruente
+equazione diofantea
+teoria dei numeri elementare
+teorema di Fermat
+teorema di Wilson
+teorema di Euler
+algoritmo di Euclide
+algoritmo di estensione di Euclide
+ottimizzazione
+programmazione non lineare
+ottimo locale
+ottimo globale
+funzione obiettivo
+vincoli
+metodo dei moltiplicatori di Lagrange
+dualità
+metodo del simplesso
+discesa del gradiente
+discesa stocastica
+ottimizzazione convessa
+programmazione quadratica
+soluzione ottima
+matematica discreta
+alberi
+cammini
+cicli
+connettività
+problema NP
+P vs NP
+algoritmo esponenziale
+algoritmo polinomiale
+teoria della complessità
+problema NP-completo
+problema NP-hard
+matematica differenziale
+varietà
+curve differenziali
+geodesica
+tensore di Riemann
+connessione
+forma differenziale
+integrale di linea
+teorema di Gauss-Bonnet
+spazio tangente
+campo vettoriale differenziale
+logica
+logica proposizionale
+logica predicativa
+calcolo dei predicati
+sintassi
+semantica
+teoria della dimostrazione
+sistemi formali
+assiomatizzazione
+completezza
+consistenza
+decidibilità
+modello
+validità
+inferenza logica
+teorema di Gödel
+teoria delle categorie
+categoria
+oggetto
+morfismo
+functor
+limite induttivo
+limite projectivo
+natural transformation
+equivalenza di categorie
+adjunction
+analisi funzionale
+spazio di Banach
+spazio di Hilbert
+operatore lineare
+operatore compatto
+duale
+teorema spettrale
+norma operatore
+spazio Lp
+convergenza debole
+convergenza forte
+teorema di Riesz
+matematica applicata
+modelli matematici
+equazioni alle derivate parziali
+equazioni di Navier-Stokes
+modello epidemiologico
+calcolo stocastico
+processo di Itô
+trasformata di Fourier
+analisi numerica
+metodi iterativi
+metodo di Gauss-Seidel
+metodo di Jacobi
+metodo dei minimi quadrati
+misura
+spazio misurabile
+sigma-algebra
+integrazione di Lebesgue
+integrazione di Riemann
+teorema di Fubini
+teorema di Tonelli
+misura di Borel
+funzione misurabile
+spazio L1
+spazio L2
+storia della matematica
+filosofia della matematica
+logica formale
+fondamenti della matematica
+metodo deduttivo
+metodo induttivo
+metodo sperimentale
+varietà algebrica
+varietà differenziale
+schema
+coomologia
+teoria dell'omotopia
+teoria delle rappresentazioni
+algebra omologica
+teoria di Lie
+gruppo di Lie
+algebre associative
+algebre non associative
+struttura algebrica
+jacobiano
+hessiano
+wronskiano
+laplaciano
+asintoto verticale
+asintoto orizzontale
+asintoto obliquo
+punto di flesso
+punto di sella
+massimo relativo
+minimo relativo
+studio di funzione
+piano cartesiano
+asse delle ascisse
+asse delle ordinate
+coordinate polari
+coordinate sferiche
+coordinate cilindriche
+versore
+regola di cramer
+teorema di rouché-capelli
+polinomio caratteristico
+forma canonica di jordan
+spazio euclideo
+disuguaglianza di cauchy-schwarz
+disuguaglianza triangolare
+postulati di peano
+induzione matematica
+dimostrazione per assurdo
+numeri razionali
+numeri irrazionali
+numeri immaginari
+coniugato
+formula di eulero
+de moivre
+seno iperbolico
+coseno iperbolico
+tangente iperbolica
+arcotangente
+arcoseno
+arcocoseno
+secante
+cosecante
+cotangente
+diagramma a scatola
+boxplot
+istogramma
+ogiva
+frequenza assoluta
+frequenza relativa
+frequenza cumulata
+variabile aleatoria discreta
+variabile aleatoria continua
+funzione di ripartizione
+densità di probabilità
+intervallo di confidenza
+ipotesi nulla
+ipotesi alternativa
+errore di primo tipo
+errore di secondo tipo
+t-student
+anova
+regressione lineare
+correlazione di pearson
+omoschedasticità
+eteroschedasticità
+serie di fourier
+trasformata di laplace
+trasformata z
+delta di dirac
+funzione a gradino
+teorema dei residui
+suriettiva
+iniettiva
+biunivoca
+bigezione
+funzione inversa
+funzione composta
+codominio
+sottoinsieme
+intersezione insiemi
+unione insiemi
+differenza insiemi
+prodotto cartesiano
+cardinalità
+infinito numerabile
+continuum
+sezione aurea
+frazione continua
+minimo comune multiplo
+massimo comun divisore
+crivello di eratostene
+algoritmo euclideo
+terna pitagorica
+poligono regolare
+apotema
+circocentro
+incentro
+ortocentro
+baricentro
+bisettrice
+mediana geometrica
+asse del segmento
+radiante
+steradiante
+grado sessagesimale
+teorema dei seni
+teorema del coseno
+identità goniometrica
+prodotto notevole
+quadrato del binomio
+cubo del binomio
+scomposizione polinomi
+regola di ruffini
+equazione fratta
+disequazione
+valore assoluto
+sistema di disequazioni
+frazione algebrica
+razionalizzazione
+radicale doppio
+logaritmo neperiano
+base euleriana
+calcolo combinatorio
+coefficiente binomiale
+fattoriale
+principio dei cassetti
+disposizione semplice
+disposizione con ripetizione
+superficie di rotazione
+solido di rotazione
+tronco di cono
+tronco di piramide
+calotta sferica
+segmento circolare
+settore circolare
+corona circolare
+derivata parziale
+derivata direzionale
+gradiente
+piano tangente
+moltiplicatori di lagrange
+integrale di linea
+integrale di superficie
+flusso del campo vettoriale
+teorema della divergenza
+teorema del rotore
+teorema di stokes
+teorema di green
+equazione differenziale ordinaria
+equazione differenziale alle derivate parziali
+problema di cauchy
+serie di potenze
+raggio di convergenza
+criterio del rapporto
+criterio della radice
+criterio di leibniz
+sviluppo in serie
+matrice inversa
+matrice trasposta
+matrice simmetrica
+matrice antisimmetrica
+matrice ortogonale
+matrice diagonale
+matrice identità
+rango della matrice
+traccia della matrice
+minore complementare
+complemento algebrico
+cofattore
+sistema lineare omogeneo
+spazio vettoriale
+sottospazio vettoriale
+dipendenza lineare
+indipendenza lineare
+base ortonormale
+processo di gram-schmidt
+proiezione ortogonale
+diagonalizzabile
+molteplicità algebrica
+molteplicità geometrica
+teorema spettrale
+fascio di rette
+fascio di piani
+equazione della retta
+equazione del piano
+distanza punto retta
+distanza punto piano
+sfera
+ellissoide
+iperboloide
+paraboloide
+sezione conica
+eccentricità
+fuoco della parabola
+direttrice
+coordinate cartesiane
+proposizione logica
+tavola di verità
+tautologia
+contraddizione
+sillogismo
+quantificatore universale
+quantificatore esistenziale
+implicazione logica
+doppia implicazione
+condizione necessaria
+condizione sufficiente
+teoria degli insiemi
+diagramma di venn
+insieme vuoto
+insieme delle parti
+sottoinsieme proprio
+sottoinsieme improprio
+relazione di equivalenza
+classe di resto
+congruenza modulo
+aritmetica modulare
+teorema cinese del resto
+piccolo teorema di fermat
+funzione phi di eulero
+numero primo
+scomposizione in fattori primi
+mcd
+mcm
+approssimazione lineare
+errore relativo
+errore assoluto
+cifre significative
+notazione scientifica
+mantissa
+esponente
+bisezione
+metodo di newton
+metodo delle tangenti
+interpolazione polinomiale
+spline cubica
+quadratura di gauss
+formula dei trapezi
+formula di simpson
+varianza campionaria
+deviazione standard
+covarianza
+coefficiente di correlazione
+distribuzione normale
+distribuzione binomiale
+distribuzione di poisson
+distribuzione uniforme
+teorema del limite centrale
+legge dei grandi numeri
+spazio campionario
+probabilità condizionata
+teorema di bayes
+funzione
+funzioni
+variabile
+variabili
+costante
+parametro
+argomento
+espressione
+calcolo numerico
+operazione
+operatore
+soluzione
+formula
+equazione
+disequazione
+identità
+proprietà
+definizione
+teorema
+ipotesi
+tesi
+dimostrazione
+lemma
+corollario
+assioma
+postulato
+condizione
+necessaria
+sufficiente
+problema
+esercizio
+esempio
+grafico
+grafo
+albero
+nodo
+arco
+vertice
+spigolo
+faccia
+cammino
+ciclo
+connesso
+orientato
+pesato
+vettore
+componente
+vettori
+matrice
+matrici
+scalare
+dimensione
+spazio
+base
+coordinate
+asse
+origine
+proiezione
+distanza
+norma
+modulo
+angolo
+seno
+coseno
+tangente
+cotangente
+frazione
+numeratore
+denominatore
+potenza
+esponente
+radice
+logaritmo
+base
+insieme
+sottoinsieme
+elemento
+vuoto
+unione
+intersezione
+differenza
+complementare
+appartenenza
+inclusione
+cardinalità
+infinito
+infinitesimo
+limite
+continuità
+discontinuità
+derivata
+derivabile
+integrale
+integrabile
+primitiva
+differenziale
+serie
+successione
+convergente
+divergente
+media
+mediana
+moda
+varianza
+deviazione
+frequenza
+distribuzione
+probabilità
+evento
+casuale
+stocastico
+aleatorio
+determinante
+rango
+nucleo
+immagine
+dominio
+codominio
+inversa
+composta
+pendenza
+coefficiente
+intercetta
+area
+volume
+perimetro
+superficie
+curva
+retta
+piano
+punto
+segmento
+raggio
+diametro
+circonferenza
+cerchio
+sfera
+poligono
+triangolo
+quadrato
+rettangolo
+rombo
+trapezio
+esagono
+cubo
+parallelepipedo
+cilindro
+cono
+piramide
+sezione
+trasformazione
+rotazione
+traslazione
+riflessione
+simmetria
+omotetia
+isometria
+errore
+approssimazione
+arrotondamento
+troncamento
+stima
+interpolazione
+ottimizzazione
+minimo
+massimo
+estremo
+locale
+globale
+vincolo
