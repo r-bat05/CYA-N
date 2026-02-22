@@ -74,8 +74,7 @@ def classify_segment_fast(segment: str) -> str:
     """
     s_lower = segment.lower()
     
-    # Tokenizzazione: Spezza la frase in parole singole pulite (rimuove punteggiatura)
-    # Esempio: "cos'è il var?" -> {'cos', 'è', 'il', 'var'}
+    # Tokenizzazione: Spezza la frase in parole singole pulite
     tokens = set(re.findall(r'\w+', s_lower))
     
     # Conteggio Smart usando il loader globale
@@ -85,7 +84,7 @@ def classify_segment_fast(segment: str) -> str:
     
     # --- LOGICA DI PRIORITÀ ---
     
-    # 1. Priorità assoluta a Rights (per evitare che termini generici coding sovrascrivano il legale)
+    # 1. Priorità assoluta a Rights
     if rights_hits > 0: 
         return 'rights'
     
@@ -95,8 +94,13 @@ def classify_segment_fast(segment: str) -> str:
         
     if math_hits > coding_hits:
         return 'math'
+        
+    # 3. Risoluzione dello Stallo Semantico (Pareggio)
+    # Se c'è un pareggio esatto maggiore di zero, l'arco di esecuzione privilegia Math
+    if coding_hits == math_hits and math_hits > 0:
+        return 'math' #deepseek è più bravo con il coding piuttosto che Qwen con matematica
 
-    # 3. Pareggio o Nessuna Keyword -> GENERAL
+    # 4. Nessuna Keyword -> GENERAL
     return 'general'
 
 def split_and_dispatch(query: str) -> dict:
