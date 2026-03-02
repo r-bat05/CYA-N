@@ -33,28 +33,28 @@ MODELS_CONFIG = {
     'coding': {
         'primary': "qwen2.5-coder:7b",   
         'fallback': "qwen2.5-coder:1.5b",
-        'temperature': 0.5, #un buon connubio tra creatività e rigidità delle risposte (no allucinazioni)
+        'temperature': 0.5, # un buon connubio tra creatività e rigidità delle risposte (no allucinazioni)
         'ram_threshold': 'medium', 
         'fallback_ram_threshold': 'small'
     },
     'math': {
         'primary': "deepseek-r1:7b",
         'fallback': None,  # Nessun fallback per la matematica (richiede reasoning)
-        'temperature': 0.2, #massimo rigore nelle risposte, no creatività ma solo procedimenti logici fissi
+        'temperature': 0.2, # massimo rigore nelle risposte, no creatività ma solo procedimenti logici fissi
         'ram_threshold': 'math_opt',
         'fallback_ram_threshold': None
     },
     'rights': {
         'primary': "gpt-oss:20b",
         'fallback': "llama3.2:3b",
-        'temperature': 0.4, #leggera creatività ma gran rigore per non inventare concetti/decreti
+        'temperature': 0.4, # leggera creatività ma gran rigore per non inventare concetti/decreti
         'ram_threshold': 'large',
         'fallback_ram_threshold': 'small'
     },
     'general': {
         'primary': "gpt-oss:20b",
         'fallback': "llama3.2:3b",
-        'temperature': 0.7, #simile ai modelli AI distribuiti, ottimo per avere un linguaggio più naturale
+        'temperature': 0.7, # simile ai modelli AI distribuiti, ottimo per avere un linguaggio più naturale
         'ram_threshold': 'large',
         'fallback_ram_threshold': 'small'
     }
@@ -62,7 +62,25 @@ MODELS_CONFIG = {
 
 # --- 4. IMPOSTAZIONI SISTEMA ---
 SYSTEM_SETTINGS = {
-    'spinner_timeout': 60,   # Secondi prima di un warning (opzionale)
+    'spinner_timeout': 60,      # Secondi prima di un warning (opzionale)
     'ollama_keep_alive': '60s', # Tempo di permanenza modello in RAM per evitare di caricarlo ad ogni richiesta
-    'ctx_size': 4096         # Finestra di contesto token
+    'ctx_size': 4096            # Finestra di contesto token
+}
+
+# --- 5. CONFIGURAZIONE DISPATCHER (SMART MATCH & LEVENSHTEIN) ---
+
+# Lunghezza minima della parola affinché venga calcolata la distanza di Levenshtein.
+# Parole con meno di 4 caratteri (es. "sql", "api", "bug") bypassano il Soft-Match 
+# richiedendo un'uguaglianza rigorosa. Questo previene che preposizioni comuni 
+# si trasformino in falsi positivi.
+LEV_MIN_LEN = 4
+
+# Mappatura della soglia proporzionale degli errori (Soft-Match).
+# Struttura: { lunghezza_massima_parola : numero_errori_tollerati }
+# L'algoritmo scorrerà questo dizionario per stabilire dinamicamente l'arco di tolleranza
+# in base a quanto è lunga la singola parola "orfana" inserita dall'utente.
+LEV_TOLERANCE_MAP = {
+    6: 1,            # Da 4 a 6 caratteri -> max 1 errore (es. "array" tollera "aray")
+    10: 2,           # Da 7 a 10 caratteri -> max 2 errori (es. "funzione" tollera "funzzione")
+    float('inf'): 3  # Oltre i 10 caratteri -> max 3 errori (es. "polimorfismo" tollera "polimorfsimo")
 }

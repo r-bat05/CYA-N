@@ -1,9 +1,9 @@
 """
-    DISPATCHER NEUTRALE (Data-Driven) - Versione Smart Match V2.0
+    DISPATCHER NEUTRALE (Data-Driven) - Versione Smart Match V3.0 (Levenshtein)
     
     Refactoring:
-    - Utilizza config.py per i percorsi dei file keyword.
-    - Mantiene la logica Smart Match (distinzione parola singola vs frase).
+    - Utilizza config.py per i percorsi dei file keyword e i parametri di tolleranza.
+    - Implementa un'architettura a due fasi: Hard-Match O(1) + Soft-Match elastico.
 """
 
 import re
@@ -28,60 +28,140 @@ class KeywordLoader:
         self.CODING = self._read_file(os.path.join(keywords_dir, 'coding.txt'))
         self.MATH = self._read_file(os.path.join(keywords_dir, 'math.txt'))
         self.RIGHTS = self._read_file(os.path.join(keywords_dir, 'rights.txt'))
-        
-        # Debug opzionale (puoi decommentarlo se vuoi vedere quante parole carica)
-        # print(f"[Dispatcher] Caricati: Coding={len(self.CODING)}, Math={len(self.MATH)}, Rights={len(self.RIGHTS)}")
 
     def _read_file(self, filepath):
         unique_words = set()
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 for line in f:
-                    # Pulisce la riga e la converte in minuscolo
                     clean_line = line.strip().lower()
-                    # Ignora righe vuote o commenti (iniziano con #)
                     if clean_line and not clean_line.startswith('#'):
                         unique_words.add(clean_line)
         except FileNotFoundError:
             print(f"⚠️  ATTENZIONE: File keyword non trovato -> {filepath}")
-            print(f"    Verifica che la cartella '{config.KEYWORDS_DIR}' esista e contenga i file .txt")
         return unique_words
 
 # Istanza globale (viene creata una sola volta all'avvio)
 keyword_loader = KeywordLoader()
 
-def count_smart_matches(text_tokens: set, text_original: str, keywords: set) -> int:
+# =====================================================================
+# MOTORE MATEMATICO: DISTANZA DI LEVENSHTEIN E TOLLERANZA
+# =====================================================================
+
+def levenshtein_distance(s1: str, s2: str) -> int:
     """
-    Conta le corrispondenze usando una logica ibrida:
-    - Se la keyword è una parola singola (es. "var"), cerca il match esatto nei token.
-    - Se la keyword è una frase (es. "machine learning"), cerca la sottostringa nel testo.
+    Calcola la distanza di Levenshtein ottimizzata in memoria (usa solo 2 righe della matrice).
+    """
+    if len(s1) < len(s2):
+        return levenshtein_distance(s2, s1)
+    if len(s2) == 0:
+        return len(s1)
+    
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+    
+    return previous_row[-1]
+
+def get_allowed_errors(word_len: int) -> int:
+    """
+    Arco di tolleranza: calcola dinamicamente gli errori ammessi in base 
+    alla mappa configurata in config.py.
+    """
+    if word_len < config.LEV_MIN_LEN:
+        return 0
+    
+    # Ordina le chiavi per garantire la valutazione a gradini (6, 10, inf)
+    for max_len in sorted(config.LEV_TOLERANCE_MAP.keys()):
+        if word_len <= max_len:
+            return config.LEV_TOLERANCE_MAP[max_len]
+    return 0
+
+# =====================================================================
+# MOTORE DI RICERCA A DUE FASI (HARD-MATCH -> SOFT-MATCH)
+# =====================================================================
+
+def phase1_hard_match(tokens: set, text_original: str, keywords: set) -> tuple:
+    """
+    FASE 1: Match esatto O(1). 
+    Restituisce gli hit totali e il Set di token che hanno trovato corrispondenza.
     """
     hits = 0
+    matched_tokens = set()
+    
     for kw in keywords:
         if ' ' in kw:
-            # Frase composta: Cerca la sottostringa (es. "diritto civile")
+            # Frase composta: Ricerca sottostringa esatta
             if kw in text_original:
                 hits += 1
         else:
-            # Parola singola: Cerca il token esatto (es. "var" trova "var" ma non "variabile")
-            if kw in text_tokens:
+            # Parola singola: Ricerca Hash esatta
+            if kw in tokens:
                 hits += 1
-    return hits
+                matched_tokens.add(kw)
+                
+    return hits, matched_tokens
+
+def phase2_soft_match(orphan: str, keywords: set, allowed_errors: int) -> bool:
+    """
+    FASE 2: Soft-Match elastico applicato solo alle parole orfane.
+    """
+    for kw in keywords:
+        # Applica Levenshtein solo alle parole singole
+        if ' ' not in kw:
+            # Cortocircuito Prestazionale: Se la differenza di lunghezza supera gli errori 
+            # ammessi, è matematicamente impossibile che la parola combaci. Si salta il calcolo!
+            if abs(len(orphan) - len(kw)) > allowed_errors:
+                continue
+            
+            # Calcolo effettivo dell'arco di trasformazione
+            if levenshtein_distance(orphan, kw) <= allowed_errors:
+                return True
+    return False
 
 def classify_segment_fast(segment: str) -> str:
     """
-    Classificazione basata sui dati con logica Smart Match.
+    Orchestrazione della classificazione in due fasi.
     """
     s_lower = segment.lower()
-    
-    # Tokenizzazione: Spezza la frase in parole singole pulite
     tokens = set(re.findall(r'\w+', s_lower))
     
-    # Conteggio Smart usando il loader globale
-    coding_hits = count_smart_matches(tokens, s_lower, keyword_loader.CODING)
-    math_hits = count_smart_matches(tokens, s_lower, keyword_loader.MATH)
-    rights_hits = count_smart_matches(tokens, s_lower, keyword_loader.RIGHTS)
+    # --- FASE 1: HARD-MATCH (Veloce) ---
+    c_hits, c_matched = phase1_hard_match(tokens, s_lower, keyword_loader.CODING)
+    m_hits, m_matched = phase1_hard_match(tokens, s_lower, keyword_loader.MATH)
+    r_hits, r_matched = phase1_hard_match(tokens, s_lower, keyword_loader.RIGHTS)
     
+    coding_hits = c_hits
+    math_hits = m_hits
+    rights_hits = r_hits
+    
+    # Identificazione delle parole orfane (che non hanno matchato nulla in nessun dominio)
+    all_matched = c_matched | m_matched | r_matched
+    orphans = tokens - all_matched
+    
+    # --- FASE 2: SOFT-MATCH (Elastico) ---
+    for orphan in orphans:
+        word_len = len(orphan)
+        allowed_errors = get_allowed_errors(word_len)
+        
+        # Se la parola è troppo corta o non ammette errori, passiamo alla successiva
+        if allowed_errors == 0:
+            continue
+            
+        # Tenta il recupero elastico sui tre domini
+        if phase2_soft_match(orphan, keyword_loader.RIGHTS, allowed_errors):
+            rights_hits += 1
+        if phase2_soft_match(orphan, keyword_loader.CODING, allowed_errors):
+            coding_hits += 1
+        if phase2_soft_match(orphan, keyword_loader.MATH, allowed_errors):
+            math_hits += 1
+
     # --- LOGICA DI PRIORITÀ ---
     
     # 1. Priorità assoluta a Rights
@@ -96,9 +176,8 @@ def classify_segment_fast(segment: str) -> str:
         return 'math'
         
     # 3. Risoluzione dello Stallo Semantico (Pareggio)
-    # Se c'è un pareggio esatto maggiore di zero, l'arco di esecuzione privilegia Math
     if coding_hits == math_hits and math_hits > 0:
-        return 'math' #deepseek è più bravo con il coding piuttosto che Qwen con matematica
+        return 'math'
 
     # 4. Nessuna Keyword -> GENERAL
     return 'general'
@@ -106,9 +185,7 @@ def classify_segment_fast(segment: str) -> str:
 def split_and_dispatch(query: str) -> dict:
     """
     Spezza la richiesta in frasi e le classifica.
-    Restituisce un dizionario: { 'coding': [...], 'math': [...], ... }
     """
-    # Spezza su punto, punto interrogativo e a capo
     segments = re.split(r'[.?\n]', query)
     
     categorized_segments = {
@@ -123,7 +200,6 @@ def split_and_dispatch(query: str) -> dict:
         if not segment: continue
         
         category = classify_segment_fast(segment)
-        
         if category in categorized_segments:
             categorized_segments[category].append(segment)
             
