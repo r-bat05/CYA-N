@@ -27,7 +27,7 @@ GB = 1024 * 1024 * 1024  # Byte in 1 GB
 RAM_THRESHOLDS = {
     'small':    2.0 * GB,   # Per Qwen 1.5B / Llama 3.2 3B
     'medium':   5.5 * GB,   # Per CodeLlama 7B / Qwen2.5-Coder 7B
-    'large':   12.0 * GB,   # Per GPT-OSS 20B
+    'large':    12.0 * GB,   # Per GPT-OSS 20B
     'math_opt': 1.0 * GB    # Soglia bassa specifica per DeepSeek (Math)
 }
 
@@ -35,9 +35,9 @@ RAM_THRESHOLDS = {
 # Struttura: Categoria → { primario, fallback, temperatura, ram_type }
 MODELS_CONFIG = {
     'coding': {
-        'primary':               "qwen2.5-coder:7b",
+        'primary':               "qwen3.5:9b",        # aggiornato da qwen2.5-coder:7b
         'fallback':              "qwen2.5-coder:1.5b",
-        'temperature':           0.5,    # Connubio tra creatività e rigore (no allucinazioni)
+        'temperature':           0.5,
         'ram_threshold':         'medium',
         'fallback_ram_threshold':'small'
     },

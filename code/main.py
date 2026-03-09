@@ -1,5 +1,5 @@
 """
-    CYA N - AI LOCAL DISPATCHER V5.1
+    CYA N - AI LOCAL DISPATCHER V5.2
     Entry Point dell'applicazione.
 
     Responsabilità:
@@ -7,12 +7,11 @@
     2. Orchestrazione tra Dispatcher e Engine AI.
     3. Gestione elegante degli errori e dell'uscita.
 
-    Fix:
-    - [BUG #2] Il valore di ritorno di resolve() viene ora catturato e stampato.
-      I messaggi di errore strutturati (RAM insufficiente, Ollama offline,
-      output vuoto) erano silenziosamente scartati. Ora vengono mostrati
-      all'utente solo quando contengono un segnale di errore, evitando
-      la doppia stampa dell'output normale (già gestita dallo streaming).
+    Novità V5.2:
+    - Gli agenti AI vengono istanziati una sola volta all'avvio (fuori dal loop)
+      e riutilizzati per tutta la durata della sessione. Questo prepara
+      l'architettura per l'integrazione della chat history, che richiede
+      oggetti persistenti tra un turno e l'altro.
 """
 
 import sys
@@ -26,13 +25,23 @@ _ERROR_PREFIXES = ("⛔", "❌", "⚠️")
 
 def print_banner():
     print("\n" + "=" * 60)
-    print("      CYA N  |  AI LOCAL DISPATCHER V5.1      ")
+    print("      CYA N  |  AI LOCAL DISPATCHER V5.2      ")
     print("      (Coding • Math • Rights • General)      ")
     print("=" * 60 + "\n")
 
 
 def main():
     print_banner()
+
+    # Pre-istanziazione degli agenti: creati una volta sola all'avvio
+    # e riutilizzati per tutta la sessione. Ogni agente mantiene il proprio
+    # stato interno (necessario per la chat history del prossimo sprint).
+    agents = {
+        'coding':  get_ai_model('coding'),
+        'math':    get_ai_model('math'),
+        'rights':  get_ai_model('rights'),
+        'general': get_ai_model('general')
+    }
 
     while True:
         try:
@@ -68,22 +77,17 @@ def main():
                     continue
 
                 full_query = "\n".join(segments)
-                ai_agent   = get_ai_model(category)
-
-                if not ai_agent:
-                    print(f"\n❌ Errore Configurazione: Nessun agente per '{category}'\n")
-                    continue
+                ai_agent   = agents[category]
 
                 print(f"\n╭── 🧠 MODULO [{category.upper()}] in azione...")
                 print(f"│ Modello: {ai_agent.model_name}")
                 print(f"╰──────────────────────────────────────────")
 
-                # FIX BUG #2: cattura il valore di ritorno di resolve().
                 # generate() usa due canali di output distinti:
-                #   - Streaming (chunk per chunk) → stampa diretta a schermo durante l'elaborazione.
-                #   - Return value              → usato SOLO per errori strutturati o output vuoto.
-                # Stampare sempre il return value causerebbe doppia stampa dell'output normale,
-                # quindi lo mostriamo solo se inizia con un prefisso di errore/avviso noto.
+                #   - Streaming (chunk per chunk) → stampa diretta a schermo.
+                #   - Return value               → usato SOLO per errori strutturati.
+                # Mostriamo il return value solo se contiene un segnale di errore,
+                # per evitare la doppia stampa dell'output normale.
                 result = ai_agent.resolve(full_query)
 
                 if result and any(result.startswith(prefix) for prefix in _ERROR_PREFIXES):
