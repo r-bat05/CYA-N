@@ -26,8 +26,8 @@ GB = 1024 * 1024 * 1024  # Byte in 1 GB
 # attiva il fallback preventivo o si ferma.
 RAM_THRESHOLDS = {
     'small':    2.0 * GB,   # Per Qwen 1.5B / Llama 3.2 3B
-    'medium':   5.5 * GB,   # Per CodeLlama 7B / Qwen2.5-Coder 7B
-    'large':    12.0 * GB,   # Per GPT-OSS 20B
+    'medium':   5.5 * GB,   # Per Qwen3.5 9B / Qwen2.5-Coder 7B
+    'large':   12.0 * GB,   # Per GPT-OSS 20B
     'math_opt': 1.0 * GB    # Soglia bassa specifica per DeepSeek (Math)
 }
 
@@ -37,7 +37,7 @@ MODELS_CONFIG = {
     'coding': {
         'primary':               "qwen3.5:9b",        # aggiornato da qwen2.5-coder:7b
         'fallback':              "qwen2.5-coder:1.5b",
-        'temperature':           0.5,
+        'temperature':           0.5,    # Connubio tra creatività e rigore (no allucinazioni)
         'ram_threshold':         'medium',
         'fallback_ram_threshold':'small'
     },
@@ -95,4 +95,44 @@ LEV_TOLERANCE_MAP = {
     6:            1,    # Da 4 a 6 caratteri  → max 1 errore  (es. "array" tollera "aray")
     10:           2,    # Da 7 a 10 caratteri → max 2 errori  (es. "funzione" tollera "funzzione")
     float('inf'): 3     # Oltre 10 caratteri  → max 3 errori  (es. "polimorfismo" tollera "polimorfsimo")
+}
+
+# --- 6. CONFIGURAZIONE SEMANTIC ROUTER ---
+#
+# Il Semantic Router usa nomic-embed-text (274 MB via Ollama) per convertire
+# query e prototipi di dominio in vettori e selezionare il dominio tramite
+# similarità coseno. Si attiva prima del keyword matcher (ibrido).
+#
+# Prerequisito: ollama pull nomic-embed-text
+#
+# confidence_threshold:
+#   Soglia sul MARGINE tra 1° e 2° classificato.
+#   Calibrata a 0.06 su test reale (confidence osservata 0.0781).
+#   Abbassare → il router semantico interviene di più (meno fallback a keyword).
+#   Alzare    → il router semantico interviene solo sui casi netti.
+#
+# multi_domain_spread:
+#   Se la differenza di score tra 1° e 2° classificato è ≤ questo valore,
+#   ENTRAMBI i domini vengono attivati (la query va a due agenti).
+#   Usato per query genuinamente ibride (es. coding + rights).
+#   Abbassare → multi-dominio solo su query molto ambigue.
+#   Alzare    → multi-dominio più frequente (più risposte, più RAM usata).
+#
+# multi_domain_min_score:
+#   Score minimo assoluto che il secondo classificato deve superare
+#   per essere incluso nel multi-dominio. Evita di attivare 'general'
+#   su query specialistiche dove è strutturalmente sempre basso (~0.50).
+#
+# Se il modello nomic-embed-text non è disponibile, il sistema degrada
+# automaticamente al solo keyword matcher senza crash.
+SEMANTIC_SETTINGS = {
+    'enabled':               True,
+    'embedding_model':       'nomic-embed-text',
+    'confidence_threshold':  0.06,   # calibrato su test reale (era 0.10)
+    'multi_domain_spread':   0.08,   # attiva multi-dominio se margin ≤ 0.08
+    'multi_domain_min_score':0.58,   # score minimo per attivare secondo dominio
+
+    # Se True, stampa in console i punteggi coseno per ogni query.
+    # Utile per calibrare le soglie. Impostare False in produzione.
+    'debug': True,
 }

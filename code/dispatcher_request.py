@@ -1,20 +1,30 @@
 """
-    DISPATCHER NEUTRALE (Data-Driven) - Versione Smart Match V3.1 (Levenshtein)
+    DISPATCHER IBRIDO V4.1 (Semantic + Keyword + Multi-Domain)
 
-    Fix:
-    - [BUG #3] Soft-Match: sostituiti tre 'if' indipendenti con 'if/elif/elif'.
-      Una parola orfana ora contribuisce al massimo a UN solo dominio per chiamata,
-      eliminando l'inflazione artificiale dei contatori.
-    - [BUG #7] Priorità 'rights' ricalibrata: non più assoluta su qualsiasi hit.
-      Il dominio legale prevale solo se i suoi hit superano la somma degli hit
-      tecnici (coding + math), oppure se è l'unico dominio attivato.
-      Questo previene che un singolo soft-match su una parola di 4 lettere
-      diriga una query tecnica verso il modello legale.
+    Aggiornamento architetturale V4.1:
+    - classify_segment_fast() ora restituisce list[str] invece di str.
+      Quando il SemanticRouter rileva una query ibrida (es. coding + rights),
+      la lista contiene più di un dominio e lo stesso segmento viene accodato
+      a tutti i moduli corrispondenti. main.py non richiede modifiche perché
+      itera già su tutti i domini di categories_segments.
+
+    Flusso di classificazione per segmento:
+        1. [SEMANTIC]  SemanticRouter.classify() → (list[domini], confidenza)
+        2. [CHECK]     confidenza >= soglia?      → ritorna list[domini] semantici
+        3. [FALLBACK]  keyword Hard-Match (Phase 1) + Soft-Match (Phase 2)
+                       → restituisce sempre [singolo_dominio]
+
+    Precedenti fix mantenuti:
+    - [BUG #3] Soft-Match: 'if/elif/elif' — ogni token orfano contribuisce
+      al massimo a UN solo dominio per iterazione.
+    - [BUG #7] Priorità 'rights' ricalibrata: prevale solo se supera la somma
+      degli hit tecnici, o se è l'unico dominio attivato.
 """
 
 import re
 import os
 import config
+from semantic_router import semantic_router
 
 
 class KeywordLoader:
@@ -80,13 +90,11 @@ def levenshtein_distance(s1: str, s2: str) -> int:
 
 def get_allowed_errors(word_len: int) -> int:
     """
-    Calcola dinamicamente gli errori ammessi in base alla lunghezza della parola,
-    usando la mappa configurata in config.LEV_TOLERANCE_MAP.
+    Calcola dinamicamente gli errori ammessi in base alla lunghezza della parola.
     Parole sotto config.LEV_MIN_LEN caratteri richiedono match esatto (0 errori).
     """
     if word_len < config.LEV_MIN_LEN:
         return 0
-
     for max_len in sorted(config.LEV_TOLERANCE_MAP.keys()):
         if word_len <= max_len:
             return config.LEV_TOLERANCE_MAP[max_len]
@@ -100,13 +108,9 @@ def get_allowed_errors(word_len: int) -> int:
 def phase1_hard_match(tokens: set, text_original: str, keywords: set) -> tuple:
     """
     FASE 1: Match esatto O(1) tramite lookup su set (tabelle hash).
-    Restituisce (hit_count, matched_tokens_set).
-    - Parole singole: ricerca hash diretta nel set di token.
-    - Frasi composte: ricerca sottostringa esatta nel testo normalizzato.
     """
     hits = 0
     matched_tokens = set()
-
     for kw in keywords:
         if ' ' in kw:
             if kw in text_original:
@@ -115,7 +119,6 @@ def phase1_hard_match(tokens: set, text_original: str, keywords: set) -> tuple:
             if kw in tokens:
                 hits += 1
                 matched_tokens.add(kw)
-
     return hits, matched_tokens
 
 
@@ -126,8 +129,6 @@ def phase2_soft_match(orphan: str, keywords: set, allowed_errors: int) -> bool:
     """
     for kw in keywords:
         if ' ' not in kw:
-            # Cortocircuito prestazionale: se la differenza di lunghezza supera già
-            # gli errori ammessi, il match è matematicamente impossibile.
             if abs(len(orphan) - len(kw)) > allowed_errors:
                 continue
             if levenshtein_distance(orphan, kw) <= allowed_errors:
@@ -135,14 +136,15 @@ def phase2_soft_match(orphan: str, keywords: set, allowed_errors: int) -> bool:
     return False
 
 
-def classify_segment_fast(segment: str) -> str:
+def _keyword_classify(segment: str) -> str:
     """
-    Orchestrazione della classificazione in due fasi per un singolo segmento.
+    Classificazione tramite keyword matching (Hard + Soft).
+    Estratta come funzione privata, richiamata come fallback dal routing ibrido.
+    Restituisce sempre un singolo dominio (stringa).
     """
     s_lower = segment.lower()
     tokens  = set(re.findall(r'\w+', s_lower))
 
-    # --- FASE 1: HARD-MATCH ---
     c_hits, c_matched = phase1_hard_match(tokens, s_lower, keyword_loader.CODING)
     m_hits, m_matched = phase1_hard_match(tokens, s_lower, keyword_loader.MATH)
     r_hits, r_matched = phase1_hard_match(tokens, s_lower, keyword_loader.RIGHTS)
@@ -151,22 +153,15 @@ def classify_segment_fast(segment: str) -> str:
     math_hits   = m_hits
     rights_hits = r_hits
 
-    # Parole orfane: token che non hanno trovato match in nessun dominio
     all_matched = c_matched | m_matched | r_matched
     orphans     = tokens - all_matched
 
-    # --- FASE 2: SOFT-MATCH ---
-    # FIX BUG #3: 'if/elif/elif' invece di tre 'if' indipendenti.
-    # Ogni parola orfana contribuisce al massimo a UN dominio per iterazione,
-    # seguendo l'ordine di priorità: rights > coding > math.
-    # Questo impedisce che un singolo token infli artificialmente più contatori.
+    # FIX BUG #3: if/elif/elif — ogni orfano contribuisce a un solo dominio
     for orphan in orphans:
         word_len       = len(orphan)
         allowed_errors = get_allowed_errors(word_len)
-
         if allowed_errors == 0:
             continue
-
         if phase2_soft_match(orphan, keyword_loader.RIGHTS, allowed_errors):
             rights_hits += 1
         elif phase2_soft_match(orphan, keyword_loader.CODING, allowed_errors):
@@ -174,37 +169,53 @@ def classify_segment_fast(segment: str) -> str:
         elif phase2_soft_match(orphan, keyword_loader.MATH, allowed_errors):
             math_hits += 1
 
-    # --- LOGICA DI PRIORITÀ ---
-
     technical_hits = coding_hits + math_hits
 
-    # 1. Priorità Rights — FIX BUG #7: non più assoluta su qualsiasi hit.
-    #    Rights prevale solo se:
-    #    (a) ha hit E supera la somma degli hit tecnici (query chiaramente legale), oppure
-    #    (b) è l'unico dominio attivato (nessun segnale tecnico presente).
+    # FIX BUG #7: rights non ha più priorità assoluta
     if rights_hits > 0 and (rights_hits > technical_hits or technical_hits == 0):
         return 'rights'
-
-    # 2. Confronto diretto Coding vs Math
     if coding_hits > math_hits:
         return 'coding'
-
     if math_hits > coding_hits:
         return 'math'
-
-    # 3. Stallo semantico (pareggio con hit > 0): si preferisce Math
-    #    per preservare le capacità di reasoning logico-deduttivo.
     if coding_hits == math_hits and math_hits > 0:
         return 'math'
 
-    # 4. Nessuna keyword trovata → GENERAL
     return 'general'
+
+
+def classify_segment_fast(segment: str) -> list:
+    """
+    Orchestrazione del routing ibrido per un singolo segmento.
+    Restituisce SEMPRE una list[str] con uno o più domini.
+
+    Fase 0 — Semantic Router (se abilitato in config):
+        Converte il segmento in embedding e confronta con i prototipi.
+        Se la confidenza supera la soglia, restituisce la lista di domini
+        (1 o 2 in caso di query ibrida multi-dominio).
+
+    Fase 1+2 — Keyword Matcher (fallback):
+        Attivato quando il Semantic Router è disabilitato, non disponibile,
+        o produce una confidenza insufficiente. Restituisce sempre [dominio].
+    """
+    # --- FASE 0: SEMANTIC ROUTER ---
+    if config.SEMANTIC_SETTINGS.get('enabled', False):
+        domains, confidence = semantic_router.classify(segment)
+        threshold = config.SEMANTIC_SETTINGS.get('confidence_threshold', 0.06)
+        if confidence >= threshold:
+            return domains
+
+    # --- FASE 1 + 2: KEYWORD MATCHER (fallback) ---
+    return [_keyword_classify(segment)]
 
 
 def split_and_dispatch(query: str) -> dict:
     """
     Spezza la richiesta in segmenti frasali e classifica ciascuno.
     Restituisce un dizionario categoria → lista di segmenti.
+
+    Un singolo segmento può comparire in più categorie se il SemanticRouter
+    lo classifica come multi-dominio (es. sia coding che rights).
     """
     segments = re.split(r'[.?\n]', query)
 
@@ -220,8 +231,10 @@ def split_and_dispatch(query: str) -> dict:
         if not segment:
             continue
 
-        category = classify_segment_fast(segment)
-        if category in categorized_segments:
-            categorized_segments[category].append(segment)
+        # classify_segment_fast restituisce list[str] (1 o più domini)
+        categories = classify_segment_fast(segment)
+        for category in categories:
+            if category in categorized_segments:
+                categorized_segments[category].append(segment)
 
     return categorized_segments
