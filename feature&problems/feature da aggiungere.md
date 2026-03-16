@@ -1,5 +1,5 @@
-
 1. integrazione della chat history
+
 3) integrare un modo per rendere tutte le AI consapevoli del momento storico
 4) implementazione di una grafica. Idea: stile prompt dei comandi user friendly con belle animazioni
 

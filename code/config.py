@@ -134,5 +134,5 @@ SEMANTIC_SETTINGS = {
 
     # Se True, stampa in console i punteggi coseno per ogni query.
     # Utile per calibrare le soglie. Impostare False in produzione.
-    'debug': True,
+    'debug': False
 }
