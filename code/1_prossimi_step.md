@@ -1,0 +1,1 @@
+il documento finale per l'implementazione della pipeline LLM è pronto, bisogna iniziare a far generare il codice a Claude. Gemini lo ha votato 9/10, si può procedere
