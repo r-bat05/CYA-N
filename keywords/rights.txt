@@ -234,3 +234,184 @@ biglietto nominale
 tessera del tifoso
 rapporto obbligatorio
 obbligazione
+diritto del lavoro
+lavoratore
+dipendente
+datore di lavoro
+subordinazione
+lavoro autonomo
+partita iva
+licenziamento
+dimissioni
+giusta causa
+giustificato motivo
+busta paga
+ferie
+permessi
+malattia lavorativa
+infortunio sul lavoro
+inail
+inps
+contributi previdenziali
+pensione
+tfr
+trattamento di fine rapporto
+ccnl
+contratto collettivo
+sindacato
+sciopero
+mansioni
+demansionamento
+mobbing
+apprendistato
+lavoro a tempo determinato
+lavoro a tempo indeterminato
+smart working
+telelavoro
+privacy
+gdpr
+trattamento dati
+titolare del trattamento
+responsabile del trattamento
+dpo
+data protection officer
+consenso informato
+profilazione
+cookie policy
+data breach
+violazione dei dati
+diritto all'oblio
+portabilità dei dati
+garante privacy
+diritto dell'informatica
+diritto d'autore
+copyright
+proprietà intellettuale
+brevetto
+marchio
+licenza d'uso
+open source
+pirateria informatica
+diritto commerciale
+società
+spa
+srl
+snc
+sas
+azioni societarie
+quote societarie
+azionista
+socio
+cda
+consiglio di amministrazione
+amministratore delegato
+collegio sindacale
+bilancio d'esercizio
+fallimento
+liquidazione giudiziale
+concordato preventivo
+fusione societaria
+scissione societaria
+acquisizione
+antitrust
+monopolio
+concorrenza sleale
+diritto di famiglia
+matrimonio
+divorzio
+separazione
+alimenti
+assegno di mantenimento
+affidamento
+patria potestà
+responsabilità genitoriale
+adozione
+successione
+eredità
+testamento
+quota legittima
+erede
+legatario
+donazione
+curatore
+tutore
+amministratore di sostegno
+diritto tributario
+tasse
+imposte
+tributi
+agenzia delle entrate
+evasione fiscale
+elusione fiscale
+dichiarazione dei redditi
+irpef
+ires
+iva
+accertamento fiscale
+contenzioso tributario
+commissione tributaria
+indagini preliminari
+gip
+gup
+dibattimento
+ergastolo
+reclusione
+multa penale
+ammenda penale
+querela
+denuncia
+esposto
+arresto
+fermo
+misura cautelare
+legittima difesa
+stato di necessità
+prescrizione
+latitanza
+diffamazione
+calunnia
+peculato
+concussione
+corruzione
+abuso d'ufficio
+usucapione
+servitù prediale
+enfiteusi
+ipoteca
+pegno
+fideiussione
+mutuo
+locazione
+comodato
+appalto
+subappalto
+responsabilità oggettiva
+d.lgs 231
+responsabilità amministrativa degli enti
+riciclaggio
+estorsione
+rapina
+sequestro preventivo
+sequestro conservativo
+rogatoria
+estradizione
+trattato internazionale
+consuetudine
+asilo politico
+cittadinanza
+espropriazione per pubblica utilità
+concessione amministrativa
+silenzio assenso
+valutazione impatto ambientale
+abuso edilizio
+condono
+appello incidentale
+ricorso incidentale
+litisconsorzio
+difetto di giurisdizione
+competenza territoriale
+decreto ingiuntivo
+atto di precetto
+pignoramento
+esecuzione forzata
+bancarotta fraudolenta
