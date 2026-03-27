@@ -1,23 +1,30 @@
 """
-    DISPATCHER NEUTRALE (Data-Driven) - Versione Smart Match V3.2
+    DISPATCHER NEUTRALE (Data-Driven) - Versione Smart Match V4.0
 
-    Fix/Miglioramenti rispetto a V3.1:
-    - [BUG #8] Risolto token leakage delle keyword composte (multi-word):
-      i token componenti di una keyword multi-parola matchata vengono ora
-      aggiunti a matched_tokens, impedendo che rimangano orfani e
-      contribuiscano via soft-match a domini errati (double-counting).
-    - [IMPROVEMENT] Soft-Match best-distance: l'assegnazione dell'orfano
-      non segue più un ordine di priorità fisso (rights > coding > math),
-      ma va al dominio con la keyword a distanza di Levenshtein minima.
-      Ogni orfano contribuisce ancora al massimo a UN solo dominio.
-    - [MINOR] Delimitatori di split estesi: aggiunti '!' e ';'.
+    Fix/Miglioramenti rispetto a V3.2:
+    - [FEATURE] KeywordLoader calcola SHARED_TECH = CODING & MATH all'avvio.
+      Contiene le keyword presenti in entrambi i dizionari tecnici (es. "funzione",
+      "sistema", "variabile"). Usato da detect_hybrid() per neutralizzare i
+      falsi positivi nel rilevamento delle query ibride.
+    - [FEATURE] Aggiunta funzione interna _count_hits() — versione minimale di
+      phase1_hard_match che restituisce solo il conteggio. Evita di modificare
+      la firma pubblica di phase1_hard_match e non rompe i caller esistenti.
+    - [FEATURE] Aggiunta funzione pubblica detect_hybrid() — determina se una
+      query richiede la pipeline multi-agente. Usa hit esclusivi (CODING-SHARED_TECH,
+      MATH-SHARED_TECH, RIGHTS invariato) e la soglia proporzionale configurata
+      in config.PIPELINE_SETTINGS['hybrid_threshold']. Restituisce l'ordine A→B
+      via score o matrice di tie-break.
+
+    Fix/Miglioramenti V3.2 (invariati):
+    - [BUG #8] Token leakage keyword composte risolto.
+    - [IMPROVEMENT] Soft-Match best-distance su tutti e tre i domini.
+    - [MINOR] Delimitatori di split estesi a . ? ! ; newline.
     - [MINOR] Rinominata classify_segment_fast → classify_segment.
-      Il nome precedente era fuorviante dopo l'introduzione di Levenshtein.
 """
 
 import re
 import os
-from typing import Optional
+from typing import Optional, Tuple
 import config
 
 
@@ -37,6 +44,14 @@ class KeywordLoader:
         self.CODING = self._read_file(os.path.join(keywords_dir, 'coding.txt'))
         self.MATH   = self._read_file(os.path.join(keywords_dir, 'math.txt'))
         self.RIGHTS = self._read_file(os.path.join(keywords_dir, 'rights.txt'))
+
+        # SHARED_TECH: keyword presenti sia in CODING che in MATH.
+        # Parole come "funzione", "sistema", "variabile" sono segnale corretto
+        # nel routing mono-dominio, ma gonfiano artificialmente lo score del
+        # dominio debole nel rilevamento delle query ibride.
+        # Viene calcolato una sola volta qui (O(min(|C|,|M|))) e riutilizzato
+        # a runtime senza overhead.
+        self.SHARED_TECH = self.CODING & self.MATH
 
     def _read_file(self, filepath) -> set:
         unique_words = set()
@@ -131,6 +146,24 @@ def phase1_hard_match(tokens: set, text_original: str, keywords: set) -> tuple:
     return hits, matched_tokens
 
 
+def _count_hits(tokens: set, text_lower: str, keywords: set) -> int:
+    """
+    Versione minimale di phase1_hard_match: restituisce solo il conteggio degli
+    hit senza tracciare i token matchati. Usata internamente da detect_hybrid()
+    per contare gli hit su keyword set derivati (es. CODING - SHARED_TECH).
+    Non modifica la firma pubblica di phase1_hard_match.
+    """
+    count = 0
+    for kw in keywords:
+        if ' ' in kw:
+            if kw in text_lower:
+                count += 1
+        else:
+            if kw in tokens:
+                count += 1
+    return count
+
+
 def phase2_soft_match_best_domain(orphan: str,
                                    domain_keywords: dict,
                                    allowed_errors: int) -> Optional[str]:
@@ -164,6 +197,101 @@ def phase2_soft_match_best_domain(orphan: str,
     return best_domain
 
 
+# =====================================================================
+# RILEVAMENTO QUERY IBRIDE
+# =====================================================================
+
+def detect_hybrid(query: str) -> Tuple[bool, str, str]:
+    """
+    Determina se una query richiede la pipeline multi-agente (due domini).
+
+    Strategia — due layer distinti:
+      Layer 1 (questo metodo): 'la query è ibrida?'
+        Usa hit esclusivi (CODING-SHARED_TECH, MATH-SHARED_TECH, RIGHTS invariato)
+        e la soglia proporzionale in config.PIPELINE_SETTINGS['hybrid_threshold'].
+      Layer 2 (classify_segment / Bug #7): 'tra i domini, chi vince?'
+        Logica di routing mono-dominio esistente, non modificata.
+    I due layer non si sovrappongono mai.
+
+    Nota: usa solo hard-match sulle keyword esclusive. Il soft-match aggiunge
+    valore marginale per il rilevamento ibrido ed è già gestito dal semantic
+    router (fallback primario). Questo metodo è il fallback keyword-based.
+
+    Args:
+        query: la stringa completa inserita dall'utente.
+
+    Returns:
+        (True, domain_a, domain_b)  → pipeline attivata, A parla per primo
+        (False, '', '')             → query mono-dominio, flusso normale
+    """
+    s_lower = query.lower()
+    tokens  = set(re.findall(r'\w+', s_lower))
+
+    # Keyword esclusive: CODING e MATH senza le parole condivise.
+    # RIGHTS non è toccato — non condivide keyword con i domini tecnici.
+    coding_excl_kws = keyword_loader.CODING  - keyword_loader.SHARED_TECH
+    math_excl_kws   = keyword_loader.MATH    - keyword_loader.SHARED_TECH
+
+    coding_excl = _count_hits(tokens, s_lower, coding_excl_kws)
+    math_excl   = _count_hits(tokens, s_lower, math_excl_kws)
+    rights_hits = _count_hits(tokens, s_lower, keyword_loader.RIGHTS)
+
+    # Raccogli i domini con almeno 1 hit, ordinati per score decrescente.
+    domain_scores = {
+        'coding': coding_excl,
+        'math':   math_excl,
+        'rights': rights_hits,
+    }
+    active = sorted(
+        [(d, s) for d, s in domain_scores.items() if s > 0],
+        key=lambda x: x[1],
+        reverse=True
+    )
+
+    # Meno di 2 domini con hit → impossibile avere una coppia ibrida.
+    if len(active) < 2:
+        return False, '', ''
+
+    primary_domain,   primary_hits   = active[0]
+    secondary_domain, secondary_hits = active[1]
+
+    total = primary_hits + secondary_hits
+    if total == 0:
+        return False, '', ''
+
+    # --- SOGLIA PROPORZIONALE ---
+    threshold       = config.PIPELINE_SETTINGS['hybrid_threshold']
+    secondary_ratio = secondary_hits / total
+
+    if secondary_ratio < threshold:
+        return False, '', ''
+
+    # --- DETERMINAZIONE ORDINE A→B ---
+    # Se i due domini hanno hit esclusivi diversi, parla per primo chi ne ha di più.
+    # Se sono pari, si consulta la matrice di tie-break in config.py.
+    if primary_hits != secondary_hits:
+        domain_a, domain_b = primary_domain, secondary_domain
+    else:
+        pair   = frozenset({primary_domain, secondary_domain})
+        matrix = config.PIPELINE_SETTINGS['pipeline_order_matrix']
+        if pair in matrix:
+            domain_a, domain_b = matrix[pair]
+        else:
+            # Gerarchia di fallback coerente con Bug #7: rights > coding > math
+            hierarchy = ['rights', 'coding', 'math', 'general']
+            ordered   = sorted(
+                [primary_domain, secondary_domain],
+                key=lambda d: hierarchy.index(d)
+            )
+            domain_a, domain_b = ordered[0], ordered[1]
+
+    return True, domain_a, domain_b
+
+
+# =====================================================================
+# CLASSIFICAZIONE SEGMENTO (routing mono-dominio — invariato)
+# =====================================================================
+
 def classify_segment(segment: str) -> str:
     """
     Orchestrazione della classificazione in due fasi per un singolo segmento.
@@ -181,14 +309,10 @@ def classify_segment(segment: str) -> str:
     rights_hits = r_hits
 
     # Parole orfane: token non matchati in nessun dominio durante la Fase 1.
-    # Grazie al FIX BUG #8, i token componenti di keyword composte matchate
-    # sono già inclusi nei rispettivi matched_tokens e non appariranno qui.
     all_matched = c_matched | m_matched | r_matched
     orphans     = tokens - all_matched
 
     # --- FASE 2: SOFT-MATCH (best-distance) ---
-    # L'ordine del dizionario definisce la priorità in caso di parità di distanza:
-    # rights > coding > math. Coerente con la gerarchia della logica di priorità finale.
     domain_keywords = {
         'rights': keyword_loader.RIGHTS,
         'coding': keyword_loader.CODING,
@@ -210,14 +334,11 @@ def classify_segment(segment: str) -> str:
         elif best == 'math':
             math_hits += 1
 
-    # --- LOGICA DI PRIORITÀ ---
+    # --- LOGICA DI PRIORITÀ (Layer 2 — routing mono-dominio) ---
 
     technical_hits = coding_hits + math_hits
 
-    # 1. Priorità Rights — FIX BUG #7: non più assoluta su qualsiasi hit.
-    #    Rights prevale solo se:
-    #    (a) ha hit E supera la somma degli hit tecnici (query chiaramente legale), oppure
-    #    (b) è l'unico dominio attivato (nessun segnale tecnico presente).
+    # 1. Priorità Rights — FIX BUG #7
     if rights_hits > 0 and (rights_hits > technical_hits or technical_hits == 0):
         return 'rights'
 
@@ -229,13 +350,16 @@ def classify_segment(segment: str) -> str:
         return 'math'
 
     # 3. Stallo semantico (pareggio con hit > 0): si preferisce Math
-    #    per preservare le capacità di reasoning logico-deduttivo.
     if coding_hits == math_hits and math_hits > 0:
         return 'math'
 
     # 4. Nessuna keyword trovata → GENERAL
     return 'general'
 
+
+# =====================================================================
+# ENTRY POINT PUBBLICO
+# =====================================================================
 
 def split_and_dispatch(query: str) -> dict:
     """

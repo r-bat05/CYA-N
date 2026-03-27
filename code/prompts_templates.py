@@ -1,6 +1,11 @@
 """
     PROMPT TEMPLATES & FEW-SHOT EXAMPLES
     Contiene la 'personalità' e gli esempi per istruire i modelli AI.
+    
+    Novità V6.1:
+    - [FIX] Vulnerabilità B: Aggiornato il template 'critic' in PIPELINE_PROMPTS 
+      per iniettare l'arco informativo della {original_query}, permettendo al
+      modello di ancorare la revisione alla reale richiesta dell'utente.
 """
 
 # --- 1. SYSTEM PROMPTS (Il "Chi sei") ---
@@ -81,6 +86,44 @@ ENFORCEMENT_PROMPTS = {
         "5. Usa notazione LaTeX leggibile per le formule."
     )
 }
+
+# --- 4. PROMPT PER LA PIPELINE (Query Ibride) ---
+PIPELINE_PROMPTS = {
+    'directional': (
+        "\n\n[ISTRUZIONE DI PIPELINE]:\n"
+        "Nota: la tua risposta NON sarà mostrata direttamente all'utente. "
+        "Sarà consegnata a un agente esperto di [{domain_b}] che la integrerà. "
+        "Struttura l'output in modo denso e referenziabile per facilitarne l'uso. "
+        "Fornisci fatti tecnici precisi. Non scrivere conclusioni rivolte all'utente. "
+        "Non aggiungere introduzioni o saluti — vai diretto al contenuto."
+    ),
+    'handoff': (
+        "\n\n[CONTESTO OPERATIVO: FUSIONE MULTI-AGENTE]\n"
+        "L'utente ha fatto la seguente richiesta originale:\n"
+        "\"{original_query}\"\n\n"
+        "Il modulo esperto in [{domain_a}] ha già elaborato questa parte della risposta:\n"
+        "--- INIZIO OUTPUT [{domain_a}] ---\n"
+        "{output_a}\n"
+        "--- FINE OUTPUT [{domain_a}] ---\n\n"
+        "[IL TUO COMPITO]:\n"
+        "Analizza l'output precedente e aggiungi la prospettiva relativa al tuo dominio ({domain_b}). "
+        "NON riscrivere il codice o l'output dell'altro agente se non per correggere errori fattuali. "
+        "NON ripetere spiegazioni tecniche già fornite. "
+        "Produci UNA risposta finale che integri entrambe le prospettive in modo organico e coerente."
+    ),
+    'critic': (
+        "\n\n[REVISIONE CRITICA FINALE]\n"
+        "Analizza la bozza di risposta che hai appena prodotto confrontandola con la RICHIESTA ORIGINALE DELL'UTENTE:\n"
+        "\"{original_query}\"\n\n"
+        "VERIFICA QUESTI PUNTI:\n"
+        "1. Il modulo precedente ha fornito informazioni che hai incorporato: sono corrette e verificabili?\n"
+        "2. Ci sono affermazioni della tua risposta che potrebbero essere inesatte, incomplete o fuori contesto?\n"
+        "3. La risposta finale risolve COMPLETAMENTE la richiesta originale dell'utente?\n\n"
+        "Se rilevi problemi o mancanze, correggili o integrali direttamente nella risposta in modo fluido. "
+        "Se la risposta è corretta e completa, restituiscila invariata SENZA aggiungere commenti meta (es. non scrivere 'La risposta è corretta...', 'Non ho trovato errori', ecc.)."
+    )
+}
+
 
 def get_prompts(category: str):
     """ 

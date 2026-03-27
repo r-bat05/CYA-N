@@ -1,10 +1,11 @@
 """
-    MOTORE AI IBRIDO V5.1
+    MOTORE AI IBRIDO V6.1 (LLM Pipeline & Critic Pass)
 
-    Fix:
-    - [BUG #1] is_using_fallback ora resettato nel blocco 'finally', garantendo
-      il reset su OGNI path di uscita: successo, errore Ollama, errore generico,
-      output vuoto e RAM insufficiente.
+    Novità V6.1:
+    - [FIX] Vulnerabilità C: Aggiunto troncamento difensivo dell'arco di contesto
+      in `resolve_pipeline_b` per evitare la saturazione della RAM/Token (max 6000 chars).
+    - [FIX] Vulnerabilità B: Aggiornata la firma di `execute_critic_pass` per ricevere
+      l'arco informativo della query originale e inocularlo nel prompt dell'Agente B.
 """
 
 import ollama
@@ -12,7 +13,7 @@ import time
 import psutil
 from abc import ABC, abstractmethod
 from helper import clean_response, SpinnerContext, print_time_elapsed
-from prompts_templates import get_prompts
+from prompts_templates import get_prompts, PIPELINE_PROMPTS
 import config
 
 
@@ -77,11 +78,10 @@ class BaseAI(ABC):
 
         return True
 
-    def generate(self, messages: list):
+    def generate(self, messages: list, stream_output=True, force_unload=False):
         """Gestisce la chiamata a Ollama, lo streaming e la pulizia."""
 
         # 1. Controllo Risorse
-        # FIX BUG #1: reset esplicito anche sul path di uscita anticipata per RAM
         if not self.check_resources():
             self.is_using_fallback = False
             return "⛔ SISTEMA ARRESTATO PER MANCANZA DI MEMORIA."
@@ -97,9 +97,12 @@ class BaseAI(ABC):
             'temperature': self.temperature,
             'num_ctx': config.SYSTEM_SETTINGS['ctx_size']
         }
-        keep_alive = config.SYSTEM_SETTINGS['ollama_keep_alive']
+        
+        # 4. Scelta del keep_alive (scaricamento forzato per pipeline)
+        keep_alive = 0 if force_unload else config.SYSTEM_SETTINGS['ollama_keep_alive']
 
-        spinner = SpinnerContext(f"Consultando [{target_model}]...")
+        spinner_msg = f"Consultando [{target_model}]..." if stream_output else f"Elaborazione in background [{target_model}]..."
+        spinner = SpinnerContext(spinner_msg)
         spinner.start()
 
         is_thinking = False
@@ -124,14 +127,15 @@ class BaseAI(ABC):
                 if "</think>" in content:
                     is_thinking = False
                     content = content.replace("</think>", "")
-                    spinner.stop()
+                    if stream_output:
+                        spinner.stop()
 
                 if is_thinking:
                     continue
 
                 if content:
                     display_content = clean_response(content)
-                    if display_content:
+                    if display_content and stream_output:
                         spinner.stop()
                         print(display_content, end="", flush=True)
 
@@ -149,15 +153,28 @@ class BaseAI(ABC):
 
         finally:
             # FIX BUG #1: il finally garantisce il reset su OGNI path di uscita
-            # (successo, eccezione, return anticipato per output vuoto)
             spinner.stop()
             self.is_using_fallback = False
 
-        print_time_elapsed(start_time)
+        if stream_output:
+            print_time_elapsed(start_time)
+            
         return clean_response(full_response)
 
     @abstractmethod
     def resolve(self, prompt: str):
+        pass
+
+    @abstractmethod
+    def resolve_pipeline_a(self, prompt: str, domain_b: str):
+        pass
+
+    @abstractmethod
+    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str):
+        pass
+
+    @abstractmethod
+    def execute_critic_pass(self, draft_b: str, original_prompt: str):
         pass
 
 
@@ -177,6 +194,50 @@ class CodeLlamaAI(BaseAI):
         ]
         return self.generate(messages)
 
+    def resolve_pipeline_a(self, prompt: str, domain_b: str):
+        sys_prompt, few_shot, _ = get_prompts('coding')
+        directional = PIPELINE_PROMPTS['directional'].format(domain_b=domain_b.upper())
+        final_prompt = f"{few_shot}\n[RICHIESTA]: {prompt}\n{directional}"
+        messages = [
+            {'role': 'system', 'content': sys_prompt},
+            {'role': 'user',   'content': final_prompt}
+        ]
+        return self.generate(messages, stream_output=False, force_unload=True)
+
+    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str):
+        # Difesa saturazione arco di contesto (max 6000 caratteri)
+        if len(output_a) > 6000:
+            output_a = output_a[:6000] + "\n...[ARCO INFORMATIVO TRONCATO PER LIMITI DI CONTESTO]..."
+
+        sys_prompt, _, _ = get_prompts('coding')
+        handoff = PIPELINE_PROMPTS['handoff'].format(
+            original_query=original_prompt,
+            domain_a=domain_a.upper(),
+            output_a=output_a,
+            domain_b=self.category.upper()
+        )
+        messages = [
+            {'role': 'system', 'content': sys_prompt},
+            {'role': 'user',   'content': handoff}
+        ]
+        return self.generate(messages, stream_output=False, force_unload=False)
+
+    def execute_critic_pass(self, draft_b: str, original_prompt: str):
+        sys_prompt, _, _ = get_prompts('coding')
+        
+        critic_template = PIPELINE_PROMPTS['critic']
+        if "{original_query}" in critic_template:
+            critic = critic_template.format(original_query=original_prompt)
+        else:
+            critic = f"{critic_template}\n\n[DOMANDA ORIGINALE DELL'UTENTE]:\n\"{original_prompt}\""
+
+        messages = [
+            {'role': 'system', 'content': sys_prompt},
+            {'role': 'assistant', 'content': draft_b},
+            {'role': 'user',   'content': critic}
+        ]
+        return self.generate(messages, stream_output=True, force_unload=False)
+
 
 class DeepSeekAI(BaseAI):
     def __init__(self):
@@ -184,9 +245,42 @@ class DeepSeekAI(BaseAI):
 
     def resolve(self, prompt: str):
         _, _, enforcement = get_prompts('math')
-        # DeepSeek R1 preferisce prompt diretti senza system prompt complessi
         messages = [{'role': 'user', 'content': f"{prompt}{enforcement}"}]
         return self.generate(messages)
+
+    def resolve_pipeline_a(self, prompt: str, domain_b: str):
+        _, _, enforcement = get_prompts('math')
+        directional = PIPELINE_PROMPTS['directional'].format(domain_b=domain_b.upper())
+        messages = [{'role': 'user', 'content': f"{prompt}{enforcement}{directional}"}]
+        return self.generate(messages, stream_output=False, force_unload=True)
+
+    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str):
+        # Difesa saturazione arco di contesto
+        if len(output_a) > 6000:
+            output_a = output_a[:6000] + "\n...[ARCO INFORMATIVO TRONCATO PER LIMITI DI CONTESTO]..."
+
+        _, _, enforcement = get_prompts('math')
+        handoff = PIPELINE_PROMPTS['handoff'].format(
+            original_query=original_prompt,
+            domain_a=domain_a.upper(),
+            output_a=output_a,
+            domain_b=self.category.upper()
+        )
+        messages = [{'role': 'user', 'content': f"{handoff}{enforcement}"}]
+        return self.generate(messages, stream_output=False, force_unload=False)
+
+    def execute_critic_pass(self, draft_b: str, original_prompt: str):
+        critic_template = PIPELINE_PROMPTS['critic']
+        if "{original_query}" in critic_template:
+            critic = critic_template.format(original_query=original_prompt)
+        else:
+            critic = f"{critic_template}\n\n[DOMANDA ORIGINALE DELL'UTENTE]:\n\"{original_prompt}\""
+
+        messages = [
+            {'role': 'assistant', 'content': draft_b},
+            {'role': 'user',   'content': critic}
+        ]
+        return self.generate(messages, stream_output=True, force_unload=False)
 
 
 class GptOssAI(BaseAI):
@@ -202,6 +296,50 @@ class GptOssAI(BaseAI):
             {'role': 'user',   'content': full_user_content}
         ]
         return self.generate(messages)
+
+    def resolve_pipeline_a(self, prompt: str, domain_b: str):
+        sys_prompt, few_shot, _ = get_prompts(self.category)
+        directional = PIPELINE_PROMPTS['directional'].format(domain_b=domain_b.upper())
+        full_user_content = f"{few_shot}\n[RICHIESTA UTENTE]: {prompt}\n{directional}"
+        messages = [
+            {'role': 'system', 'content': sys_prompt},
+            {'role': 'user',   'content': full_user_content}
+        ]
+        return self.generate(messages, stream_output=False, force_unload=True)
+
+    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str):
+        # Difesa saturazione arco di contesto
+        if len(output_a) > 6000:
+            output_a = output_a[:6000] + "\n...[ARCO INFORMATIVO TRONCATO PER LIMITI DI CONTESTO]..."
+
+        sys_prompt, _, _ = get_prompts(self.category)
+        handoff = PIPELINE_PROMPTS['handoff'].format(
+            original_query=original_prompt,
+            domain_a=domain_a.upper(),
+            output_a=output_a,
+            domain_b=self.category.upper()
+        )
+        messages = [
+            {'role': 'system', 'content': sys_prompt},
+            {'role': 'user',   'content': handoff}
+        ]
+        return self.generate(messages, stream_output=False, force_unload=False)
+
+    def execute_critic_pass(self, draft_b: str, original_prompt: str):
+        sys_prompt, _, _ = get_prompts(self.category)
+        
+        critic_template = PIPELINE_PROMPTS['critic']
+        if "{original_query}" in critic_template:
+            critic = critic_template.format(original_query=original_prompt)
+        else:
+            critic = f"{critic_template}\n\n[DOMANDA ORIGINALE DELL'UTENTE]:\n\"{original_prompt}\""
+
+        messages = [
+            {'role': 'system', 'content': sys_prompt},
+            {'role': 'assistant', 'content': draft_b},
+            {'role': 'user',   'content': critic}
+        ]
+        return self.generate(messages, stream_output=True, force_unload=False)
 
 
 # --- FACTORY ---
