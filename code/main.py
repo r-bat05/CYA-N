@@ -1,5 +1,5 @@
 """
-    CYA N - AI LOCAL DISPATCHER V6.2.1
+    CYA N - AI LOCAL DISPATCHER V6.2.2
     Entry Point dell'applicazione.
 
     Responsabilità:
@@ -7,12 +7,11 @@
     2. Orchestrazione tra Dispatcher e Engine AI.
     3. Gestione elegante degli errori e dell'uscita.
 
-    Novità V6.2.1:
-    - [FIX] Corretto l'arco di importazione per il Semantic Router.
-    - [FEATURE] Ricollegato l'Arco di Routing Semantico (Fase 0).
-      Ora il sistema tenta prima un instradamento vettoriale. In caso di 
-      ambiguità (confidenza sotto soglia), recide l'arco vettoriale e 
-      instaura il fallback preventivo tramite keyword (Hard/Soft Match).
+    Novità V6.2.2:
+    - [FIX] Risolto il paradosso logico dell'arco ibrido vettoriale. 
+      Ora, se il semantic router estrae 2 domini, l'arco ibrido viene
+      confermato automaticamente ignorando il drop di confidenza (spread),
+      che per definizione in query perfettamente ibride è prossimo allo zero.
 """
 
 import sys
@@ -32,7 +31,7 @@ _ERROR_PREFIXES = ("⛔", "❌", "⚠️")
 
 def print_banner():
     print("\n" + "=" * 60)
-    print("      CYA N  |  AI LOCAL DISPATCHER V6.2.1    ")
+    print("      CYA N  |  AI LOCAL DISPATCHER V6.2.2    ")
     print("      (Coding • Math • Rights • General)      ")
     print("=" * 60 + "\n")
 
@@ -67,42 +66,45 @@ def main():
                 break
 
             # ---------------------------------------------------------
-            # FASE 0: ROUTING SEMANTICO VETTORIALE (V6.2+)
+            # FASE 0: ROUTING SEMANTICO VETTORIALE (V6.2.2)
             # ---------------------------------------------------------
             print("\n⚙️  Fase 0 — Valutazione Arco Semantico Vettoriale...")
             sem_domains, sem_confidence = sem_router.classify(user_input)
             
-            # Recuperiamo la soglia di sicurezza (se assente in config, uso 0.06 di default)
+            # Recuperiamo la soglia di sicurezza
             sem_threshold = getattr(config, 'SEMANTIC_SETTINGS', {}).get('confidence_threshold', 0.06)
 
             is_hybrid = False
             domain_a = domain_b = ""
             categories_segments = {k: [] for k in agents.keys()}
 
-            if sem_confidence >= sem_threshold:
-                print(f"🔍 [DEBUG SEMANTICO] Confidenza Alta ({sem_confidence:.4f} >= {sem_threshold}).")
-                print(f"🔍 [DEBUG SEMANTICO] Domini Vettoriali Estratti: {sem_domains}")
+            # CASO A: Il Semantic Router ha confermato un arco Ibrido (Multi-Dominio)
+            if len(sem_domains) == 2:
+                print(f"🔍 [DEBUG SEMANTICO] Arco Ibrido Vettoriale confermato (Spread = {sem_confidence:.4f}).")
+                print(f"🔍 [DEBUG SEMANTICO] Domini Estratti: {sem_domains}")
+                is_hybrid = True
+                domain_a, domain_b = sem_domains[0], sem_domains[1]
                 
-                if len(sem_domains) == 2:
-                    is_hybrid = True
-                    # Il router semantico restituisce già in ordine di rilevanza
-                    domain_a, domain_b = sem_domains[0], sem_domains[1]
+            # CASO B: Confidenza alta per un Mono-Dominio
+            elif sem_confidence >= sem_threshold:
+                print(f"🔍 [DEBUG SEMANTICO] Confidenza Alta ({sem_confidence:.4f} >= {sem_threshold}).")
+                print(f"🔍 [DEBUG SEMANTICO] Dominio Estratto: {sem_domains}")
+                target = sem_domains[0]
+                if target in categories_segments:
+                    categories_segments[target] = [user_input]
                 else:
-                    target = sem_domains[0]
-                    if target in categories_segments:
-                        categories_segments[target] = [user_input]
-                    else:
-                        categories_segments['general'] = [user_input]
+                    categories_segments['general'] = [user_input]
+                    
+            # CASO C: Ambiguità totale o fallimento (Fallback)
             else:
                 print(f"🔍 [DEBUG SEMANTICO] Confidenza Bassa ({sem_confidence:.4f} < {sem_threshold}).")
-                print("🔄 [FALLBACK] Arco Semantico Reciso. Attivazione instradamento a Keyword (Hard/Soft Match)...")
+                print("🔄 [FALLBACK] Arco Semantico Reciso. Attivazione instradamento a Keyword...")
                 
                 # ---------------------------------------------------------
                 # FASE 1 & 2: FALLBACK KEYWORD E RILEVAMENTO IBRIDO
                 # ---------------------------------------------------------
                 is_hybrid, domain_a, domain_b = dispatcher_request.detect_hybrid(user_input)
 
-                # Se non è ibrida, usiamo lo split_and_dispatch per mono-dominio
                 if not is_hybrid:
                     categories_segments = dispatcher_request.split_and_dispatch(user_input)
 
