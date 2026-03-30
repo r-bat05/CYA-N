@@ -1,10 +1,16 @@
 """
-    DISPATCHER NEUTRALE (Data-Driven) - Versione Smart Match V4.1 (Debug Mode)
+    DISPATCHER NEUTRALE (Data-Driven) - Versione Smart Match V4.2 (Debug Mode)
 
-    Novità V4.1:
-    - [DEBUG] Inseriti archi di logging (print diagnostici) per tracciare
-      esattamente come il sistema estrae i token, calcola gli hit (Hard e Soft)
-      e prende la decisione finale. Utile per gli stress test.
+    Novità V4.2:
+    - [FIX] Bug ordine pipeline keyword: la pipeline_order_matrix di config.py
+      viene ora applicata come criterio PRIMARIO di ordinamento degli agenti in
+      detect_hybrid(), non più come semplice tie-breaker.
+      In V4.1, quando primary_hits != secondary_hits, l'ordine era determinato
+      dal conteggio degli hit: 3 coding vs 2 rights → coding parlava per primo,
+      ignorando la regola architetturale "rights → coding" della matrice.
+      Ora la matrice è autoritativa per tutte le coppie definite; il conteggio
+      degli hit e la gerarchia diventano fallback esclusivamente per coppie
+      non presenti in matrice.
 """
 
 import re
@@ -168,7 +174,21 @@ def phase2_soft_match_best_domain(orphan: str,
 def detect_hybrid(query: str) -> Tuple[bool, str, str]:
     """
     Determina se una query richiede un arco di pipeline multi-agente.
+
+    Logica di ordinamento (V4.2):
+    La pipeline_order_matrix è il criterio PRIMARIO. Se la coppia di domini
+    rilevata è presente in matrice, l'ordine viene imposto indipendentemente
+    dal conteggio degli hit. Il conteggio e la gerarchia restano attivi solo
+    come fallback per coppie non coperte dalla matrice.
     """
+    # --- NUOVO: FILTRO DI COMPLESSITÀ (V4.3) ---
+    word_count = len(query.split())
+    min_words = config.PIPELINE_SETTINGS.get('min_words_for_pipeline', 8)
+    if word_count < min_words:
+        _debug_log(f"Rilevamento Ibrido annullato: query troppo corta ({word_count} < {min_words} parole).")
+        return False, '', ''
+    # -------------------------------------------
+
     s_lower = query.lower()
     tokens  = set(re.findall(r'\w+', s_lower))
 
@@ -208,13 +228,24 @@ def detect_hybrid(query: str) -> Tuple[bool, str, str]:
     if secondary_ratio < threshold:
         return False, '', ''
 
-    if primary_hits != secondary_hits:
-        domain_a, domain_b = primary_domain, secondary_domain
+    # -----------------------------------------------------------------
+    # [FIX V4.2] Determinazione ordine agenti:
+    # La pipeline_order_matrix è applicata come criterio primario per
+    # TUTTE le coppie definite, indipendentemente dal conteggio degli hit.
+    # Questo garantisce che regole semantiche architetturali (es. rights → coding)
+    # non vengano sovrascritte da una differenza numerica accidentale negli hit.
+    # Il fallback hit-count/hierarchy rimane attivo per coppie non in matrice.
+    # -----------------------------------------------------------------
+    pair   = frozenset({primary_domain, secondary_domain})
+    matrix = config.PIPELINE_SETTINGS['pipeline_order_matrix']
+
+    if pair in matrix:
+        domain_a, domain_b = matrix[pair]
+        _debug_log(f"Ordine imposto da pipeline_order_matrix: {domain_a.upper()} → {domain_b.upper()}")
     else:
-        pair   = frozenset({primary_domain, secondary_domain})
-        matrix = config.PIPELINE_SETTINGS['pipeline_order_matrix']
-        if pair in matrix:
-            domain_a, domain_b = matrix[pair]
+        # Fallback: chi ha più hit parla per primo; in parità, usa gerarchia
+        if primary_hits != secondary_hits:
+            domain_a, domain_b = primary_domain, secondary_domain
         else:
             hierarchy = ['rights', 'coding', 'math', 'general']
             ordered   = sorted(
@@ -222,6 +253,8 @@ def detect_hybrid(query: str) -> Tuple[bool, str, str]:
                 key=lambda d: hierarchy.index(d)
             )
             domain_a, domain_b = ordered[0], ordered[1]
+        _debug_log(f"Coppia non in matrice. Ordine da hit/gerarchia: "
+                   f"{domain_a.upper()} → {domain_b.upper()}")
 
     _debug_log(f"Arco Ibrido Confermato: {domain_a} -> {domain_b}")
     return True, domain_a, domain_b

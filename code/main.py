@@ -1,5 +1,5 @@
 """
-    CYA N - AI LOCAL DISPATCHER V6.2.2
+    CYA N - AI LOCAL DISPATCHER V6.2.3
     Entry Point dell'applicazione.
 
     Responsabilità:
@@ -7,11 +7,13 @@
     2. Orchestrazione tra Dispatcher e Engine AI.
     3. Gestione elegante degli errori e dell'uscita.
 
-    Novità V6.2.2:
-    - [FIX] Risolto il paradosso logico dell'arco ibrido vettoriale. 
-      Ora, se il semantic router estrae 2 domini, l'arco ibrido viene
-      confermato automaticamente ignorando il drop di confidenza (spread),
-      che per definizione in query perfettamente ibride è prossimo allo zero.
+    Novità V6.2.3:
+    - [FIX] Bug ordine pipeline semantica: ora il CASO A (arco ibrido vettoriale)
+      applica la pipeline_order_matrix di config.py prima di assegnare domain_a
+      e domain_b. In precedenza l'ordine era determinato dallo score coseno del
+      router (sem_domains[0], sem_domains[1]), bypassando completamente la matrice
+      e producendo ordini di esecuzione errati (es. coding → rights invece di
+      rights → coding per query GDPR).
 """
 
 import sys
@@ -31,7 +33,7 @@ _ERROR_PREFIXES = ("⛔", "❌", "⚠️")
 
 def print_banner():
     print("\n" + "=" * 60)
-    print("      CYA N  |  AI LOCAL DISPATCHER V6.2.2    ")
+    print("      CYA N  |  AI LOCAL DISPATCHER V6.2.3    ")
     print("      (Coding • Math • Rights • General)      ")
     print("=" * 60 + "\n")
 
@@ -66,11 +68,21 @@ def main():
                 break
 
             # ---------------------------------------------------------
-            # FASE 0: ROUTING SEMANTICO VETTORIALE (V6.2.2)
+            # FASE 0: ROUTING SEMANTICO VETTORIALE (V6.2.4)
             # ---------------------------------------------------------
             print("\n⚙️  Fase 0 — Valutazione Arco Semantico Vettoriale...")
             sem_domains, sem_confidence = sem_router.classify(user_input)
             
+            # --- NUOVO: FILTRO DI COMPLESSITÀ VETTORIALE ---
+            word_count = len(user_input.split())
+            min_words = getattr(config, 'PIPELINE_SETTINGS', {}).get('min_words_for_pipeline', 8)
+
+            # Se il router rileva 2 domini ma la query è elementare, degrada a mono-dominio
+            if len(sem_domains) == 2 and word_count < min_words:
+                print(f"🔍 [DEBUG SEMANTICO] Arco Ibrido declassato: query troppo corta ({word_count} < {min_words} parole).")
+                sem_domains = [sem_domains[0]] # Conserviamo solo il dominio principale
+            # -----------------------------------------------
+
             # Recuperiamo la soglia di sicurezza
             sem_threshold = getattr(config, 'SEMANTIC_SETTINGS', {}).get('confidence_threshold', 0.06)
 
@@ -83,8 +95,24 @@ def main():
                 print(f"🔍 [DEBUG SEMANTICO] Arco Ibrido Vettoriale confermato (Spread = {sem_confidence:.4f}).")
                 print(f"🔍 [DEBUG SEMANTICO] Domini Estratti: {sem_domains}")
                 is_hybrid = True
-                domain_a, domain_b = sem_domains[0], sem_domains[1]
-                
+
+                # [FIX V6.2.3] Applica pipeline_order_matrix come criterio primario
+                # di ordinamento. In V6.2.2 l'ordine era determinato dallo score
+                # coseno (sem_domains[0/1]), ignorando la semantica architetturale
+                # della matrice (es. rights → coding perché il codice deve
+                # implementare la norma, non il contrario).
+                pair = frozenset(sem_domains)
+                matrix = config.PIPELINE_SETTINGS['pipeline_order_matrix']
+                if pair in matrix:
+                    domain_a, domain_b = matrix[pair]
+                    print(f"🔍 [DEBUG SEMANTICO] Ordine applicato da pipeline_order_matrix: "
+                          f"{domain_a.upper()} → {domain_b.upper()}")
+                else:
+                    # Fallback: mantieni l'ordine del router (score decrescente)
+                    domain_a, domain_b = sem_domains[0], sem_domains[1]
+                    print(f"🔍 [DEBUG SEMANTICO] Coppia non in matrice. Ordine da score: "
+                          f"{domain_a.upper()} → {domain_b.upper()}")
+
             # CASO B: Confidenza alta per un Mono-Dominio
             elif sem_confidence >= sem_threshold:
                 print(f"🔍 [DEBUG SEMANTICO] Confidenza Alta ({sem_confidence:.4f} >= {sem_threshold}).")

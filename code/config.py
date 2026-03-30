@@ -168,8 +168,13 @@ SEMANTIC_SETTINGS = {
 #   - MATH   → CODING: il codice implementa una formula (ammortamento, norma vettore)
 #   - RIGHTS → MATH:   la matematica serve a quantificare un istituto giuridico
 #   Nei casi non in matrice (es. coding→rights), l'ordine è determinato dagli score.
+#   La pipeline si attiva solo se il # di parole nella frase è > min_words_for_pipeline
 PIPELINE_SETTINGS = {
     'hybrid_threshold': 0.30,
+    
+    # [NUOVO V6.2.4] Numero minimo di parole per autorizzare l'arco multi-agente.
+    # Impedisce l'over-engineering su query banali (es. "Crea un array C++ per la privacy").
+    'min_words_for_pipeline': 8,
 
     'pipeline_order_matrix': {
         frozenset({'rights', 'coding'}): ('rights', 'coding'),
