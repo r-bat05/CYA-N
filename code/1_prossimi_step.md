@@ -1,5 +1,5 @@
-0) FAR ANALIZZARE DI NUOVO IL CODICE A CLAUDE PER VERIFICARE SE CI SONO ALTRI PROBLEMI
-1) EFFETTUARE STRESS TEST PER LE QUERY MONO-MODELLO CHE PERO' UTILIZZANO CONCETTI DI ALTRI MODULI
+
+1) EFFETTUARE STRESS TEST PER LE QUERY MONO-MODELLO CHE PERO' UTILIZZANO CONCETTI DI ALTRI MODULI --> ASPETTARE ANCHE LE RISPOSTE
 
 💻 Programmazione travestita da Matematica (Target: Coding)
 L'utente vuole codice eseguibile, ma descrive il problema usando un lessico fortemente matematico. L'arco di instradamento deve puntare solo a qwen3.5:9b.
