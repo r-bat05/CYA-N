@@ -7,6 +7,10 @@
 
     Fix:
     - [TYPO] 'Configuraizone' → 'Configurazione' nel docstring originale.
+
+    Novità V6.0:
+    - [FEATURE] Aggiunta sezione PIPELINE_SETTINGS per la configurazione
+      della pipeline sequenziale multi-agente (query ibride).
 """
 
 import os
@@ -35,7 +39,7 @@ RAM_THRESHOLDS = {
 # Struttura: Categoria → { primario, fallback, temperatura, ram_type }
 MODELS_CONFIG = {
     'coding': {
-        'primary':               "qwen3.5:9b",        # aggiornato da qwen2.5-coder:7b
+        'primary':               "qwen3.5:9b",
         'fallback':              "qwen2.5-coder:1.5b",
         'temperature':           0.5,    # Connubio tra creatività e rigore (no allucinazioni)
         'ram_threshold':         'medium',
@@ -134,5 +138,47 @@ SEMANTIC_SETTINGS = {
 
     # Se True, stampa in console i punteggi coseno per ogni query.
     # Utile per calibrare le soglie. Impostare False in produzione.
-    'debug': True,
+    'debug': False
+}
+
+# --- 7. CONFIGURAZIONE PIPELINE MULTI-AGENTE ---
+#
+# Controlla il comportamento della pipeline sequenziale per query ibride,
+# ovvero query che richiedono competenze di due domini contemporaneamente.
+#
+# hybrid_threshold:
+#   Soglia proporzionale sul rapporto tra hit esclusivi del dominio secondario
+#   e totale degli hit esclusivi dei due domini coinvolti.
+#   Formula: hits_secondario_excl / (hits_primario_excl + hits_secondario_excl) >= threshold
+#   Gli hit "esclusivi" escludono le keyword condivise tra coding e math
+#   (SHARED_TECH, calcolato dinamicamente in KeywordLoader), che altrimenti
+#   gonfierebbero artificialmente lo score del dominio debole.
+#
+#   Valore 0.30 = punto di partenza calibrato sui 3 esempi numerici di progettazione.
+#   Da affinare empiricamente dopo i test su query reali.
+#   Abbassare → pipeline attivata più facilmente (più falsi positivi).
+#   Alzare    → pipeline attivata solo su query chiaramente ibride.
+#
+# pipeline_order_matrix:
+#   Tie-break per determinare l'ordine A→B quando i due domini hanno
+#   lo stesso numero di hit esclusivi. La chiave è un frozenset dei due domini,
+#   il valore è la tupla (Agent_A, Agent_B).
+#   Logica: chi parla per primo definisce il contesto per il secondo.
+#   - RIGHTS → CODING: il codice deve rispettare una norma (GDPR + DB, contratto + nullità)
+#   - MATH   → CODING: il codice implementa una formula (ammortamento, norma vettore)
+#   - RIGHTS → MATH:   la matematica serve a quantificare un istituto giuridico
+#   Nei casi non in matrice (es. coding→rights), l'ordine è determinato dagli score.
+#   La pipeline si attiva solo se il # di parole nella frase è > min_words_for_pipeline
+PIPELINE_SETTINGS = {
+    'hybrid_threshold': 0.30,
+    
+    # [NUOVO V6.2.4] Numero minimo di parole per autorizzare l'arco multi-agente.
+    # Impedisce l'over-engineering su query banali (es. "Crea un array C++ per la privacy").
+    'min_words_for_pipeline': 8,
+
+    'pipeline_order_matrix': {
+        frozenset({'rights', 'coding'}): ('rights', 'coding'),
+        frozenset({'math',   'coding'}): ('math',   'coding'),
+        frozenset({'rights', 'math'}):   ('rights', 'math'),
+    }
 }
