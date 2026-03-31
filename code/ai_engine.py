@@ -1,5 +1,18 @@
 """
-    MOTORE AI IBRIDO V6.1 (LLM Pipeline & Critic Pass)
+    MOTORE AI IBRIDO V6.2 (LLM Pipeline & Critic Pass)
+
+    Novità V6.2:
+    - [FIX] Bug prefisso errori: rimosso "\n\n" iniziale dai return degli except
+      e dal return "no output" in generate(). I messaggi di errore ora iniziano
+      direttamente con il simbolo emoji (⛔/❌/⚠️), rendendoli intercettabili
+      dal check startswith(_ERROR_PREFIXES) in main.py. In V6.1, gli errori
+      Ollama passavano il controllo silenziosamente e venivano passati come
+      output_a all'agente B della pipeline.
+    - [FIX] Bug chunk thinking misto: sostituito content.replace("<think>/"</think>")
+      con logica split() che estrae solo la parte utile del chunk. In V6.1, un
+      chunk del tipo "<think>pensiero</think>risposta" includeva il testo del
+      pensiero in full_response perché is_thinking diventava False prima del
+      continue, lasciando "pensiero risposta" nell'output finale.
 
     Novità V6.1:
     - [FIX] Vulnerabilità C: Aggiunto troncamento difensivo dell'arco di contesto
@@ -120,13 +133,19 @@ class BaseAI(ABC):
                 content = chunk['message']['content']
 
                 # --- LOGICA DI FILTRAGGIO STREAMING ---
+                # [FIX V6.2] Usato split() invece di replace() per isolare
+                # correttamente le due parti del chunk quando <think> e </think>
+                # appaiono nello stesso chunk. replace() lasciava il testo del
+                # pensiero in content dopo aver rimosso solo i tag.
                 if "<think>" in content:
                     is_thinking = True
-                    content = content.replace("<think>", "")
+                    # Tieni solo la parte PRIMA del tag (può essere vuota)
+                    content = content.split("<think>", 1)[0]
 
                 if "</think>" in content:
                     is_thinking = False
-                    content = content.replace("</think>", "")
+                    # Tieni solo la parte DOPO il tag (il contenuto utile)
+                    content = content.split("</think>", 1)[1]
                     if stream_output:
                         spinner.stop()
 
@@ -142,13 +161,17 @@ class BaseAI(ABC):
                 full_response += content
 
             if not full_response:
-                return "\n\n⚠️  ATTENZIONE: Il modello non ha generato output."
+                # [FIX V6.2] Rimosso "\n\n" iniziale: il prefisso ⚠️ deve essere
+                # il primo carattere per essere intercettato da _ERROR_PREFIXES in main.py.
+                return "⚠️  ATTENZIONE: Il modello non ha generato output."
 
         except ollama.ResponseError as e:
-            return (f"\n\n❌ Errore Ollama: {e}\n"
+            # [FIX V6.2] Rimosso "\n\n" iniziale per lo stesso motivo.
+            return (f"❌ Errore Ollama: {e}\n"
                     f"Assicurati che il servizio sia attivo.")
         except Exception as e:
-            return (f"\n\n❌ Errore Generico: {e}\n"
+            # [FIX V6.2] Rimosso "\n\n" iniziale per lo stesso motivo.
+            return (f"❌ Errore Generico: {e}\n"
                     f"Verifica la connessione o il modello ('ollama pull {target_model}').")
 
         finally:
