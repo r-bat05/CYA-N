@@ -207,11 +207,21 @@ class PrototypeStore:
             # --- Formula/calcolo stabilito dalla legge (fix Q7 stress test) ---
             "Qual è il metodo di calcolo stabilito dalla normativa italiana per il TFR e le indennità dei lavoratori?",
             "Come prevede la legge di calcolare questa indennità economica spettante al lavoratore dipendente?",
+            "Qual è la formula legale per il calcolo dell'assegno di mantenimento dei figli?",
+            "Come si applica l'adeguamento ISTAT agli assegni divorzili secondo la legge?",
+            "Metodo di calcolo numerico previsto dalla giurisprudenza per la rivalutazione monetaria.",
+            "Parametri del tribunale per la determinazione della quota di mantenimento.",
+            "Quali sono i criteri normativi per il calcolo delle sanzioni tributarie e amministrative?",
+            "Procedura di calcolo per il contributo unificato e le spese di giustizia.",
+            "Come si determina legalmente il danno biologico e le tabelle del tribunale di Milano?",
+            "Norme del codice civile sul calcolo della collazione e della riduzione ereditaria.",
+            "Calcolo della quota disponibile in presenza di legittimari secondo l'ordinamento.",
             # --- Validità probatoria sistemi informatici (fix Q27 stress test) ---
             "Quali requisiti giuridici devono soddisfare i log di un server Linux per essere prove valide in tribunale?",
             "Come garantisce la normativa italiana la validità probatoria dei file informatici in un processo?",
         ],
         'general': [
+            # --- Cultura generale e domande aperte ---
             "Dimmi qualcosa su questo argomento di cultura generale.",
             "Spiegami questo fenomeno storico, geografico o scientifico.",
             "Cosa pensi di questa situazione di attualità?",
@@ -222,6 +232,32 @@ class PrototypeStore:
             "Hai consigli pratici su questo argomento di vita comune?",
             "Come si fa questa cosa nella vita di tutti i giorni?",
             "Puoi aiutarmi con questa domanda di carattere generale?",
+            # --- Storia e civiltà ---
+            "Quali furono le cause economiche, politiche e sociali del crollo dell'Impero Romano d'Occidente?",
+            "Spiegami le origini e le conseguenze storiche della Prima Guerra Mondiale.",
+            "Come si sviluppò la civiltà egizia lungo il corso del Nilo?",
+            "Quali fattori storici hanno portato alla Rivoluzione Francese del 1789?",
+            "Raccontami la storia dell'Impero Ottomano e le ragioni del suo declino.",
+            "Chi era Napoleone Bonaparte e qual è stato il suo impatto sulla storia europea?",
+            "Quali furono le conseguenze geopolitiche della Seconda Guerra Mondiale?",
+            # --- Filosofia e pensiero ---
+            "Spiegami la filosofia stoica e i suoi principi fondamentali sulla vita.",
+            "Qual è la differenza tra etica deontologica e utilitarismo in filosofia morale?",
+            "Cosa intendeva Platone con la sua teoria delle idee e delle forme?",
+            "Come si differenziano le grandi correnti del pensiero filosofico occidentale?",
+            # --- Biologia e scienze naturali ---
+            "Come funziona la fotosintesi clorofilliana nelle piante a foglia larga?",
+            "Spiega il meccanismo dell'evoluzione darwiniana e della selezione naturale.",
+            "Come funziona il sistema immunitario umano in risposta a un'infezione?",
+            "Cosa sono le cellule staminali e come vengono utilizzate nella medicina moderna?",
+            # --- Questioni sociali, psicologia e attualità ---
+            "Quali sono i pro e i contro psicologici e sociali di vivere in una grande metropoli rispetto alla campagna?",
+            "Come influisce il cambiamento climatico sugli ecosistemi globali e sulla biodiversità?",
+            "Quali sono le principali cause storiche e strutturali della disuguaglianza economica nel mondo?",
+            # --- Letteratura, arte e cultura ---
+            "Spiegami i temi principali e la struttura della Divina Commedia di Dante Alighieri.",
+            "Quali sono le caratteristiche principali del Romanticismo letterario europeo dell'Ottocento?",
+            "Come si distingue il periodo Barocco dal Rinascimento nell'arte e nell'architettura italiana?",
         ]
     }
 

@@ -97,7 +97,16 @@ def main():
 
                 is_hybrid, domain_a, domain_b = dispatcher_request.detect_hybrid(user_input)
                 if not is_hybrid:
-                    categories_segments = dispatcher_request.split_and_dispatch(user_input)
+                    # [FIX V6.2.5] Uniformità comportamentale con il router semantico:
+                    # il semantic router valuta l'input in blocco → anche il keyword
+                    # fallback mono-dominio deve valutare l'input in blocco e assegnare
+                    # un solo agente vincente, evitando di avviare agenti multipli in
+                    # sequenza per query frammentate da punteggiatura (es. "Ciao. Codice?").
+                    winning_domain = dispatcher_request.classify_segment(user_input)
+                    if winning_domain in categories_segments:
+                        categories_segments[winning_domain] = [user_input]
+                    else:
+                        categories_segments['general'] = [user_input]
 
             else:
                 # Embedding riuscito: il router semantico ha parlato.
@@ -171,15 +180,21 @@ def main():
                     continue
 
                 # Arco di Sincronizzazione Attiva (Polling RAM)
-                print("⚙️  Sincronizzazione — Attesa rilascio hardware...")
-                target_ram            = agents[domain_b].primary_ram_req
-                timeout_sincronizzazione = 5.0
-                inizio_attesa         = time.time()
+                # [FIX V6.2.5] Timeout aumentato da 5s a 20s: su hardware consumer
+                # il sistema operativo può impiegare ben oltre 5 secondi per svuotare
+                # la VRAM dopo keep_alive=0. Un timeout troppo aggressivo causava il
+                # lancio dell'Agente B con RAM ancora occupata e crash immediato.
+                print("⚙️  Sincronizzazione — Attendendo lo scaricamento del modello precedente...")
+                target_ram               = agents[domain_b].primary_ram_req
+                timeout_sincronizzazione = 20.0
+                inizio_attesa            = time.time()
 
                 while (time.time() - inizio_attesa) < timeout_sincronizzazione:
                     if psutil.virtual_memory().available >= target_ram:
                         break
                     time.sleep(0.5)
+                else:
+                    print("⚠️  Timeout sincronizzazione RAM: procedo comunque (la RAM potrebbe essere al limite).")
 
                 # FASE 2/3: Esecuzione silenziosa Agente B (Integrazione)
                 print(f"⚙️  Fase 2/3 — Integrazione dominio [{domain_b.upper()}] in corso...")

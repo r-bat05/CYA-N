@@ -1,24 +1,24 @@
 """
-    MOTORE AI IBRIDO V6.2 (LLM Pipeline & Critic Pass)
+    MOTORE AI IBRIDO V6.2.1 (LLM Pipeline & Critic Pass)
+
+    Novità V6.2.1:
+    - [FIX CRITICO] Bug "buco nero" tag <think> in streaming: la logica
+      precedente usava due `if` sequenziali indipendenti. Quando il chunk
+      conteneva entrambi i tag (<think>pensiero</think>risposta), il primo `if`
+      eseguiva content.split("<think>", 1)[0], riducendo `content` a stringa
+      vuota PRIMA che il secondo `if` potesse trovare </think>. Risultato:
+      is_thinking rimaneva bloccato su True e tutto l'output successivo veniva
+      scartato silenziosamente.
+      Fix: i flag has_open/has_close vengono calcolati sul content ORIGINALE,
+      poi i tre casi sono gestiti in un blocco if/elif esclusivo.
 
     Novità V6.2:
-    - [FIX] Bug prefisso errori: rimosso "\n\n" iniziale dai return degli except
-      e dal return "no output" in generate(). I messaggi di errore ora iniziano
-      direttamente con il simbolo emoji (⛔/❌/⚠️), rendendoli intercettabili
-      dal check startswith(_ERROR_PREFIXES) in main.py. In V6.1, gli errori
-      Ollama passavano il controllo silenziosamente e venivano passati come
-      output_a all'agente B della pipeline.
-    - [FIX] Bug chunk thinking misto: sostituito content.replace("<think>/"</think>")
-      con logica split() che estrae solo la parte utile del chunk. In V6.1, un
-      chunk del tipo "<think>pensiero</think>risposta" includeva il testo del
-      pensiero in full_response perché is_thinking diventava False prima del
-      continue, lasciando "pensiero risposta" nell'output finale.
+    - [FIX] Bug prefisso errori: rimosso "\\n\\n" iniziale dai return degli except.
+    - [FIX] Bug chunk thinking misto (parziale, completato in V6.2.1).
 
     Novità V6.1:
-    - [FIX] Vulnerabilità C: Aggiunto troncamento difensivo dell'arco di contesto
-      in `resolve_pipeline_b` per evitare la saturazione della RAM/Token (max 6000 chars).
-    - [FIX] Vulnerabilità B: Aggiornata la firma di `execute_critic_pass` per ricevere
-      l'arco informativo della query originale e inocularlo nel prompt dell'Agente B.
+    - [FIX] Vulnerabilità C: troncamento difensivo in resolve_pipeline_b (max 6000 chars).
+    - [FIX] Vulnerabilità B: firma execute_critic_pass aggiornata con original_query.
 """
 
 import ollama
@@ -31,11 +31,6 @@ import config
 
 
 class BaseAI(ABC):
-    """
-    Classe astratta che gestisce la logica comune di generazione e controllo risorse.
-    Si inizializza leggendo i parametri direttamente da config.MODELS_CONFIG.
-    """
-
     def __init__(self, category):
         if category not in config.MODELS_CONFIG:
             print(f"⚠️ Categoria '{category}' non trovata in config. Uso 'general'.")
@@ -46,27 +41,19 @@ class BaseAI(ABC):
         self.model_name = self.cfg['primary']
         self.fallback_model = self.cfg['fallback']
         self.temperature = self.cfg['temperature']
-
         self.primary_ram_req = config.RAM_THRESHOLDS[self.cfg['ram_threshold']]
-
         self.fallback_ram_req = 0
         if self.cfg['fallback_ram_threshold']:
             self.fallback_ram_req = config.RAM_THRESHOLDS[self.cfg['fallback_ram_threshold']]
-
         self.is_using_fallback = False
 
     def check_resources(self):
-        """
-        Controlla la RAM disponibile confrontandola con le soglie in config.py.
-        Restituisce True se si può procedere, False se le risorse sono insufficienti.
-        """
         try:
             available_ram = psutil.virtual_memory().available
         except Exception as e:
             print(f"⚠️ Impossibile leggere la RAM di sistema: {e}. Procedo a rischio.")
             return True
 
-        # CASO 1: Siamo già in modalità Fallback
         if self.is_using_fallback:
             if available_ram < self.fallback_ram_req:
                 print(f"\n⛔ ERRORE CRITICO: RAM insufficiente anche per il modello leggero.")
@@ -75,12 +62,10 @@ class BaseAI(ABC):
                 return False
             return True
 
-        # CASO 2: Tentativo con Modello Primario
         if available_ram < self.primary_ram_req:
             print(f"\n⚠️  RAM INSUFFICIENTE per {self.model_name}")
             print(f"   Disponibili: {available_ram / config.GB:.2f} GB "
                   f"< Richiesti: {self.primary_ram_req / config.GB:.2f} GB")
-
             if self.fallback_model:
                 print(f"📉  Downgrade PREVENTIVO a [{self.fallback_model}]...")
                 self.is_using_fallback = True
@@ -92,29 +77,22 @@ class BaseAI(ABC):
         return True
 
     def generate(self, messages: list, stream_output=True, force_unload=False):
-        """Gestisce la chiamata a Ollama, lo streaming e la pulizia."""
-
-        # 1. Controllo Risorse
         if not self.check_resources():
             self.is_using_fallback = False
             return "⛔ SISTEMA ARRESTATO PER MANCANZA DI MEMORIA."
 
         full_response = ""
         start_time = time.time()
-
-        # 2. Selezione Modello
         target_model = self.fallback_model if self.is_using_fallback else self.model_name
 
-        # 3. Impostazioni di Sistema da config.py
         options = {
             'temperature': self.temperature,
             'num_ctx': config.SYSTEM_SETTINGS['ctx_size']
         }
-        
-        # 4. Scelta del keep_alive (scaricamento forzato per pipeline)
         keep_alive = 0 if force_unload else config.SYSTEM_SETTINGS['ollama_keep_alive']
 
-        spinner_msg = f"Consultando [{target_model}]..." if stream_output else f"Elaborazione in background [{target_model}]..."
+        spinner_msg = (f"Consultando [{target_model}]..." if stream_output
+                       else f"Elaborazione in background [{target_model}]...")
         spinner = SpinnerContext(spinner_msg)
         spinner.start()
 
@@ -132,19 +110,29 @@ class BaseAI(ABC):
             for chunk in stream:
                 content = chunk['message']['content']
 
-                # --- LOGICA DI FILTRAGGIO STREAMING ---
-                # [FIX V6.2] Usato split() invece di replace() per isolare
-                # correttamente le due parti del chunk quando <think> e </think>
-                # appaiono nello stesso chunk. replace() lasciava il testo del
-                # pensiero in content dopo aver rimosso solo i tag.
-                if "<think>" in content:
-                    is_thinking = True
-                    # Tieni solo la parte PRIMA del tag (può essere vuota)
-                    content = content.split("<think>", 1)[0]
+                # --- LOGICA DI FILTRAGGIO STREAMING (V6.2.1 — ROBUSTA) ---
+                # I flag vengono calcolati sul content ORIGINALE prima di
+                # qualsiasi modifica. Questo evita il "buco nero" di V6.2 dove
+                # il primo split("<think>") azzerava content prima che il secondo
+                # if potesse trovare </think>, bloccando is_thinking su True.
+                #
+                # Casi coperti:
+                #   1. Entrambi i tag nello stesso chunk: prendi solo dopo </think>.
+                #   2. Solo <think>: attiva pensiero, tronca prima del tag.
+                #   3. Solo </think>: disattiva pensiero, tronca dopo il tag.
+                has_open  = "<think>"  in content
+                has_close = "</think>" in content
 
-                if "</think>" in content:
+                if has_open and has_close:
+                    content = content.split("</think>", 1)[1]
                     is_thinking = False
-                    # Tieni solo la parte DOPO il tag (il contenuto utile)
+                    if stream_output:
+                        spinner.stop()
+                elif has_open:
+                    is_thinking = True
+                    content = content.split("<think>", 1)[0]
+                elif has_close:
+                    is_thinking = False
                     content = content.split("</think>", 1)[1]
                     if stream_output:
                         spinner.stop()
@@ -161,47 +149,36 @@ class BaseAI(ABC):
                 full_response += content
 
             if not full_response:
-                # [FIX V6.2] Rimosso "\n\n" iniziale: il prefisso ⚠️ deve essere
-                # il primo carattere per essere intercettato da _ERROR_PREFIXES in main.py.
                 return "⚠️  ATTENZIONE: Il modello non ha generato output."
 
         except ollama.ResponseError as e:
-            # [FIX V6.2] Rimosso "\n\n" iniziale per lo stesso motivo.
             return (f"❌ Errore Ollama: {e}\n"
                     f"Assicurati che il servizio sia attivo.")
         except Exception as e:
-            # [FIX V6.2] Rimosso "\n\n" iniziale per lo stesso motivo.
             return (f"❌ Errore Generico: {e}\n"
                     f"Verifica la connessione o il modello ('ollama pull {target_model}').")
 
         finally:
-            # FIX BUG #1: il finally garantisce il reset su OGNI path di uscita
             spinner.stop()
             self.is_using_fallback = False
 
         if stream_output:
             print_time_elapsed(start_time)
-            
+
         return clean_response(full_response)
 
     @abstractmethod
-    def resolve(self, prompt: str):
-        pass
+    def resolve(self, prompt: str): pass
 
     @abstractmethod
-    def resolve_pipeline_a(self, prompt: str, domain_b: str):
-        pass
+    def resolve_pipeline_a(self, prompt: str, domain_b: str): pass
 
     @abstractmethod
-    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str):
-        pass
+    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str): pass
 
     @abstractmethod
-    def execute_critic_pass(self, draft_b: str, original_prompt: str):
-        pass
+    def execute_critic_pass(self, draft_b: str, original_prompt: str): pass
 
-
-# --- IMPLEMENTAZIONI SPECIFICHE ---
 
 class CodeLlamaAI(BaseAI):
     def __init__(self):
@@ -228,10 +205,8 @@ class CodeLlamaAI(BaseAI):
         return self.generate(messages, stream_output=False, force_unload=True)
 
     def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str):
-        # Difesa saturazione arco di contesto (max 6000 caratteri)
         if len(output_a) > 6000:
             output_a = output_a[:6000] + "\n...[ARCO INFORMATIVO TRONCATO PER LIMITI DI CONTESTO]..."
-
         sys_prompt, _, _ = get_prompts('coding')
         handoff = PIPELINE_PROMPTS['handoff'].format(
             original_query=original_prompt,
@@ -247,17 +222,15 @@ class CodeLlamaAI(BaseAI):
 
     def execute_critic_pass(self, draft_b: str, original_prompt: str):
         sys_prompt, _, _ = get_prompts('coding')
-        
         critic_template = PIPELINE_PROMPTS['critic']
         if "{original_query}" in critic_template:
             critic = critic_template.format(original_query=original_prompt)
         else:
             critic = f"{critic_template}\n\n[DOMANDA ORIGINALE DELL'UTENTE]:\n\"{original_prompt}\""
-
         messages = [
-            {'role': 'system', 'content': sys_prompt},
+            {'role': 'system',    'content': sys_prompt},
             {'role': 'assistant', 'content': draft_b},
-            {'role': 'user',   'content': critic}
+            {'role': 'user',      'content': critic}
         ]
         return self.generate(messages, stream_output=True, force_unload=False)
 
@@ -278,10 +251,8 @@ class DeepSeekAI(BaseAI):
         return self.generate(messages, stream_output=False, force_unload=True)
 
     def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str):
-        # Difesa saturazione arco di contesto
         if len(output_a) > 6000:
             output_a = output_a[:6000] + "\n...[ARCO INFORMATIVO TRONCATO PER LIMITI DI CONTESTO]..."
-
         _, _, enforcement = get_prompts('math')
         handoff = PIPELINE_PROMPTS['handoff'].format(
             original_query=original_prompt,
@@ -298,10 +269,9 @@ class DeepSeekAI(BaseAI):
             critic = critic_template.format(original_query=original_prompt)
         else:
             critic = f"{critic_template}\n\n[DOMANDA ORIGINALE DELL'UTENTE]:\n\"{original_prompt}\""
-
         messages = [
             {'role': 'assistant', 'content': draft_b},
-            {'role': 'user',   'content': critic}
+            {'role': 'user',      'content': critic}
         ]
         return self.generate(messages, stream_output=True, force_unload=False)
 
@@ -331,10 +301,8 @@ class GptOssAI(BaseAI):
         return self.generate(messages, stream_output=False, force_unload=True)
 
     def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str):
-        # Difesa saturazione arco di contesto
         if len(output_a) > 6000:
             output_a = output_a[:6000] + "\n...[ARCO INFORMATIVO TRONCATO PER LIMITI DI CONTESTO]..."
-
         sys_prompt, _, _ = get_prompts(self.category)
         handoff = PIPELINE_PROMPTS['handoff'].format(
             original_query=original_prompt,
@@ -350,29 +318,20 @@ class GptOssAI(BaseAI):
 
     def execute_critic_pass(self, draft_b: str, original_prompt: str):
         sys_prompt, _, _ = get_prompts(self.category)
-        
         critic_template = PIPELINE_PROMPTS['critic']
         if "{original_query}" in critic_template:
             critic = critic_template.format(original_query=original_prompt)
         else:
             critic = f"{critic_template}\n\n[DOMANDA ORIGINALE DELL'UTENTE]:\n\"{original_prompt}\""
-
         messages = [
-            {'role': 'system', 'content': sys_prompt},
+            {'role': 'system',    'content': sys_prompt},
             {'role': 'assistant', 'content': draft_b},
-            {'role': 'user',   'content': critic}
+            {'role': 'user',      'content': critic}
         ]
         return self.generate(messages, stream_output=True, force_unload=False)
 
 
-# --- FACTORY ---
-
 def get_ai_model(category: str):
-    """
-    Factory che restituisce l'istanza corretta in base alla categoria.
-    La logica dei modelli è definita in config.py;
-    qui mappiamo la categoria alla classe Python che costruisce il prompt.
-    """
     if category == 'coding':
         return CodeLlamaAI()
     elif category == 'math':
