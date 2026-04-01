@@ -8,6 +8,13 @@
     Fix:
     - [TYPO] 'Configuraizone' → 'Configurazione' nel docstring originale.
 
+    Novità V6.2.4:
+    - [DEPRECATO] confidence_threshold in SEMANTIC_SETTINGS non è più usato
+      come gate di routing in main.py. Il router semantico è ora l'autorità
+      primaria indipendentemente dal margin tra i due domini classificati.
+      Il parametro rimane per riferimento e debug ma non influenza il flusso.
+      Vedi semantic_router.py V2.0 e main.py V6.2.4 per i dettagli.
+
     Novità V6.0:
     - [FEATURE] Aggiunta sezione PIPELINE_SETTINGS per la configurazione
       della pipeline sequenziale multi-agente (query ibride).
@@ -16,53 +23,48 @@
 import os
 
 # --- 1. GESTIONE PERCORSI (Cross-Platform) ---
-# Calcola automaticamente la cartella dove si trova questo file (code/)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Percorso della cartella keywords/ (un livello sopra code/)
-KEYWORDS_DIR = os.path.join(os.path.dirname(BASE_DIR), 'keywords')
+# Percorso della cartella keywords/
+KEYWORDS_DIR = os.path.join(BASE_DIR, '../keywords')
 
 # --- 2. COSTANTI HARDWARE ---
 GB = 1024 * 1024 * 1024  # Byte in 1 GB
 
-# Soglie di RAM richieste per avviare i modelli (Safe Mode).
-# Se la RAM disponibile è inferiore a queste soglie, il sistema
-# attiva il fallback preventivo o si ferma.
 RAM_THRESHOLDS = {
-    'small':    2.0 * GB,   # Per Qwen 1.5B / Llama 3.2 3B
-    'medium':   5.5 * GB,   # Per Qwen3.5 9B / Qwen2.5-Coder 7B
-    'large':   12.0 * GB,   # Per GPT-OSS 20B
-    'math_opt': 1.0 * GB    # Soglia bassa specifica per DeepSeek (Math)
+    'small':    2.0 * GB,
+    'medium':   5.5 * GB,
+    'large':   12.0 * GB,
+    'math_opt': 1.0 * GB
 }
 
 # --- 3. CONFIGURAZIONE MODELLI AI ---
-# Struttura: Categoria → { primario, fallback, temperatura, ram_type }
 MODELS_CONFIG = {
     'coding': {
         'primary':               "qwen3.5:9b",
         'fallback':              "qwen2.5-coder:1.5b",
-        'temperature':           0.5,    # Connubio tra creatività e rigore (no allucinazioni)
+        'temperature':           0.5,
         'ram_threshold':         'medium',
         'fallback_ram_threshold':'small'
     },
     'math': {
         'primary':               "deepseek-r1:7b",
-        'fallback':              None,   # Nessun fallback: il reasoning richiede almeno 7B
-        'temperature':           0.2,    # Massimo rigore, nessuna creatività
+        'fallback':              None,
+        'temperature':           0.2,
         'ram_threshold':         'math_opt',
         'fallback_ram_threshold': None
     },
     'rights': {
         'primary':               "gpt-oss:20b",
         'fallback':              "llama3.2:3b",
-        'temperature':           0.4,    # Leggera creatività, gran rigore per non inventare decreti
+        'temperature':           0.4,
         'ram_threshold':         'large',
         'fallback_ram_threshold':'small'
     },
     'general': {
         'primary':               "gpt-oss:20b",
         'fallback':              "llama3.2:3b",
-        'temperature':           0.7,    # Linguaggio naturale, simile ai modelli cloud
+        'temperature':           0.7,
         'ram_threshold':         'large',
         'fallback_ram_threshold':'small'
     }
@@ -70,112 +72,74 @@ MODELS_CONFIG = {
 
 # --- 4. IMPOSTAZIONI SISTEMA ---
 SYSTEM_SETTINGS = {
-    'spinner_timeout':  60,     # Secondi prima di un warning (opzionale)
-
-    # Il modello resta in RAM 60s dopo l'ultima risposta.
-    # Scelta architetturale deliberata: in vista dell'integrazione della chat
-    # history, richieste consecutive sullo stesso dominio sono la norma.
-    # Tenere il modello caldo elimina i tempi di ricarica da disco tra un
-    # turno e l'altro. Il rischio di contesa RAM su switch rapido di dominio
-    # è accettato come caso limite poco frequente rispetto al beneficio.
+    'spinner_timeout':  60,
     'ollama_keep_alive': '60s',
-
-    'ctx_size':         4096    # Finestra di contesto in token
+    'ctx_size':         4096
 }
 
 # --- 5. CONFIGURAZIONE DISPATCHER (SMART MATCH & LEVENSHTEIN) ---
+# Usato solo come fallback quando il servizio embedding è non disponibile.
 
-# Lunghezza minima della parola affinché venga calcolata la distanza di Levenshtein.
-# Parole con meno di 4 caratteri (es. "sql", "api", "bug") bypassano il Soft-Match
-# richiedendo un'uguaglianza rigorosa. Questo previene che preposizioni comuni
-# si trasformino in falsi positivi.
 LEV_MIN_LEN = 4
 
-# Mappatura della soglia proporzionale degli errori (Soft-Match).
-# Struttura: { lunghezza_massima_parola : numero_errori_tollerati }
-# L'algoritmo scorre questo dizionario per stabilire dinamicamente l'arco di
-# tolleranza in base alla lunghezza della singola parola orfana dell'utente.
 LEV_TOLERANCE_MAP = {
-    6:            1,    # Da 4 a 6 caratteri  → max 1 errore  (es. "array" tollera "aray")
-    10:           2,    # Da 7 a 10 caratteri → max 2 errori  (es. "funzione" tollera "funzzione")
-    float('inf'): 3     # Oltre 10 caratteri  → max 3 errori  (es. "polimorfismo" tollera "polimorfsimo")
+    6:            1,
+    10:           2,
+    float('inf'): 3
 }
 
 # --- 6. CONFIGURAZIONE SEMANTIC ROUTER ---
 #
-# Il Semantic Router usa nomic-embed-text (274 MB via Ollama) per convertire
-# query e prototipi di dominio in vettori e selezionare il dominio tramite
-# similarità coseno. Si attiva prima del keyword matcher (ibrido).
-#
-# Prerequisito: ollama pull nomic-embed-text
-#
-# confidence_threshold:
-#   Soglia sul MARGINE tra 1° e 2° classificato.
-#   Calibrata a 0.06 su test reale (confidence osservata 0.0781).
-#   Abbassare → il router semantico interviene di più (meno fallback a keyword).
-#   Alzare    → il router semantico interviene solo sui casi netti.
+# confidence_threshold [DEPRECATO come gate]:
+#   In V6.2.3 e precedenti, veniva usato come soglia sul margin tra
+#   1° e 2° classificato per decidere se andare a keyword (CASO C).
+#   In V6.2.4 questo gate è stato rimosso: un margin basso non indica
+#   un fallimento del router, indica una query con due domini vicini
+#   (esattamente il caso ibrido). Il router è ora l'autorità primaria.
+#   Il parametro rimane per calibrazione/debug ma non influenza il routing.
 #
 # multi_domain_spread:
-#   Se la differenza di score tra 1° e 2° classificato è ≤ questo valore,
-#   ENTRAMBI i domini vengono attivati (la query va a due agenti).
-#   Usato per query genuinamente ibride (es. coding + rights).
-#   Abbassare → multi-dominio solo su query molto ambigue.
-#   Alzare    → multi-dominio più frequente (più risposte, più RAM usata).
+#   Se il margin tra 1° e 2° classificato è ≤ questo valore,
+#   ENTRAMBI i domini vengono attivati (pipeline multi-agente).
+#   Calibrato su test reale. Abbassare → multi-dominio più selettivo.
 #
 # multi_domain_min_score:
-#   Score minimo assoluto che il secondo classificato deve superare
+#   Score assoluto minimo che il 2° classificato deve superare
 #   per essere incluso nel multi-dominio. Evita di attivare 'general'
-#   su query specialistiche dove è strutturalmente sempre basso (~0.50).
+#   su query specialistiche dove è strutturalmente sempre basso.
 #
-# Se il modello nomic-embed-text non è disponibile, il sistema degrada
-# automaticamente al solo keyword matcher senza crash.
+# debug:
+#   Se True, stampa score coseno dettagliati per ogni query.
+#   Impostare False in produzione.
 SEMANTIC_SETTINGS = {
     'enabled':               True,
     'embedding_model':       'nomic-embed-text',
-    'confidence_threshold':  0.06,   # calibrato su test reale (era 0.10)
+    'confidence_threshold':  0.06,   # DEPRECATO come gate — solo riferimento
     'multi_domain_spread':   0.08,   # attiva multi-dominio se margin ≤ 0.08
-    'multi_domain_min_score':0.58,   # score minimo per attivare secondo dominio
-
-    # Se True, stampa in console i punteggi coseno per ogni query.
-    # Utile per calibrare le soglie. Impostare False in produzione.
+    'multi_domain_min_score':0.58,   # score minimo assoluto per 2° dominio
     'debug': False
 }
 
 # --- 7. CONFIGURAZIONE PIPELINE MULTI-AGENTE ---
 #
-# Controlla il comportamento della pipeline sequenziale per query ibride,
-# ovvero query che richiedono competenze di due domini contemporaneamente.
-#
 # hybrid_threshold:
-#   Soglia proporzionale sul rapporto tra hit esclusivi del dominio secondario
-#   e totale degli hit esclusivi dei due domini coinvolti.
+#   Soglia proporzionale per il keyword fallback (sem_ok=False).
 #   Formula: hits_secondario_excl / (hits_primario_excl + hits_secondario_excl) >= threshold
-#   Gli hit "esclusivi" escludono le keyword condivise tra coding e math
-#   (SHARED_TECH, calcolato dinamicamente in KeywordLoader), che altrimenti
-#   gonfierebbero artificialmente lo score del dominio debole.
 #
-#   Valore 0.30 = punto di partenza calibrato sui 3 esempi numerici di progettazione.
-#   Da affinare empiricamente dopo i test su query reali.
-#   Abbassare → pipeline attivata più facilmente (più falsi positivi).
-#   Alzare    → pipeline attivata solo su query chiaramente ibride.
+# min_words_for_pipeline:
+#   Numero minimo di parole per autorizzare l'arco multi-agente.
+#   Query sotto soglia vengono degradate a mono-dominio anche se
+#   il router rileva due domini vicini.
 #
 # pipeline_order_matrix:
-#   Tie-break per determinare l'ordine A→B quando i due domini hanno
-#   lo stesso numero di hit esclusivi. La chiave è un frozenset dei due domini,
-#   il valore è la tupla (Agent_A, Agent_B).
-#   Logica: chi parla per primo definisce il contesto per il secondo.
-#   - RIGHTS → CODING: il codice deve rispettare una norma (GDPR + DB, contratto + nullità)
-#   - MATH   → CODING: il codice implementa una formula (ammortamento, norma vettore)
-#   - RIGHTS → MATH:   la matematica serve a quantificare un istituto giuridico
-#   Nei casi non in matrice (es. coding→rights), l'ordine è determinato dagli score.
-#   La pipeline si attiva solo se il # di parole nella frase è > min_words_for_pipeline
+#   Ordine autoritativo degli agenti nella pipeline.
+#   Criterio primario: chi parla per primo definisce il contesto.
+#   - RIGHTS → CODING: la norma vincola l'implementazione tecnica
+#   - MATH   → CODING: la formula precede la sua implementazione
+#   - RIGHTS → MATH:   la norma determina il calcolo da applicare
 PIPELINE_SETTINGS = {
     'hybrid_threshold': 0.30,
-    
-    # [NUOVO V6.2.4] Numero minimo di parole per autorizzare l'arco multi-agente.
-    # Impedisce l'over-engineering su query banali (es. "Crea un array C++ per la privacy").
     'min_words_for_pipeline': 8,
-
     'pipeline_order_matrix': {
         frozenset({'rights', 'coding'}): ('rights', 'coding'),
         frozenset({'math',   'coding'}): ('math',   'coding'),
