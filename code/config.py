@@ -5,15 +5,17 @@
     del progetto. Modifica questo file per cambiare modelli, soglie RAM
     o parametri di generazione senza toccare la logica del codice.
 
-    Fix:
-    - [TYPO] 'Configuraizone' → 'Configurazione' nel docstring originale.
+    Novità V6.3.0:
+    - [FEATURE] Parametri k-NN aggiunti a SEMANTIC_SETTINGS per il nuovo
+      motore VectorStore (vector_store.py + LanceDB).
+      knn_k, knn_min_vote_ratio, knn_min_abs_votes sostituiscono la logica
+      a centroide e i parametri di spread/min_score ormai deprecati.
+    - [DEPRECATO] confidence_threshold, multi_domain_spread, multi_domain_min_score
+      rimangono per riferimento ma non sono più letti dal codice di routing.
 
     Novità V6.2.4:
     - [DEPRECATO] confidence_threshold in SEMANTIC_SETTINGS non è più usato
-      come gate di routing in main.py. Il router semantico è ora l'autorità
-      primaria indipendentemente dal margin tra i due domini classificati.
-      Il parametro rimane per riferimento e debug ma non influenza il flusso.
-      Vedi semantic_router.py V2.0 e main.py V6.2.4 per i dettagli.
+      come gate di routing. Il parametro rimane per riferimento e debug.
 
     Novità V6.0:
     - [FEATURE] Aggiunta sezione PIPELINE_SETTINGS per la configurazione
@@ -90,46 +92,57 @@ LEV_TOLERANCE_MAP = {
 
 # --- 6. CONFIGURAZIONE SEMANTIC ROUTER ---
 #
-# confidence_threshold [DEPRECATO come gate]:
-#   In V6.2.3 e precedenti, veniva usato come soglia sul margin tra
-#   1° e 2° classificato per decidere se andare a keyword (CASO C).
-#   In V6.2.4 questo gate è stato rimosso: un margin basso non indica
-#   un fallimento del router, indica una query con due domini vicini
-#   (esattamente il caso ibrido). Il router è ora l'autorità primaria.
-#   Il parametro rimane per calibrazione/debug ma non influenza il routing.
+# PARAMETRI DEPRECATI (mantenuti solo per riferimento storico e debug):
+# - confidence_threshold: era il gate sul margin coseno (V6.2.3 e precedenti).
+# - multi_domain_spread:  era la soglia per lo spread coseno tra domini.
+# - multi_domain_min_score: score assoluto minimo del secondo dominio.
+# Questi parametri NON sono più letti dal codice di routing (V6.3.0+).
 #
-# multi_domain_spread:
-#   Se il margin tra 1° e 2° classificato è ≤ questo valore,
-#   ENTRAMBI i domini vengono attivati (pipeline multi-agente).
-#   Calibrato su test reale. Abbassare → multi-dominio più selettivo.
+# PARAMETRI k-NN ATTIVI (VectorStore V1.0):
+# - knn_k: numero di vicini più prossimi estratti per ogni query.
+#   Aumentare per maggiore stabilità statistica; ridurre per velocità.
+#   Valore consigliato: 10 (bilanciamento precisione/performance).
 #
-# multi_domain_min_score:
-#   Score assoluto minimo che il 2° classificato deve superare
-#   per essere incluso nel multi-dominio. Evita di attivare 'general'
-#   su query specialistiche dove è strutturalmente sempre basso.
+# - knn_min_vote_ratio: percentuale minima di voti che il secondo dominio
+#   deve ottenere sul totale combinato (top + second) per attivare la pipeline.
+#   Formula: second_votes / (top_votes + second_votes) >= knn_min_vote_ratio
+#   Con k=10: 0.30 significa che il secondo dominio deve avere ≥3 voti su 10
+#   combinati col primo. Abbassare rende il sistema più sensibile agli ibridi.
 #
-# debug:
-#   Se True, stampa score coseno dettagliati per ogni query.
+# - knn_min_abs_votes: numero assoluto minimo di voti del secondo dominio.
+#   Questo filtro è la vera difesa contro i falsi ibridi: un dominio con
+#   0-2 voti non può mai attivare la pipeline, indipendentemente dal ratio.
+#   Con k=10 e min_abs_votes=3: il secondo dominio deve vincere almeno 3
+#   query dei 10 vicini più prossimi. È una soglia semanticamente robusta.
+#
+# - debug: se True, stampa i voti k-NN dettagliati per ogni query.
 #   Impostare False in produzione.
+
 SEMANTIC_SETTINGS = {
     'enabled':               True,
     'embedding_model':       'nomic-embed-text',
-    'confidence_threshold':  0.06,   # DEPRECATO come gate — solo riferimento
-    'multi_domain_spread':   0.08,   # attiva multi-dominio se margin ≤ 0.08
-    'multi_domain_min_score':0.58,   # score minimo assoluto per 2° dominio
-    'debug': False
+
+    # --- Deprecati (V6.2.x) — non più letti dal routing ---
+    'confidence_threshold':  0.06,
+    'multi_domain_spread':   0.08,
+    'multi_domain_min_score':0.58,
+
+    'debug': False,
+
+    # --- Parametri k-NN attivi (V6.3.0 / VectorStore V1.0) ---
+    'knn_k':              10,    # vicini da estrarre per query
+    'knn_min_vote_ratio': 0.30,  # % minima voti secondo dominio su combined
+    'knn_min_abs_votes':  3,     # voti assoluti minimi per il secondo dominio
 }
 
 # --- 7. CONFIGURAZIONE PIPELINE MULTI-AGENTE ---
 #
 # hybrid_threshold:
 #   Soglia proporzionale per il keyword fallback (sem_ok=False).
-#   Formula: hits_secondario_excl / (hits_primario_excl + hits_secondario_excl) >= threshold
 #
 # min_words_for_pipeline:
 #   Numero minimo di parole per autorizzare l'arco multi-agente.
-#   Query sotto soglia vengono degradate a mono-dominio anche se
-#   il router rileva due domini vicini.
+#   Query sotto soglia vengono degradate a mono-dominio.
 #
 # pipeline_order_matrix:
 #   Ordine autoritativo degli agenti nella pipeline.
@@ -137,6 +150,7 @@ SEMANTIC_SETTINGS = {
 #   - RIGHTS → CODING: la norma vincola l'implementazione tecnica
 #   - MATH   → CODING: la formula precede la sua implementazione
 #   - RIGHTS → MATH:   la norma determina il calcolo da applicare
+
 PIPELINE_SETTINGS = {
     'hybrid_threshold': 0.30,
     'min_words_for_pipeline': 8,

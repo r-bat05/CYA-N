@@ -1,16 +1,19 @@
 """
-    DISPATCHER NEUTRALE (Data-Driven) - Versione Smart Match V4.2 (Debug Mode)
+    DISPATCHER NEUTRALE (Data-Driven) - Versione Smart Match V4.3 (Debug Mode)
 
-    Novità V4.2:
+    Novita' V4.3:
+    - [FIX] Bug regex distruttiva per C++ e C#: `re.findall(r'\\w+', s_lower)`
+      estraeva solo caratteri alfanumerici, distruggendo i simboli tecnici '+' e '#'.
+      Una query su "C++" produceva il token "c", fallendo l'hard-match con la keyword.
+      Fix: regex aggiornata a `r'[a-zA-Z0-9_+#]+'` in detect_hybrid() e classify_segment().
+    - [CLEANUP] Rimossa la funzione split_and_dispatch(): dead code non piu' chiamato
+      da nessun modulo del progetto (il fallback in main.py ora usa classify_segment
+      direttamente sull'input in blocco).
+
+    Novita' V4.2:
     - [FIX] Bug ordine pipeline keyword: la pipeline_order_matrix di config.py
       viene ora applicata come criterio PRIMARIO di ordinamento degli agenti in
-      detect_hybrid(), non più come semplice tie-breaker.
-      In V4.1, quando primary_hits != secondary_hits, l'ordine era determinato
-      dal conteggio degli hit: 3 coding vs 2 rights → coding parlava per primo,
-      ignorando la regola architetturale "rights → coding" della matrice.
-      Ora la matrice è autoritativa per tutte le coppie definite; il conteggio
-      degli hit e la gerarchia diventano fallback esclusivamente per coppie
-      non presenti in matrice.
+      detect_hybrid(), non piu' come semplice tie-breaker.
 """
 
 import re
@@ -23,9 +26,9 @@ import config
 DEBUG_DISPATCHER = True
 
 def _debug_log(message: str):
-    """Traccia un arco informativo a video se il debug è attivo."""
+    """Traccia un arco informativo a video se il debug e' attivo."""
     if DEBUG_DISPATCHER:
-        print(f"🔍 [DEBUG DISPATCHER] {message}")
+        print(f"[DEBUG DISPATCHER] {message}")
 
 
 class KeywordLoader:
@@ -57,7 +60,7 @@ class KeywordLoader:
                     if clean_line and not clean_line.startswith('#'):
                         unique_words.add(clean_line)
         except FileNotFoundError:
-            print(f"⚠️  ATTENZIONE: File keyword non trovato -> {filepath}")
+            print(f"ATTENZIONE: File keyword non trovato -> {filepath}")
         return unique_words
 
 
@@ -105,7 +108,7 @@ def get_allowed_errors(word_len: int) -> int:
 
 
 # =====================================================================
-# MOTORE DI RICERCA A DUE FASI (HARD-MATCH → SOFT-MATCH)
+# MOTORE DI RICERCA A DUE FASI (HARD-MATCH -> SOFT-MATCH)
 # =====================================================================
 
 def phase1_hard_match(tokens: set, text_original: str, keywords: set) -> tuple:
@@ -176,21 +179,23 @@ def detect_hybrid(query: str) -> Tuple[bool, str, str]:
     Determina se una query richiede un arco di pipeline multi-agente.
 
     Logica di ordinamento (V4.2):
-    La pipeline_order_matrix è il criterio PRIMARIO. Se la coppia di domini
-    rilevata è presente in matrice, l'ordine viene imposto indipendentemente
+    La pipeline_order_matrix e' il criterio PRIMARIO. Se la coppia di domini
+    rilevata e' presente in matrice, l'ordine viene imposto indipendentemente
     dal conteggio degli hit. Il conteggio e la gerarchia restano attivi solo
     come fallback per coppie non coperte dalla matrice.
     """
-    # --- NUOVO: FILTRO DI COMPLESSITÀ (V4.3) ---
+    # --- FILTRO DI COMPLESSITA' ---
     word_count = len(query.split())
     min_words = config.PIPELINE_SETTINGS.get('min_words_for_pipeline', 8)
     if word_count < min_words:
         _debug_log(f"Rilevamento Ibrido annullato: query troppo corta ({word_count} < {min_words} parole).")
         return False, '', ''
-    # -------------------------------------------
 
     s_lower = query.lower()
-    tokens  = set(re.findall(r'\w+', s_lower))
+    # [FIX V4.3] Regex estesa per includere '+' e '#', necessari per keyword
+    # come "c++", "c#". La vecchia regex \w+ estraeva solo alfanumerici e '_',
+    # producendo il token "c" invece di "c++" e causando il fallimento dell'hard-match.
+    tokens  = set(re.findall(r'[a-zA-Z0-9_+#]+', s_lower))
 
     coding_excl_kws = keyword_loader.CODING  - keyword_loader.SHARED_TECH
     math_excl_kws   = keyword_loader.MATH    - keyword_loader.SHARED_TECH
@@ -230,20 +235,16 @@ def detect_hybrid(query: str) -> Tuple[bool, str, str]:
 
     # -----------------------------------------------------------------
     # [FIX V4.2] Determinazione ordine agenti:
-    # La pipeline_order_matrix è applicata come criterio primario per
+    # La pipeline_order_matrix e' applicata come criterio primario per
     # TUTTE le coppie definite, indipendentemente dal conteggio degli hit.
-    # Questo garantisce che regole semantiche architetturali (es. rights → coding)
-    # non vengano sovrascritte da una differenza numerica accidentale negli hit.
-    # Il fallback hit-count/hierarchy rimane attivo per coppie non in matrice.
     # -----------------------------------------------------------------
     pair   = frozenset({primary_domain, secondary_domain})
     matrix = config.PIPELINE_SETTINGS['pipeline_order_matrix']
 
     if pair in matrix:
         domain_a, domain_b = matrix[pair]
-        _debug_log(f"Ordine imposto da pipeline_order_matrix: {domain_a.upper()} → {domain_b.upper()}")
+        _debug_log(f"Ordine imposto da pipeline_order_matrix: {domain_a.upper()} -> {domain_b.upper()}")
     else:
-        # Fallback: chi ha più hit parla per primo; in parità, usa gerarchia
         if primary_hits != secondary_hits:
             domain_a, domain_b = primary_domain, secondary_domain
         else:
@@ -254,7 +255,7 @@ def detect_hybrid(query: str) -> Tuple[bool, str, str]:
             )
             domain_a, domain_b = ordered[0], ordered[1]
         _debug_log(f"Coppia non in matrice. Ordine da hit/gerarchia: "
-                   f"{domain_a.upper()} → {domain_b.upper()}")
+                   f"{domain_a.upper()} -> {domain_b.upper()}")
 
     _debug_log(f"Arco Ibrido Confermato: {domain_a} -> {domain_b}")
     return True, domain_a, domain_b
@@ -272,7 +273,9 @@ def classify_segment(segment: str) -> str:
     _debug_log(f"Valutazione Arco di Routing: '{segment}'")
     
     s_lower = segment.lower()
-    tokens  = set(re.findall(r'\w+', s_lower))
+    # [FIX V4.3] Stessa correzione regex di detect_hybrid(): include '+' e '#'
+    # per gestire correttamente keyword come "c++", "c#", "c++ stl", ecc.
+    tokens  = set(re.findall(r'[a-zA-Z0-9_+#]+', s_lower))
     _debug_log(f"Token estratti: {tokens}")
 
     # --- FASE 1: HARD-MATCH ---
@@ -317,14 +320,14 @@ def classify_segment(segment: str) -> str:
             elif best == 'math':
                 math_hits += 1
 
-    # --- LOGICA DI PRIORITÀ (Layer 2) ---
+    # --- LOGICA DI PRIORITA' (Layer 2) ---
     _debug_log(f"Punteggio Finale Archi - C:{coding_hits} | M:{math_hits} | R:{rights_hits}")
 
     technical_hits = coding_hits + math_hits
 
-    # 1. Priorità Rights
+    # 1. Priorita' Rights
     if rights_hits > 0 and (rights_hits > technical_hits or technical_hits == 0):
-        _debug_log("Esito: RIGHTS (Priorità Normativa/Maggioranza)")
+        _debug_log("Esito: RIGHTS (Priorita' Normativa/Maggioranza)")
         return 'rights'
 
     # 2. Confronto diretto Coding vs Math
@@ -344,32 +347,3 @@ def classify_segment(segment: str) -> str:
     # 4. Nessuna keyword
     _debug_log("Esito: GENERAL (Nessun arco specifico trovato)")
     return 'general'
-
-
-# =====================================================================
-# ENTRY POINT PUBBLICO
-# =====================================================================
-
-def split_and_dispatch(query: str) -> dict:
-    """
-    Spezza la richiesta in segmenti frasali e classifica ciascuno.
-    """
-    segments = re.split(r'[.?!\n;]', query)
-
-    categorized_segments = {
-        'coding':  [],
-        'math':    [],
-        'rights':  [],
-        'general': []
-    }
-
-    for segment in segments:
-        segment = segment.strip()
-        if not segment:
-            continue
-
-        category = classify_segment(segment)
-        if category in categorized_segments:
-            categorized_segments[category].append(segment)
-
-    return categorized_segments

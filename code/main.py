@@ -1,5 +1,5 @@
 """
-    CYA N - AI LOCAL DISPATCHER V6.2.4
+    CYA N - AI LOCAL DISPATCHER V6.3.0
     Entry Point dell'applicazione.
 
     Responsabilità:
@@ -7,25 +7,24 @@
     2. Orchestrazione tra Dispatcher e Engine AI.
     3. Gestione elegante degli errori e dell'uscita.
 
+    Novità V6.3.0 — VectorStore k-NN:
+    - [FEATURE] Aggiunta chiamata a initialize_store() all'avvio, prima del loop.
+      Il Vector Store viene costruito su disco al primo avvio (operazione one-shot)
+      e caricato istantaneamente negli avvii successivi.
+    - [UPDATE] Import di initialize_store da vector_store.
+    - [UPDATE] Label debug aggiornate da "Margin/spread" a "Confidence/voti k-NN"
+      per riflettere la nuova semantica della metrica restituita da classify().
+    - [INVARIATO] Tutta la logica di routing, pipeline ibrida e mono-dominio
+      è identica alla V6.2.4. Il VectorStore è un upgrade trasparente.
+
     Novità V6.2.4 — Routing Semantico come Autorità Primaria:
     - [BREAKING] classify() del SemanticRouter restituisce ora 3 valori:
-      (domains, confidence, sem_ok). Il terzo elemento è il discriminante
-      chiave dell'architettura.
-    - [FIX ARCHITETTURALE] Rimosso il gate confidence_threshold (CASO B vs C).
-      In V6.2.3, un margin basso tra i domini mandava al keyword matcher anche
-      quando il router semantico aveva *funzionato correttamente* (query ibrida
-      con due domini semanticamente vicini). Questo produceva routing errati.
-      Ora: se sem_ok=True, il risultato vettoriale è rispettato SEMPRE.
-      Il keyword dispatcher è attivato SOLO quando sem_ok=False (Ollama
-      embedding fisicamente non disponibile).
-    - [SEMPLIFICAZIONE] La struttura CASO A / CASO B / CASO C è ora:
+      (domains, confidence, sem_ok). Il terzo elemento è il discriminante chiave.
+    - [FIX ARCHITETTURALE] Rimosso il gate confidence_threshold.
+    - [SEMPLIFICAZIONE] La struttura è:
         sem_ok=False  → FALLBACK keyword (emergenza)
         sem_ok=True, 2 domini → PIPELINE ibrida (con filtro min_words)
-        sem_ok=True, 1 dominio → MONO-DOMAIN (fiducia totale nel vettore)
-
-    Novità V6.2.3:
-    - [FIX] Bug ordine pipeline semantica: ora il CASO A applica la
-      pipeline_order_matrix di config.py prima di assegnare domain_a/domain_b.
+        sem_ok=True, 1 dominio → MONO-DOMAIN
 """
 
 import sys
@@ -35,6 +34,7 @@ import config
 import dispatcher_request
 from ai_engine import get_ai_model
 from semantic_router import semantic_router as sem_router
+from vector_store import initialize_store
 
 # Prefissi che identificano un messaggio di errore/avviso strutturato
 # restituito da generate() via return (non dallo streaming).
@@ -43,13 +43,23 @@ _ERROR_PREFIXES = ("⛔", "❌", "⚠️")
 
 def print_banner():
     print("\n" + "=" * 60)
-    print("      CYA N  |  AI LOCAL DISPATCHER V6.2.4    ")
+    print("      CYA N  |  AI LOCAL DISPATCHER V6.3.0    ")
     print("      (Coding • Math • Rights • General)      ")
     print("=" * 60 + "\n")
 
 
 def main():
     print_banner()
+
+    # -----------------------------------------------------------------
+    # INIZIALIZZAZIONE VECTOR STORE
+    # Deve avvenire prima del loop principale. Se fallisce, il sistema
+    # funziona comunque in modalità degradata (fallback a keyword).
+    # -----------------------------------------------------------------
+    print("⚙️  Inizializzazione Vector Store (k-NN su LanceDB)...")
+    store_ok = initialize_store()
+    if not store_ok:
+        print("⚠️  VectorStore non disponibile. Il sistema userà il fallback a keyword per tutto il routing.")
 
     # Pre-istanziazione degli agenti: creati una volta sola all'avvio
     # e riutilizzati per tutta la sessione.
@@ -77,11 +87,11 @@ def main():
                 break
 
             # ---------------------------------------------------------
-            # FASE 0: ROUTING SEMANTICO VETTORIALE
+            # FASE 0: ROUTING SEMANTICO VETTORIALE (k-NN)
             # Il router è l'autorità primaria. sem_ok=False è l'unico
             # caso che attiva il fallback a keyword.
             # ---------------------------------------------------------
-            print("\n⚙️  Fase 0 — Valutazione Arco Semantico Vettoriale...")
+            print("\n⚙️  Fase 0 — Valutazione Arco Semantico Vettoriale (k-NN)...")
             sem_domains, sem_confidence, sem_ok = sem_router.classify(user_input)
 
             is_hybrid = False
@@ -97,11 +107,7 @@ def main():
 
                 is_hybrid, domain_a, domain_b = dispatcher_request.detect_hybrid(user_input)
                 if not is_hybrid:
-                    # [FIX V6.2.5] Uniformità comportamentale con il router semantico:
-                    # il semantic router valuta l'input in blocco → anche il keyword
-                    # fallback mono-dominio deve valutare l'input in blocco e assegnare
-                    # un solo agente vincente, evitando di avviare agenti multipli in
-                    # sequenza per query frammentate da punteggiatura (es. "Ciao. Codice?").
+                    # Uniformità comportamentale: valuta l'input in blocco.
                     winning_domain = dispatcher_request.classify_segment(user_input)
                     if winning_domain in categories_segments:
                         categories_segments[winning_domain] = [user_input]
@@ -112,8 +118,7 @@ def main():
                 # Embedding riuscito: il router semantico ha parlato.
 
                 # --- FILTRO DI COMPLESSITÀ (solo per ibridi) ---
-                # Un arco ibrido su una query di poche parole è over-engineering:
-                # la query è banale e il mono-dominio primario è sufficiente.
+                # Un arco ibrido su una query di poche parole è over-engineering.
                 word_count = len(user_input.split())
                 min_words  = config.PIPELINE_SETTINGS.get('min_words_for_pipeline', 8)
 
@@ -124,15 +129,15 @@ def main():
                 # ------------------------------------------------
 
                 print(f"🔍 [DEBUG SEMANTICO] Domini: {sem_domains}  |  "
-                      f"Margin: {sem_confidence:.4f}")
+                      f"Confidence k-NN: {sem_confidence:.2f}")
 
                 # =========================================================
-                # CASO A: Arco Ibrido Vettoriale (2 domini)
+                # CASO A: Arco Ibrido Vettoriale (2 domini da k-NN voting)
                 # =========================================================
                 if len(sem_domains) == 2:
                     print(f"🔍 [DEBUG SEMANTICO] Arco Ibrido confermato "
-                          f"(spread={sem_confidence:.4f} ≤ "
-                          f"{config.SEMANTIC_SETTINGS.get('multi_domain_spread', 0.08)}).")
+                          f"(min_abs_votes={config.SEMANTIC_SETTINGS.get('knn_min_abs_votes', 3)}, "
+                          f"min_vote_ratio={config.SEMANTIC_SETTINGS.get('knn_min_vote_ratio', 0.30)}).")
                     is_hybrid = True
 
                     # Applica pipeline_order_matrix come criterio primario
@@ -143,15 +148,13 @@ def main():
                         print(f"🔍 [DEBUG SEMANTICO] Ordine da pipeline_order_matrix: "
                               f"{domain_a.upper()} → {domain_b.upper()}")
                     else:
-                        # Fallback: mantieni ordine del router (score decrescente)
+                        # Fallback: mantieni ordine del router (voti decrescenti)
                         domain_a, domain_b = sem_domains[0], sem_domains[1]
                         print(f"🔍 [DEBUG SEMANTICO] Coppia non in matrice. "
-                              f"Ordine da score: {domain_a.upper()} → {domain_b.upper()}")
+                              f"Ordine da voti k-NN: {domain_a.upper()} → {domain_b.upper()}")
 
                 # =========================================================
                 # CASO B: Mono-Dominio — fiducia totale nel vettore
-                # Non esiste più un gate di confidenza: se il router ha
-                # risposto, il suo risultato è l'autorità.
                 # =========================================================
                 else:
                     target = sem_domains[0]
@@ -180,10 +183,6 @@ def main():
                     continue
 
                 # Arco di Sincronizzazione Attiva (Polling RAM)
-                # [FIX V6.2.5] Timeout aumentato da 5s a 20s: su hardware consumer
-                # il sistema operativo può impiegare ben oltre 5 secondi per svuotare
-                # la VRAM dopo keep_alive=0. Un timeout troppo aggressivo causava il
-                # lancio dell'Agente B con RAM ancora occupata e crash immediato.
                 print("⚙️  Sincronizzazione — Attendendo lo scaricamento del modello precedente...")
                 target_ram               = agents[domain_b].primary_ram_req
                 timeout_sincronizzazione = 20.0

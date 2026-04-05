@@ -1,7 +1,20 @@
 """
-    MOTORE AI IBRIDO V6.2.1 (LLM Pipeline & Critic Pass)
+    MOTORE AI IBRIDO V6.2.2 (LLM Pipeline & Critic Pass)
 
-    Novità V6.2.1:
+    Novita' V6.2.2:
+    - [FIX CRITICO] Bug tag <think> frammentati sullo streaming: il controllo
+      per chunk singolo (`"<think>" in content`) fallisce quando Ollama spezza
+      il tag su piu' token consecutivi (es. chunk1="<th", chunk2="ink>").
+      Il contenuto di ragionamento "bucava" il filtro e veniva stampato a video,
+      creando incoerenza tra output visibile e full_response interna.
+      Fix: introdotto stream_buf come buffer di accumulo. Per ogni chunk il
+      contenuto viene appeso al buffer e poi drenato in un loop finche' non
+      ci sono piu' operazioni possibili. La ricerca dei tag avviene sempre
+      sul buffer completo, non sul singolo chunk. La soglia di flush conserva
+      gli ultimi _GUARD=7 caratteri se contengono un '<' che potrebbe essere
+      l'inizio di un tag incompleto, rimandando l'output al chunk successivo.
+
+    Novita' V6.2.1:
     - [FIX CRITICO] Bug "buco nero" tag <think> in streaming: la logica
       precedente usava due `if` sequenziali indipendenti. Quando il chunk
       conteneva entrambi i tag (<think>pensiero</think>risposta), il primo `if`
@@ -9,16 +22,14 @@
       vuota PRIMA che il secondo `if` potesse trovare </think>. Risultato:
       is_thinking rimaneva bloccato su True e tutto l'output successivo veniva
       scartato silenziosamente.
-      Fix: i flag has_open/has_close vengono calcolati sul content ORIGINALE,
-      poi i tre casi sono gestiti in un blocco if/elif esclusivo.
 
-    Novità V6.2:
+    Novita' V6.2:
     - [FIX] Bug prefisso errori: rimosso "\\n\\n" iniziale dai return degli except.
     - [FIX] Bug chunk thinking misto (parziale, completato in V6.2.1).
 
-    Novità V6.1:
-    - [FIX] Vulnerabilità C: troncamento difensivo in resolve_pipeline_b (max 6000 chars).
-    - [FIX] Vulnerabilità B: firma execute_critic_pass aggiornata con original_query.
+    Novita' V6.1:
+    - [FIX] Vulnerabilita' C: troncamento difensivo in resolve_pipeline_b (max 6000 chars).
+    - [FIX] Vulnerabilita' B: firma execute_critic_pass aggiornata con original_query.
 """
 
 import ollama
@@ -29,11 +40,16 @@ from helper import clean_response, SpinnerContext, print_time_elapsed
 from prompts_templates import get_prompts, PIPELINE_PROMPTS
 import config
 
+# Lunghezza del tag piu' lungo che dobbiamo rilevare: len("</think>") = 8.
+# Teniamo _GUARD = 7 caratteri in coda al buffer se contengono '<',
+# per non perdere un tag spezzato tra due chunk consecutivi.
+_GUARD = len("</think>") - 1  # 7
+
 
 class BaseAI(ABC):
     def __init__(self, category):
         if category not in config.MODELS_CONFIG:
-            print(f"⚠️ Categoria '{category}' non trovata in config. Uso 'general'.")
+            print(f"WARNING Categoria '{category}' non trovata in config. Uso 'general'.")
             category = 'general'
 
         self.cfg = config.MODELS_CONFIG[category]
@@ -51,27 +67,27 @@ class BaseAI(ABC):
         try:
             available_ram = psutil.virtual_memory().available
         except Exception as e:
-            print(f"⚠️ Impossibile leggere la RAM di sistema: {e}. Procedo a rischio.")
+            print(f"WARNING Impossibile leggere la RAM di sistema: {e}. Procedo a rischio.")
             return True
 
         if self.is_using_fallback:
             if available_ram < self.fallback_ram_req:
-                print(f"\n⛔ ERRORE CRITICO: RAM insufficiente anche per il modello leggero.")
+                print(f"\nERRORE CRITICO: RAM insufficiente anche per il modello leggero.")
                 print(f"   Disponibili: {available_ram / config.GB:.2f} GB "
                       f"< Richiesti: {self.fallback_ram_req / config.GB:.2f} GB")
                 return False
             return True
 
         if available_ram < self.primary_ram_req:
-            print(f"\n⚠️  RAM INSUFFICIENTE per {self.model_name}")
+            print(f"\nWARN RAM INSUFFICIENTE per {self.model_name}")
             print(f"   Disponibili: {available_ram / config.GB:.2f} GB "
                   f"< Richiesti: {self.primary_ram_req / config.GB:.2f} GB")
             if self.fallback_model:
-                print(f"📉  Downgrade PREVENTIVO a [{self.fallback_model}]...")
+                print(f"Downgrade PREVENTIVO a [{self.fallback_model}]...")
                 self.is_using_fallback = True
                 return self.check_resources()
             else:
-                print(f"❌  Nessun modello di riserva configurato per {self.category}.")
+                print(f"ERRORE Nessun modello di riserva configurato per {self.category}.")
                 return False
 
         return True
@@ -79,7 +95,7 @@ class BaseAI(ABC):
     def generate(self, messages: list, stream_output=True, force_unload=False):
         if not self.check_resources():
             self.is_using_fallback = False
-            return "⛔ SISTEMA ARRESTATO PER MANCANZA DI MEMORIA."
+            return "SISTEMA ARRESTATO PER MANCANZA DI MEMORIA."
 
         full_response = ""
         start_time = time.time()
@@ -96,6 +112,9 @@ class BaseAI(ABC):
         spinner = SpinnerContext(spinner_msg)
         spinner.start()
 
+        # Buffer di accumulo per la gestione robusta dei tag <think> frammentati.
+        # Ogni chunk viene appeso qui prima di essere processato.
+        stream_buf  = ""
         is_thinking = False
 
         try:
@@ -108,54 +127,85 @@ class BaseAI(ABC):
             )
 
             for chunk in stream:
-                content = chunk['message']['content']
+                stream_buf += chunk['message']['content']
 
-                # --- LOGICA DI FILTRAGGIO STREAMING (V6.2.1 — ROBUSTA) ---
-                # I flag vengono calcolati sul content ORIGINALE prima di
-                # qualsiasi modifica. Questo evita il "buco nero" di V6.2 dove
-                # il primo split("<think>") azzerava content prima che il secondo
-                # if potesse trovare </think>, bloccando is_thinking su True.
-                #
-                # Casi coperti:
-                #   1. Entrambi i tag nello stesso chunk: prendi solo dopo </think>.
-                #   2. Solo <think>: attiva pensiero, tronca prima del tag.
-                #   3. Solo </think>: disattiva pensiero, tronca dopo il tag.
-                has_open  = "<think>"  in content
-                has_close = "</think>" in content
+                # --- DRAIN LOOP ---
+                # Processa il buffer finche' ci sono operazioni completabili.
+                # Si ferma quando: non ci sono tag completi e il residuo e'
+                # troppo corto per determinare se un '<' e' un tag parziale.
+                keep_draining = True
+                while keep_draining:
+                    keep_draining = False
 
-                if has_open and has_close:
-                    content = content.split("</think>", 1)[1]
-                    is_thinking = False
-                    if stream_output:
-                        spinner.stop()
-                elif has_open:
-                    is_thinking = True
-                    content = content.split("<think>", 1)[0]
-                elif has_close:
-                    is_thinking = False
-                    content = content.split("</think>", 1)[1]
-                    if stream_output:
-                        spinner.stop()
+                    if is_thinking:
+                        close_idx = stream_buf.find("</think>")
+                        if close_idx != -1:
+                            # Tag di chiusura trovato: esci dalla modalita' thinking
+                            is_thinking = False
+                            stream_buf = stream_buf[close_idx + 8:]  # 8 = len("</think>")
+                            if stream_output:
+                                spinner.stop()
+                            keep_draining = True  # potrebbe esserci contenuto dopo </think>
+                        else:
+                            # Nessun </think> ancora: scarta il contenuto di thinking
+                            # ma tieni gli ultimi _GUARD chars per non perdere il tag spezzato
+                            if len(stream_buf) > _GUARD:
+                                stream_buf = stream_buf[-_GUARD:]
+                            # Non possiamo fare altro: aspetta il prossimo chunk
+                    else:
+                        open_idx = stream_buf.find("<think>")
+                        if open_idx != -1:
+                            # Tag di apertura trovato: emetti tutto cio' che precede
+                            safe = stream_buf[:open_idx]
+                            stream_buf = stream_buf[open_idx + 7:]  # 7 = len("<think>")
+                            is_thinking = True
+                            if safe:
+                                display_content = clean_response(safe)
+                                if display_content and stream_output:
+                                    spinner.stop()
+                                    print(display_content, end="", flush=True)
+                                full_response += safe
+                            keep_draining = True  # processa il resto del buffer
+                        else:
+                            # Nessun <think> nel buffer. Determina il punto di flush sicuro.
+                            # Se c'e' un '<' negli ultimi _GUARD caratteri, potrebbe essere
+                            # l'inizio di un <think> spezzato: non emettere oltre quel punto.
+                            lt_pos = stream_buf.rfind('<')
+                            if lt_pos != -1 and lt_pos >= len(stream_buf) - _GUARD:
+                                # '<' vicino alla fine: emetti solo fino a lt_pos
+                                safe = stream_buf[:lt_pos]
+                                stream_buf = stream_buf[lt_pos:]
+                            else:
+                                # Nessun '<' pericoloso in coda: flush completo
+                                safe = stream_buf
+                                stream_buf = ""
 
-                if is_thinking:
-                    continue
+                            if safe:
+                                display_content = clean_response(safe)
+                                if display_content and stream_output:
+                                    spinner.stop()
+                                    print(display_content, end="", flush=True)
+                                full_response += safe
+                            # Non c'e' altro da drenare: aspetta il prossimo chunk
 
-                if content:
-                    display_content = clean_response(content)
-                    if display_content and stream_output:
-                        spinner.stop()
-                        print(display_content, end="", flush=True)
-
-                full_response += content
+            # --- FLUSH FINALE ---
+            # Lo stream e' terminato. Qualsiasi contenuto rimasto nel buffer
+            # che non sia inside un blocco thinking deve essere emesso.
+            if stream_buf and not is_thinking:
+                display_content = clean_response(stream_buf)
+                if display_content and stream_output:
+                    spinner.stop()
+                    print(display_content, end="", flush=True)
+                full_response += stream_buf
 
             if not full_response:
-                return "⚠️  ATTENZIONE: Il modello non ha generato output."
+                return "ATTENZIONE: Il modello non ha generato output."
 
         except ollama.ResponseError as e:
-            return (f"❌ Errore Ollama: {e}\n"
+            return (f"Errore Ollama: {e}\n"
                     f"Assicurati che il servizio sia attivo.")
         except Exception as e:
-            return (f"❌ Errore Generico: {e}\n"
+            return (f"Errore Generico: {e}\n"
                     f"Verifica la connessione o il modello ('ollama pull {target_model}').")
 
         finally:
