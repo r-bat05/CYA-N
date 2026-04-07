@@ -5,6 +5,12 @@
     del progetto. Modifica questo file per cambiare modelli, soglie RAM
     o parametri di generazione senza toccare la logica del codice.
 
+    Novità V6.3.1:
+    - [TUNING] knn_min_abs_votes alzato da 3 a 4. Con k=10, il secondo dominio
+      deve ora convincere almeno 4 vicini su 10 per attivare la pipeline ibrida.
+      Riduce i falsi positivi causati da termini ambigui (es. "calcolo", "formula",
+      "differenza") che statisticamente raccoglievano 3 voti per coincidenza lessicale.
+
     Novità V6.3.0:
     - [FEATURE] Parametri k-NN aggiunti a SEMANTIC_SETTINGS per il nuovo
       motore VectorStore (vector_store.py + LanceDB).
@@ -111,9 +117,10 @@ LEV_TOLERANCE_MAP = {
 #
 # - knn_min_abs_votes: numero assoluto minimo di voti del secondo dominio.
 #   Questo filtro è la vera difesa contro i falsi ibridi: un dominio con
-#   0-2 voti non può mai attivare la pipeline, indipendentemente dal ratio.
-#   Con k=10 e min_abs_votes=3: il secondo dominio deve vincere almeno 3
-#   query dei 10 vicini più prossimi. È una soglia semanticamente robusta.
+#   pochi voti non può mai attivare la pipeline, indipendentemente dal ratio.
+#   Con k=10 e min_abs_votes=4: il secondo dominio deve vincere almeno 4
+#   query dei 10 vicini più prossimi (alzato da 3 in V6.3.1 per ridurre
+#   i falsi positivi da termini ambigui come "calcolo", "formula", "codice").
 #
 # - debug: se True, stampa i voti k-NN dettagliati per ogni query.
 #   Impostare False in produzione.
@@ -132,7 +139,7 @@ SEMANTIC_SETTINGS = {
     # --- Parametri k-NN attivi (V6.3.0 / VectorStore V1.0) ---
     'knn_k':              10,    # vicini da estrarre per query
     'knn_min_vote_ratio': 0.30,  # % minima voti secondo dominio su combined
-    'knn_min_abs_votes':  3,     # voti assoluti minimi per il secondo dominio
+    'knn_min_abs_votes':  4,     # voti assoluti minimi per il secondo dominio (alzato da 3 in V6.3.1)
 }
 
 # --- 7. CONFIGURAZIONE PIPELINE MULTI-AGENTE ---

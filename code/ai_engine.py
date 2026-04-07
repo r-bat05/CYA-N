@@ -1,5 +1,12 @@
 """
-    MOTORE AI IBRIDO V6.2.2 (LLM Pipeline & Critic Pass)
+    MOTORE AI IBRIDO V6.2.3 (LLM Pipeline & Critic Pass)
+
+    Novita' V6.2.3:
+    - [FIX CRITICO] Anti-pattern return testuale per OOM: il metodo generate()
+      ora solleva ResourceExhaustedError invece di restituire una stringa senza
+      prefisso emoji. Questo permette a main.py di intercettare correttamente
+      l'esaurimento delle risorse con un blocco try/except tipizzato, evitando
+      che l'output di errore venga passato al secondo agente della pipeline.
 
     Novita' V6.2.2:
     - [FIX CRITICO] Bug tag <think> frammentati sullo streaming: il controllo
@@ -44,6 +51,16 @@ import config
 # Teniamo _GUARD = 7 caratteri in coda al buffer se contengono '<',
 # per non perdere un tag spezzato tra due chunk consecutivi.
 _GUARD = len("</think>") - 1  # 7
+
+
+class ResourceExhaustedError(Exception):
+    """
+    Sollevata da generate() quando check_resources() fallisce.
+    Sostituisce il precedente anti-pattern del return testuale senza prefisso
+    emoji, permettendo a main.py di intercettarla con un blocco tipizzato
+    invece di affidarsi al fragile check startswith(_ERROR_PREFIXES).
+    """
+    pass
 
 
 class BaseAI(ABC):
@@ -95,7 +112,10 @@ class BaseAI(ABC):
     def generate(self, messages: list, stream_output=True, force_unload=False):
         if not self.check_resources():
             self.is_using_fallback = False
-            return "SISTEMA ARRESTATO PER MANCANZA DI MEMORIA."
+            raise ResourceExhaustedError(
+                f"RAM insufficiente per avviare qualsiasi modello nel dominio '{self.category}'. "
+                f"Libera memoria e riprova."
+            )
 
         full_response = ""
         start_time = time.time()

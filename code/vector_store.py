@@ -1,6 +1,16 @@
 """
-    VECTOR STORE V1.0 — LanceDB k-NN Engine
+    VECTOR STORE V1.1 — LanceDB k-NN Engine
 
+    Novita' V1.1:
+    - [TUNING] Aggiunte 4 frasi anti-trappola a INTENT_SENTENCES per ancorare
+      il k-NN su query edge-case identificate durante lo stress test:
+      * CODING: "promise/async-await JS" e "server log Linux con validita' probatoria"
+      * MATH:   "Newton-Raphson in Python per radici di polinomio"
+      * RIGHTS: "formula matematica esatta stabilita dalla legge per TFR"
+      Queste frasi coprono i casi in cui termini ambigui ("formula", "calcola",
+      "tribunale") distorcevano il vicinato k-NN verso il dominio sbagliato.
+
+    V1.0 — LanceDB k-NN Engine:
     Sostituisce il PrototypeStore a centroide (semantic_router.py V2.0) con un
     database vettoriale su disco e ricerca k-Nearest Neighbors esatti.
 
@@ -18,9 +28,9 @@
 
     Logica di ibridazione (doppia condizione):
     Un secondo dominio viene attivato SOLO SE raggiunge ENTRAMBE:
-    - knn_min_abs_votes  : voti assoluti minimi (es. >= 3 su 10)
+    - knn_min_abs_votes  : voti assoluti minimi (es. >= 4 su 10 da V6.3.1)
     - knn_min_vote_ratio : % voti su combinato top+second (es. >= 30%)
-    Questo azzera i falsi positivi perché un secondo dominio con 0 voti non
+    Questo azzera i falsi positivi perché un secondo dominio con pochi voti non
     supererà mai min_abs_votes, indipendentemente dal ratio.
 
     Normalizzazione L2:
@@ -35,6 +45,8 @@
     - Primo avvio: il DB non esiste -> initialize_store() lo costruisce (minuti)
     - Avvii successivi: il DB esiste -> caricamento istantaneo da disco
     - Per forzare una ricostruzione: eseguire `python vector_store.py`
+    IMPORTANTE: dopo ogni modifica a INTENT_SENTENCES eseguire
+    `python vector_store.py` per ricostruire il DB su disco.
 """
 
 import os
@@ -60,28 +72,15 @@ DB_PATH    = os.path.join(config.BASE_DIR, "vector_db")
 TABLE_NAME = "intent_vectors"
 VECTOR_DIM = 768  # dimensione output di nomic-embed-text
 
-# Valori di default per i parametri k-NN (sovrascrivibili da config.SEMANTIC_SETTINGS)
 _DEFAULT_K              = 10
 _DEFAULT_MIN_VOTE_RATIO = 0.30
 _DEFAULT_MIN_ABS_VOTES  = 3
 
-# Riferimento globale alla tabella LanceDB.
-# Viene impostato da initialize_store() e usato da _get_table() per evitare
-# riconnessioni ad ogni query.
 _table = None
 
 
 # ---------------------------------------------------------------------------
 # INTENT SENTENCES
-# ---------------------------------------------------------------------------
-# Dizionario di frasi di intento per i 4 domini.
-# Ogni frase e' un punto indipendente nello spazio vettoriale.
-# NON concatenare frasi: ogni voce contribuisce come un singolo vicino k-NN.
-#
-# Criteri di bilanciamento per aggiungere frasi:
-# - Casi puri: rendono il cluster del dominio coeso e discriminativo
-# - Casi ibridi reali: il dominio e' quello che "governa" la richiesta
-# - Edge cases: frasi che coprono trappole lessicali dai test di stress
 # ---------------------------------------------------------------------------
 
 INTENT_SENTENCES: Dict[str, List[str]] = {
@@ -122,17 +121,24 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Scrivi uno script per web scraping rispettando le leggi sul copyright.",
         "Progetta un database SQL per dati sanitari seguendo le direttive normative.",
         "Scrivi uno script Python che anonimizza dati in un database SQL con conformita' GDPR.",
-        "Configura un server di log in Linux per file con validita' probatoria in tribunale.",
         # --- Edge cases: infrastruttura/DevOps ---
         "Scrivimi un file docker-compose per il deploy di un'applicazione cloud.",
         "Configura le foreign key e relazioni di integrita' referenziale in SQL.",
         "Come si integra una licenza open source MIT in un container Docker?",
         "Scrivi uno script bash per automatizzare il deployment e il monitoring.",
-        # --- Kubernetes/orchestrazione (copertura Q15 stress test) ---
+        # --- Kubernetes/orchestrazione ---
         "Come configuro un cluster Kubernetes per il bilanciamento del carico tra i pod in produzione?",
         "Gestisci i deployment, i service e gli ingress con kubectl su un cluster Kubernetes.",
         "Come si configura un'applicazione su Kubernetes con replica set e autoscaling?",
+        # --- React e frontend ---
         "Crea un componente React che gestisce uno stato globale usando la Context API.",
+        # --- Anti-trappola V1.1 ---
+        # Frase aggiunta per ancorare query su promise/async-await che venivano
+        # attratte da GENERAL per mancanza di esempi JS asincroni nel cluster.
+        "Spiegami la differenza tra promise e async/await in JavaScript con un esempio pratico di codice.",
+        # Frase aggiunta per ancorare query su log di sistema con valenza legale:
+        # senza questa, "tribunale" e "validita' probatoria" attraevano RIGHTS.
+        "Come configuro un server di log in Linux per far si' che i file generati abbiano validita' probatoria incontestabile in tribunale.",
     ],
     'math': [
         # --- Calcolo e risoluzione pura ---
@@ -152,7 +158,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Risolvi questo esercizio di algebra lineare o geometria differenziale.",
         "Dimostra il teorema di Lagrange e le sue applicazioni nello studio di funzione.",
         "Quali sono gli autovalori e gli autovettori della matrice identita' 3x3?",
-        # --- Equazioni differenziali (rinforzo diretto: questo era il bug case) ---
+        # --- Equazioni differenziali ---
         "Risolvi questa equazione differenziale.",
         "Risolvi l'equazione differenziale lineare del secondo ordine a coefficienti costanti.",
         "Trova la soluzione generale di questa equazione differenziale omogenea.",
@@ -172,7 +178,11 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         # --- Casi ibridi math con lessico informatico ---
         "Qual e' la complessita' asintotica Big O di questo algoritmo teorico?",
         "Come ottimizzo la complessita' asintotica di un algoritmo di moltiplicazione tra matrici sparse?",
-        "Scrivi lo script Python per trovare le radici di un polinomio con Newton-Raphson.",
+        # --- Anti-trappola V1.1 ---
+        # Frase aggiunta per ancorare query su metodi numerici implementati in Python:
+        # senza questa, "scrivi uno script Python" attraeva CODING anche per esercizi
+        # puramente matematici come Newton-Raphson per radici di polinomi.
+        "Scrivi uno script Python che utilizza il metodo di Newton-Raphson per trovare le radici di un polinomio di terzo grado.",
     ],
     'rights': [
         # --- Diritto puro ---
@@ -208,7 +218,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Come funziona la gerarchia delle fonti del diritto italiano?",
         "Quali requisiti giuridici devono soddisfare i log di un server per essere prove in tribunale?",
         "Come garantisce la normativa italiana la validita' probatoria dei file informatici?",
-        # --- Formula/calcolo stabilito dalla legge (copertura Q7, Q19, Q25 stress test) ---
+        # --- Formula/calcolo stabilito dalla legge ---
         "Qual e' il metodo di calcolo stabilito dalla normativa italiana per il TFR?",
         "Come prevede la legge di calcolare questa indennita' economica spettante al lavoratore?",
         "Qual e' la formula legale per il calcolo dell'assegno di mantenimento dei figli?",
@@ -226,6 +236,11 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Quali sono le quote legittime di un'eredita' secondo le norme giuridiche?",
         # --- Smart contract con focus normativo ---
         "Quali clausole contrattuali automatiche prevede la legge per l'inadempimento?",
+        # --- Anti-trappola V1.1 ---
+        # Frase aggiunta per ancorare query sul TFR con lessico matematico esplicito:
+        # senza questa, "formula matematica esatta" e "calcolare" attraevano MATH,
+        # ignorando il contesto normativo che governa la risposta corretta.
+        "Qual e' la formula matematica esatta stabilita dalla legge per calcolare il TFR netto di un lavoratore dipendente?",
     ],
     'general': [
         # --- Cultura generale e domande aperte ---
@@ -265,7 +280,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Spiegami i temi principali e la struttura della Divina Commedia di Dante Alighieri.",
         "Quali sono le caratteristiche principali del Romanticismo letterario europeo?",
         "Come si distingue il periodo Barocco dal Rinascimento nell'arte italiana?",
-        # --- Ricette e cucina (copertura Q18 stress test) ---
+        # --- Ricette e cucina ---
         "Dammi una ricetta tradizionale con i dosaggi esatti degli ingredienti.",
         "Come si prepara questo piatto tipico della cucina italiana?",
         "Dammi una ricetta tradizionale per preparare la carbonara romana.",
@@ -339,7 +354,6 @@ def initialize_store() -> bool:
             print(f"   OK  VectorStore caricato da disco: {count} vettori in '{DB_PATH}'.")
             return True
         except Exception as e:
-            # Tabella corrotta o incompatibile: si ricade nel percorso di ricostruzione
             print(f"   WARN VectorStore: tabella esistente non apribile ({e}). Ricostruzione...")
             _table = None
 
@@ -399,7 +413,6 @@ def _get_table():
     if _table is not None:
         return _table
 
-    # Apertura lazy (rete di sicurezza)
     try:
         db = lancedb.connect(DB_PATH)
         if TABLE_NAME in db.table_names():
@@ -426,7 +439,7 @@ def classify_knn(text: str) -> Tuple[List[str], float, bool]:
     4. Determinare mono-dominio o ibrido in base alle soglie configurate.
 
     Condizione per attivare la pipeline ibrida (entrambe necessarie):
-    - second_votes >= knn_min_abs_votes   (es. >= 3 su 10)
+    - second_votes >= knn_min_abs_votes   (es. >= 4 su 10 da V6.3.1)
     - second_votes / (top + second) >= knn_min_vote_ratio   (es. >= 30%)
 
     Args:
@@ -443,20 +456,17 @@ def classify_knn(text: str) -> Tuple[List[str], float, bool]:
     min_votes = config.SEMANTIC_SETTINGS.get('knn_min_abs_votes',  _DEFAULT_MIN_ABS_VOTES)
     model     = config.SEMANTIC_SETTINGS['embedding_model']
 
-    # Verifica disponibilita' del DB
     table = _get_table()
     if table is None:
         print("WARN VectorStore non disponibile. Attivazione fallback a keyword.")
         return ['general'], 0.0, False
 
-    # Embedding della query
     query_vec = _embed(text, model)
     if query_vec is None:
         return ['general'], 0.0, False
 
     query_vec_norm = l2_normalize(query_vec)
 
-    # Ricerca k-NN — nativa LanceDB, senza dipendenza da pandas
     try:
         results = table.search(query_vec_norm).limit(k).to_list()
     except Exception as e:
@@ -466,7 +476,6 @@ def classify_knn(text: str) -> Tuple[List[str], float, bool]:
     if not results:
         return ['general'], 0.0, False
 
-    # Conteggio voti per dominio iterando sulla lista di dizionari nativa
     vote_counts: Dict[str, int] = {}
     for row in results:
         domain_val = row['domain']
@@ -477,11 +486,9 @@ def classify_knn(text: str) -> Tuple[List[str], float, bool]:
     second_domain             = ranked[1][0] if len(ranked) > 1 else None
     second_votes              = ranked[1][1] if len(ranked) > 1 else 0
 
-    # confidence: ratio voti del dominio primario sul totale estratto
     total_results = len(results)
     confidence    = top_votes / total_results if total_results > 0 else 0.0
 
-    # Logica ibrida con doppia condizione
     combined = top_votes + second_votes
     domains  = [top_domain]
 
@@ -491,7 +498,6 @@ def classify_knn(text: str) -> Tuple[List[str], float, bool]:
             and (second_votes / combined) >= min_ratio):
         domains.append(second_domain)
 
-    # Debug output
     if config.SEMANTIC_SETTINGS.get('debug', False):
         print(f"\n   [k-NN DEBUG] Voti: { {d: v for d, v in ranked} }")
         print(f"   [k-NN DEBUG] Domini={domains} | Confidence={confidence:.2f} "
@@ -526,7 +532,6 @@ if __name__ == "__main__":
         print(f"   WARN Impossibile rimuovere la tabella esistente: {_e}")
         print("      Tento comunque la ricostruzione con mode='overwrite'...\n")
 
-    # Resetta il riferimento globale per forzare il percorso di build
     _table = None
 
     ok = initialize_store()
