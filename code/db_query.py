@@ -140,7 +140,26 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Aggiungi blocchi try-catch-finally per gestire in sicurezza le eccezioni in questo blocco di codice.",
         "Implementa un test di integrazione per verificare la comunicazione tra frontend e API.",
         "Scrivi il codice per il profiling delle prestazioni e l'analisi del consumo di memoria in C#.",
-        "Sviluppa un sistema di mock per simulare le risposte di un servizio esterno nei test Jest."
+        "Sviluppa un sistema di mock per simulare le risposte di un servizio esterno nei test Jest.",
+
+        # --- Edge Cases e Ibridi Complessi (Stress Test) ---
+        "Implementa un parser in Rust per estrarre le clausole contrattuali e le scadenze da un file PDF.",
+        "Scrivi il codice per un motore fisico 2D che simula la gravità, l'attrito e le collisioni elastiche tra poligoni.",
+        "Sviluppa uno script per automatizzare l'invio delle fatture elettroniche tramite chiamate API REST.",
+        "Scrivi un programma in Go che calcola la probabilità statistica di vittoria in un gioco d'azzardo simulato.",
+        "Configura un firewall iptables da riga di comando per bloccare il traffico in entrata da specifiche nazioni.",
+        "Implementa la logica di un carrello e-commerce calcolando dinamicamente l'IVA e i codici sconto in JavaScript.",
+        "Scrivi una macro VBA per Excel che generi un report finanziario formattato partendo da dati grezzi in CSV.",
+        "Crea un bot in Python che monitora i prezzi e acquista automaticamente i biglietti per i concerti.",
+        "Implementa un algoritmo di crittografia omomorfica per eseguire addizioni su dati cifrati in linguaggio C.",
+        "Scrivi una query GraphQL complessa per recuperare l'albero genealogico e le relazioni di parentela di un utente."
+    
+        # --- PONTE: Coding <-> Math (Fisica Computazionale e Algoritmica Teorica) ---
+        "Implementa in C un simulatore fisico per il calcolo della traiettoria balistica considerando l'attrito dell'aria.",
+        "Scrivi uno script in Python per simulare l'evoluzione di un automa cellulare bidimensionale come il Gioco della Vita.",
+        "Sviluppa una libreria in Rust per il calcolo tensoriale e la moltiplicazione ottimizzata di matrici sparse.",
+        "Codice per calcolare i frattali dell'insieme di Mandelbrot e renderizzarli su una griglia di pixel.",
+        "Implementa l'algoritmo di crittografia ellittica (ECC) partendo dalle equazioni algebriche su campi finiti."
     ],
     
     'math': [
@@ -242,7 +261,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Dimostra per assurdo l'irrazionalità della radice quadrata del numero due.",
         "Dimostra che l'insieme dei numeri reali non è numerabile applicando l'argomento diagonale di Cantor.",
         "Spiega il teorema di incompletezza di Gödel e perché ha sconvolto i fondamenti della logica formale.",
-        "Applica l'algoritmo euclideo delle divisioni successive per calcolare il massimo comun divisore.",
+        "Applica l'alg কর্মরত euclideo delle divisioni successive per calcolare il massimo comun divisore.",
         "Risolvi la congruenza lineare modulo m usando i principi dell'aritmetica modulare.",
         "Verifica se l'insieme fornito costituisce un gruppo abeliano rispetto all'operazione data.",
         "Definisci i concetti di omomorfismo e isomorfismo tra due strutture algebriche o anelli.",
@@ -251,7 +270,29 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Quali sono gli autovalori e gli autovettori della matrice identità 3x3?",
         "Descrivi la teoria del calcolo matriciale necessaria per definire un prodotto tra tensori.",
         "Spiegami la derivazione matematica della formula del TFR stabilita dalla legge.",
-        "Analizza la struttura logica e le equazioni necessarie per descrivere un algoritmo di ricerca."
+        "Analizza la struttura logica e le equazioni necessarie per descrivere un algoritmo di ricerca.",
+        
+        # --- Ibridi Complessi (Stress Test) ---
+        "Dimostra la correttezza formale dell'algoritmo di ordinamento QuickSort tramite il principio di induzione.",
+        "Calcola il valore atteso e la varianza teorica del lancio simultaneo di due dadi truccati.",
+        "Spiega il modello matematico di Black-Scholes e la sua equazione differenziale per la valutazione dei derivati finanziari.",
+        "Analizza la topologia di una rete neurale artificiale dal punto di vista degli spazi metrici e normati.",
+        "Trova le soluzioni del sistema di equazioni differenziali non lineari che modella l'andamento di un'epidemia virale.",
+        "Dimostra la disuguaglianza isoperimetrica per le curve piane semplici, chiuse e di classe C1.",
+        "Spiega la teoria matematica dei giochi e l'equilibrio di Nash applicati al dilemma del prigioniero.",
+        "Calcola il limite teorico di compressione di una stringa di dati secondo la formula dell'entropia di Shannon.",
+        "Analizza la distribuzione asintotica dei numeri primi utilizzando la funzione zeta di Riemann e il prolungamento analitico.",
+        "Determina la metrica di similarità ottimale per calcolare la distanza matematica tra due sequenze di DNA."
+    
+        # --- PONTE: Math <-> Coding (Teoria Computazionale) ---
+        "Analizza la stabilità numerica e il condizionamento della matrice nel calcolo iterativo della traiettoria balistica.",
+        "Spiega la teoria matematica dietro la scomposizione ai valori singolari applicata alla compressione delle immagini.",
+        
+        # --- PONTE: Math <-> General (Matematica Applicata al Quotidiano) ---
+        "Qual è la proporzione matematica esatta per ricalcolare le dosi di una ricetta passando da 2 a 9 persone?",
+        "Come si imposta l'equazione per calcolare il reale tasso di sconto applicato durante i saldi stagionali?",
+        "Dimostra matematicamente come il tasso di cambio composto influisce sul costo reale di una vacanza all'estero.",
+        "Spiega con formule come calcolare il consumo medio di carburante e l'efficienza energetica di un veicolo su base mensile."
     ],
     
     'rights': [
@@ -363,7 +404,114 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Come si quantifica il danno biologico permanente usando le tabelle del Tribunale di Milano?",
         "Cosa prevede la normativa europea in merito al calcolo del TAEG nei contratti di finanziamento?",
         "Come si calcola l'imposta di registro e l'IVA per la compravendita immobiliare secondo l'erario.",
-        "Quali sono i criteri legali per determinare il superamento del tasso soglia dell'usura bancaria?"
+        "Quali sono i criteri legali per determinare il superamento del tasso soglia dell'usura bancaria?",
+
+        # --- Edge Cases e Ibridi Complessi (Stress Test) ---
+        "Di chi è la responsabilità civile e penale se un bot di trading algoritmico autonomo causa un crac finanziario?",
+        "Come si applica il diritto fallimentare alla liquidazione coatta di una piattaforma di exchange di criptovalute?",
+        "Quali sono le direttive anticipate di trattamento (biotestamento) e i limiti legali dell'eutanasia in Italia?",
+        "Cosa prevede il diritto internazionale marittimo e la Convenzione di Montego Bay riguardo al soccorso di naufraghi?",
+        "Qual è il procedimento legale e il calcolo esatto per contestare una cartella esattoriale prescritta presso l'Agenzia delle Entrate Riscossione?",
+        "Spiega i limiti legali e le sanzioni del Garante Privacy per l'utilizzo del riconoscimento facciale biometrico da parte delle forze dell'ordine.",
+        "Qual è la tutela giuridica del software e dei database originali rispetto alla disciplina dei brevetti per invenzioni industriali?",
+        "Quali sono i diritti del lavoratore dipendente e i limiti legali sul controllo a distanza tramite software di monitoraggio aziendale?",
+        "Come si ricalcolano matematicamente le tabelle millesimali di un condominio se un condomino effettua un ampliamento volumetrico?",
+        "Quali sono gli estremi legali per configurare il reato di stalking condominiale e quali prove documentali sono ammissibili in giudizio?"
+    
+        # --- Diritto Internazionale ---
+        "Quali sono i presupposti giuridici per l'estradizione di un cittadino verso uno Stato extra-europeo?",
+        "Spiega il ruolo della Corte Internazionale di Giustizia dell'Aia nella risoluzione delle controversie tra Stati.",
+        "Come si applica il principio di reciprocità nei trattati bilaterali sul commercio internazionale?",
+        "Cosa prevede la Convenzione di Ginevra in merito allo status e alla protezione dei prigionieri di guerra?",
+        "Spiega la differenza formale tra la ratifica di un trattato internazionale e la sua firma.",
+        "Quali sono le procedure per il riconoscimento delle sentenze civili straniere nell'ordinamento italiano?",
+        "Come interviene il diritto internazionale marittimo nella definizione delle acque territoriali e della zona economica esclusiva?",
+        "Spiega il concetto di immunità diplomatica e i casi in cui può essere revocata dallo Stato accreditante.",
+        "Quali sono gli strumenti giuridici previsti dall'OMC per sanzionare il dumping commerciale?",
+        "Cosa si intende per crimini contro l'umanità secondo lo Statuto di Roma della Corte Penale Internazionale?",
+        "Qual è l'iter procedurale per adire la Corte Europea dei Diritti dell'Uomo (CEDU) di Strasburgo?",
+        "Spiega l'istituto del riconoscimento degli Stati e l'effetto giuridico sui trattati preesistenti.",
+        "Quali sono le conseguenze giuridiche del recesso unilaterale da un'organizzazione internazionale?",
+        "Come si applica la clausola della nazione più favorita negli accordi tariffari internazionali?",
+        "Cosa stabilisce la giurisprudenza internazionale sul principio di non ingerenza negli affari interni di uno Stato?",
+        "Spiega la validità e l'efficacia delle consuetudini internazionali (jus cogens) rispetto ai trattati scritti.",
+        "Quali sono i requisiti legali per l'esecuzione di un lodo arbitrale internazionale secondo la Convenzione di New York?",
+        "Come si regola la successione degli Stati nei trattati in caso di smembramento o fusione territoriale?",
+        "Cosa prevede l'ordinamento internazionale per la tutela giuridica dei rifugiati politici?",
+        "Spiega la responsabilità internazionale degli Stati per atti illeciti commessi dai propri organi.",
+
+        # --- Diritto dell'Ambiente e Urbanistica ---
+        "Quali sono le sanzioni penali e amministrative per il reato di disastro ambientale e inquinamento delle falde acquifere?",
+        "Spiega la procedura per ottenere la Valutazione di Impatto Ambientale (VIA) per la costruzione di un'infrastruttura.",
+        "Cosa prevede il Testo Unico dell'Edilizia in caso di abusi edilizi e ordinanza di demolizione?",
+        "Come si richiede l'autorizzazione paesaggistica per un intervento edilizio in una zona sottoposta a vincolo?",
+        "Spiega il principio europeo 'chi inquina paga' e le responsabilità legali di bonifica dei siti contaminati.",
+        "Quali sono gli obblighi giuridici per lo smaltimento dei rifiuti speciali pericolosi e la loro tracciabilità?",
+        "Cosa stabilisce il piano regolatore generale (PRG) in merito alla destinazione d'uso dei suoli urbani e agricoli?",
+        "Come si calcolano matematicamente gli oneri di urbanizzazione per il rilascio del permesso di costruire?",
+        "Spiega il procedimento per l'adozione e l'approvazione del Piano di Governo del Territorio (PGT).",
+        "Quali sono le limitazioni legali all'edificabilità nelle zone sottoposte a vincolo idrogeologico?",
+        "Cosa prevede la normativa sulle emissioni in atmosfera e il sistema per lo scambio di quote (EU ETS)?",
+        "Spiega la procedura di espropriazione per pubblica utilità mirata alla realizzazione di un parco naturale.",
+        "Quali tutele legali esistono contro l'inquinamento acustico e le immissioni rumorose intollerabili?",
+        "Come viene disciplinato il condono edilizio e quali sono i termini di prescrizione per i reati contravvenzionali in materia?",
+        "Cosa si intende per perequazione urbanistica e come avviene il trasferimento dei diritti edificatori?",
+        "Spiega le normative per la tutela giuridica del demanio marittimo e i limiti per le concessioni balneari.",
+        "Quali sono le responsabilità civili dell'appaltatore in caso di gravi difetti di costruzione dell'immobile ex art. 1669 c.c.?",
+        "Come si impugna in tribunale una SCIA (Segnalazione Certificata di Inizio Attività) edilizia ritenuta illegittima?",
+        "Cosa stabilisce la direttiva europea per la tutela giuridica della qualità delle acque dei fiumi e dei laghi?",
+        "Spiega il funzionamento delle convenzioni urbanistiche e l'impegno dei privati nella realizzazione di opere pubbliche.",
+
+        # --- Diritto dell'Immigrazione ---
+        "Quali sono i requisiti anagrafici e reddituali previsti dal Testo Unico per il ricongiungimento familiare?",
+        "Spiega l'iter giuridico per presentare la domanda di protezione internazionale e asilo politico.",
+        "Quali sono le conseguenze giuridiche e le procedure per l'espulsione amministrativa del cittadino irregolare?",
+        "Come funziona il sistema delle quote d'ingresso per lavoratori extracomunitari previsto dal Decreto Flussi?",
+        "Spiega la differenza legale tra lo status di rifugiato, la protezione sussidiaria e la protezione speciale.",
+        "Quali sono i presupposti per la revoca o il rifiuto del rinnovo del permesso di soggiorno per lavoro subordinato?",
+        "Cosa prevede la normativa in merito al trattenimento degli stranieri nei Centri di Permanenza per i Rimpatri (CPR)?",
+        "Spiega la procedura legale per la conversione del permesso di soggiorno per motivi di studio in lavoro.",
+        "Quali sono le tutele giuridiche specifiche garantite ai minori stranieri non accompagnati (MSNA) in Italia?",
+        "Come si presenta ricorso d'urgenza in Tribunale contro un decreto prefettizio di espulsione?",
+        "Cosa stabilisce l'Accordo di Schengen in merito all'attraversamento delle frontiere e ai visti di breve durata?",
+        "Spiega i requisiti temporali e penali per l'ottenimento del permesso di soggiorno UE di lungo periodo.",
+        "Quali sono i doveri del datore di lavoro per l'assunzione di uno straniero e i reati di sfruttamento lavorativo?",
+        "Come si articola il reato di favoreggiamento dell'immigrazione clandestina secondo la giurisprudenza penale?",
+        "Qual è la procedura per l'ottenimento del visto d'ingresso per investitori stranieri (Investor Visa)?",
+        "Spiega i ricorsi legali esperibili in caso di silenzio-inadempimento della Pubblica Amministrazione sulla cittadinanza.",
+        "Cosa prevede la normativa per il rilascio del permesso di soggiorno temporaneo per cure mediche o gravidanza?",
+        "Quali sono le conseguenze penali per il cittadino che rientra illegalmente nel territorio dopo un rimpatrio forzato?",
+        "Spiega il ruolo del Tribunale per i Minorenni nell'autorizzazione all'ingresso dei familiari in deroga alla legge.",
+        "Come si applica il Regolamento di Dublino per determinare giuridicamente lo Stato competente per l'asilo?",
+
+        # --- Proprietà Intellettuale e Licenze Digitali ---
+        "Quali sono i requisiti di novità e originalità per ottenere la registrazione di un marchio a livello comunitario (EUIPO)?",
+        "Spiega la procedura legale per tutelare un brevetto per invenzione industriale e i termini della sua decadenza.",
+        "Come si configura il reato di contraffazione di opere dell'ingegno e pirateria digitale sul web?",
+        "Qual è la differenza giuridica tra la cessione esclusiva dei diritti di sfruttamento economico e una licenza d'uso?",
+        "Spiega come la giurisprudenza accerta il plagio musicale e la violazione del diritto d'autore.",
+        "Quali sono i limiti legali dell'eccezione di fair use per la parodia o la critica di materiale coperto da copyright?",
+        "Come si struttura legalmente un contratto di sviluppo software con clausola di trasferimento del codice sorgente?",
+        "Cosa prevede la normativa sulle licenze Creative Commons e le implicazioni della clausola 'Non opere derivate'?",
+        "Spiega le tutele legali previste per il segreto industriale e le clausole di non concorrenza (NDA).",
+        "Quali sono le procedure per presentare un ricorso UDRP contro il cybersquatting di un nome a dominio web?",
+        "Come si deposita e si tutela legalmente un disegno o modello industriale tramite l'organizzazione WIPO?",
+        "Quali sono le direttive europee riguardanti la tutela giuridica del diritto sui generis per le banche dati?",
+        "Spiega la responsabilità civile dei fornitori di servizi di hosting (ISP) in caso di contenuti illeciti degli utenti.",
+        "Quali sono i confini legali per l'utilizzo commerciale di immagini generate tramite intelligenza artificiale?",
+        "Come funziona la tutela del diritto all'immagine e alla voce nell'ambito del deepfake e delle produzioni video?",
+        "Cosa si intende per esaurimento del diritto di marchio e quali sono le implicazioni legali per le importazioni parallele?",
+        "Spiega la validità giuridica degli smart contract nella gestione automatizzata delle royalties per lo streaming musicale.",
+        "Qual è l'iter legale per registrare un formato televisivo originale presso la SIAE per proteggerlo da imitazioni?",
+        "Come si configurano le licenze software open source GPL e le obbligazioni legali legate all'effetto copyleft?",
+        "Quali sono gli strumenti giuridici cautelari e inibitori d'urgenza per bloccare la diffusione di un'opera contraffatta?"
+    
+        # --- PONTE: Rights <-> General (Diritto della Vita Quotidiana) ---
+        "Quali sono le clausole obbligatorie per registrare un contratto di affitto transitorio per studenti universitari?",
+        "Cosa prevede il Codice del Consumo o la Carta dei Diritti del Passeggero per il rimborso di un volo cancellato o in ritardo?",
+        "Come si attiva la garanzia legale di conformità per un prodotto difettoso acquistato su un portale e-commerce?",
+        "Qual è la procedura per la constatazione amichevole (CID) e l'attribuzione delle responsabilità civili in un tamponamento a catena?",
+        "Quali sono le norme esatte del codice civile riguardanti il rispetto delle distanze legali e l'immissione di fumo tra vicini?"
     ],
     
     'general': [
@@ -468,6 +616,78 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Quali sono i principali festival culturali e musicali nel mondo che vale la pena visitare?",
         "Come è cambiata la televisione con l'avvento delle piattaforme di streaming come Netflix?",
         "Spiega l'evoluzione dei videogiochi dalle sale arcade fino alle console di ultima generazione."
+    
+        # --- Giochi, Sport e Tempo Libero (Trappole per Rights, Math, Coding) ---
+        "Quali sono le regole ufficiali e la formula esatta per il calcolo del punteggio nel bowling?",
+        "Spiegami la legge del vantaggio e la regola del fuorigioco nel rugby moderno.",
+        "Dammi una formula statistica o una strategia infallibile per vincere a Risiko valutando i dadi.",
+        "Come si redige un contratto di acquisto fittizio per scambiarsi i giocatori al Fantacalcio?",
+        "Spiega l'architettura di un torneo di tennis a eliminazione diretta e il calcolo delle teste di serie.",
+        
+        # --- Linguistica, Scrittura e Letteratura (Trappole per Coding e Rights) ---
+        "Come si struttura l'architettura narrativa e lo sviluppo dei personaggi in un romanzo giallo?",
+        "Qual è il linguaggio dei fiori e qual è il significato storico di regalare una rosa gialla?",
+        "Aiutami a scrivere uno script teatrale o una sceneggiatura per una commedia brillante in tre atti.",
+        "Qual è il programma di studio ideale e le regole mnemoniche per imparare una nuova lingua in sei mesi?",
+        "Fai un'analisi letteraria e una recensione critica del libro 'Il Codice da Vinci' di Dan Brown.",
+        
+        # --- Cucina, Dietetica e Fai-da-te (Trappole per Math, Coding, Rights) ---
+        "Dammi l'equazione perfetta e la proporzione matematica tra lievito, farina e idratazione per la pizza.",
+        "Qual è il codice di comportamento non scritto e le rigide regole di galateo a tavola in Giappone?",
+        "Scrivi un programma di allenamento settimanale e la dieta per lo sviluppo della massa muscolare a casa.",
+        "Spiegami il processo logico passo-passo per l'assemblaggio e il montaggio di un armadio IKEA.",
+        "In cosa consiste il protocollo di allenamento Tabata e come si implementa a corpo libero?",
+        
+        # --- Psicologia, Sociologia e Relazioni (Trappole per Rights e Coding) ---
+        "Spiega il concetto filosofico e sociologico di 'contratto sociale' secondo Jean-Jacques Rousseau.",
+        "Quali sono le dinamiche psicologiche e le regole non scritte per mantenere viva l'intesa in un matrimonio?",
+        "Come si fa il debugging delle proprie emozioni per superare un trauma psicologico o gestire l'ansia?",
+        "Illustrami la legge dell'attrazione e come viene utilizzata nella psicologia motivazionale moderna.",
+        "Qual era il rigido codice etico, morale e di condotta dei cavalieri templari durante il medioevo?",
+        
+        # --- Musica, Arte e Cinema (Trappole per Coding e Math) ---
+        "Spiegami il linguaggio musicale, i tempi e come si leggono le note su uno spartito classico.",
+        "Qual è l'algoritmo mentale o il processo creativo che usa un regista per decidere il montaggio di un film?",
+        "Come si calcola la sezione aurea e come è stata applicata nell'architettura e nell'arte rinascimentale?",
+        "Quali sono le regole prospettiche e geometriche per disegnare un paesaggio urbano in modo realistico?",
+        "Quali sono le direttive estetiche fondamentali per scattare una fotografia di ritratto con luce naturale?",
+        
+        # --- Scienze della Terra, Biologia e Natura (Trappole per Rights, Coding e Math) ---
+        "Spiegami la legge di gravitazione universale di Newton e il suo impatto sulla comprensione dell'universo.",
+        "Qual è il codice genetico umano e come avviene esattamente il processo di trascrizione e traduzione del DNA?",
+        "Come funziona l'ecosistema marino e quali sono le sue leggi e regole di sopravvivenza naturale?",
+        "Illustrami il processo geologico di formazione delle rocce ignee, sedimentarie e metamorfiche.",
+        "Come si esegue il calcolo approssimativo dell'età di un albero osservando la sezione dei suoi anelli?",
+        
+        # --- Economia Domestica e Organizzazione Pratica (Trappole per Math e Rights) ---
+        "Dammi una strategia pratica e una formula mentale per tagliare le spese e gestire il budget familiare.",
+        "Quali sono le regole base e le procedure logistiche per organizzare un trasloco senza stressarsi?",
+        "Spiegami la legge economica della domanda e dell'offerta applicata ai piccoli mercati rionali o di quartiere.",
+        "Come fare il calcolo veloce a mente dei macronutrienti e delle calorie mentre si fa la spesa al supermercato?",
+        "Qual è il processo decisionale migliore per scegliere lo stile e l'arredamento di un piccolo soggiorno?",
+        
+        # --- Moda, Design e Stile di Vita (Trappole per Coding e Math) ---
+        "Come si crea una palette cromatica e qual è l'equazione visiva per abbinare i vestiti in modo elegante?",
+        "Spiegami le rigide regole del dress code aziendale e come bisogna vestirsi per un colloquio formale.",
+        "Qual è il linguaggio del corpo e come si possono interpretare le microespressioni facciali umane?",
+        "Come si sviluppa un proprio stile personale prendendo ispirazione dal design e dall'architettura d'interni?",
+        "Illustrami la formula della felicità secondo il concetto danese dell'Hygge e come applicarla in casa.",
+        
+        # --- Curiosità e Scienze Cognitive (Trappole per Math e Rights) ---
+        "Spiega la matematica nascosta nelle illusioni ottiche e le regole con cui il cervello umano viene ingannato.",
+        "Quali sono le direttive educative e le regole principali per addestrare un cucciolo di cane nei primi mesi?",
+        "Quali sono i diritti e i doveri storici del 'padrino' o della 'madrina' nel contesto dei sacramenti religiosi?"
+
+        # --- PONTE: General <-> Math (Calcoli Pratici Quotidiani) ---
+        "Qual è il metodo mentale più veloce per calcolare al volo lo sconto del 30% su un capo d'abbigliamento in negozio?",
+        "Come faccio a calcolare esattamente quanta vernice o metri quadri mi servono per dipingere le pareti della mia stanza?",
+        "Spiegami come si convertono mentalmente i gradi Fahrenheit in Celsius quando si viaggia negli Stati Uniti.",
+        
+        # --- PONTE: General <-> Rights (Pratiche e Burocrazia di Tutti i Giorni) ---
+        "Quali sono i documenti necessari e i passi pratici da fare al Comune per cambiare la residenza in una nuova città?",
+        "Dammi dei consigli pratici su cosa controllare attentamente prima di firmare un contratto d'affitto per la prima volta.",
+        "Come funziona la procedura pratica per fare il reso gratuito su Amazon e quanti giorni ho per restituire il pacco?",
+        "Spiegami cosa fare praticamente e chi chiamare immediatamente subito dopo aver fatto un piccolo incidente in auto."
     ]
 
 }
