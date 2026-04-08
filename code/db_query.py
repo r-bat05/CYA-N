@@ -261,7 +261,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Dimostra per assurdo l'irrazionalità della radice quadrata del numero due.",
         "Dimostra che l'insieme dei numeri reali non è numerabile applicando l'argomento diagonale di Cantor.",
         "Spiega il teorema di incompletezza di Gödel e perché ha sconvolto i fondamenti della logica formale.",
-        "Applica l'alg কর্মরত euclideo delle divisioni successive per calcolare il massimo comun divisore.",
+        "Applica l'algoritmo euclideo delle divisioni successive per calcolare il massimo comun divisore.",
         "Risolvi la congruenza lineare modulo m usando i principi dell'aritmetica modulare.",
         "Verifica se l'insieme fornito costituisce un gruppo abeliano rispetto all'operazione data.",
         "Definisci i concetti di omomorfismo e isomorfismo tra due strutture algebriche o anelli.",
@@ -269,7 +269,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         # --- Anti-trappola ed Edge Cases ---
         "Quali sono gli autovalori e gli autovettori della matrice identità 3x3?",
         "Descrivi la teoria del calcolo matriciale necessaria per definire un prodotto tra tensori.",
-        "Spiegami la derivazione matematica della formula del TFR stabilita dalla legge.",
+        "Spiegami la derivazione matematica della formula del TFR stabilita dalla normativa.",
         "Analizza la struttura logica e le equazioni necessarie per descrivere un algoritmo di ricerca.",
         
         # --- Ibridi Complessi (Stress Test) ---
@@ -535,7 +535,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Come si coltivano le piante da appartamento e quanto spesso vanno annaffiate?",
         "Qual è il metodo migliore per pulire le fughe dei pavimenti e rimuovere la muffa?",
         "Spiegami come strutturare un curriculum vitae efficace per trovare lavoro rapidamente.",
-        "Quali sono le regole di etichetta e buone maniere per una cena di gala formale?",
+        "Quali sono le usanze e le buone maniere da rispettare durante una cena di gala formale?",
         "Dammi dei consigli su come arredare un soggiorno piccolo per ottimizzare gli spazi.",
         "Come si fa la manutenzione ordinaria di una bicicletta da corsa o mountain bike?",
         "Quali sono i passaggi per dipingere una stanza e preparare i muri correttamente?",
@@ -592,12 +592,12 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         # --- Benessere, Sport e Tempo Libero ---
         "Quali sono i benefici della meditazione mindfulness per la salute mentale a lungo termine?",
         "Dammi una routine di esercizi di stretching da fare a casa per migliorare la flessibilità.",
-        "Spiegami le regole fondamentali del tennis e come funziona il punteggio dei set.",
+        "Come si gioca a tennis e come funziona il sistema di punteggio dei set?",
         "Quali sono le differenze tra lo yoga Hatha e lo yoga Vinyasa?",
         "Come si gioca a pallavolo? Spiegami i ruoli dei giocatori in campo e i falli principali.",
         "Quali sono i principi di una dieta equilibrata per chi pratica sport a livello amatoriale?",
-        "Spiegami le regole del fuorigioco nel calcio moderno e come interviene il VAR durante la partita.",
-        "Quali sono i fondamenti e le regole ufficiali per giocare a scacchi in modo competitivo?",
+        "Come funziona il fuorigioco nel calcio moderno e come interviene il VAR durante la partita?",
+        "Come funziona il gioco degli scacchi e come si gioca in modo competitivo?",
         "Dammi dei consigli su come iniziare a correre (running) evitando infortuni alle ginocchia.",
         "Come si organizza un allenamento funzionale a corpo libero per aumentare la forza?",
         
@@ -615,68 +615,63 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Spiegami il concetto di economia circolare e come può ridurre l'impatto ambientale dei rifiuti.",
         "Quali sono i principali festival culturali e musicali nel mondo che vale la pena visitare?",
         "Come è cambiata la televisione con l'avvento delle piattaforme di streaming come Netflix?",
-        "Spiega l'evoluzione dei videogiochi dalle sale arcade fino alle console di ultima generazione."
+        "Spiega l'evoluzione dei videogiochi dalle sale arcade fino alle console di ultima generazione.",
     
         # --- Giochi, Sport e Tempo Libero (Trappole per Rights, Math, Coding) ---
-        "Quali sono le regole ufficiali e la formula esatta per il calcolo del punteggio nel bowling?",
-        "Spiegami la legge del vantaggio e la regola del fuorigioco nel rugby moderno.",
+        "Come funziona il sistema di punteggio nel bowling e come si calcola il risultato finale?",
+        "Come funziona il vantaggio e il fuorigioco nel rugby moderno?",
         "Dammi una formula statistica o una strategia infallibile per vincere a Risiko valutando i dadi.",
-        "Come si redige un contratto di acquisto fittizio per scambiarsi i giocatori al Fantacalcio?",
         "Spiega l'architettura di un torneo di tennis a eliminazione diretta e il calcolo delle teste di serie.",
         
         # --- Linguistica, Scrittura e Letteratura (Trappole per Coding e Rights) ---
         "Come si struttura l'architettura narrativa e lo sviluppo dei personaggi in un romanzo giallo?",
         "Qual è il linguaggio dei fiori e qual è il significato storico di regalare una rosa gialla?",
         "Aiutami a scrivere uno script teatrale o una sceneggiatura per una commedia brillante in tre atti.",
-        "Qual è il programma di studio ideale e le regole mnemoniche per imparare una nuova lingua in sei mesi?",
+        "Qual è il programma di studio ideale e le tecniche mnemoniche per imparare una nuova lingua in sei mesi?",
         "Fai un'analisi letteraria e una recensione critica del libro 'Il Codice da Vinci' di Dan Brown.",
         
         # --- Cucina, Dietetica e Fai-da-te (Trappole per Math, Coding, Rights) ---
         "Dammi l'equazione perfetta e la proporzione matematica tra lievito, farina e idratazione per la pizza.",
-        "Qual è il codice di comportamento non scritto e le rigide regole di galateo a tavola in Giappone?",
+        "Come ci si comporta a tavola in Giappone e quali sono le usanze del galateo locale?",
         "Scrivi un programma di allenamento settimanale e la dieta per lo sviluppo della massa muscolare a casa.",
         "Spiegami il processo logico passo-passo per l'assemblaggio e il montaggio di un armadio IKEA.",
         "In cosa consiste il protocollo di allenamento Tabata e come si implementa a corpo libero?",
         
         # --- Psicologia, Sociologia e Relazioni (Trappole per Rights e Coding) ---
-        "Spiega il concetto filosofico e sociologico di 'contratto sociale' secondo Jean-Jacques Rousseau.",
-        "Quali sono le dinamiche psicologiche e le regole non scritte per mantenere viva l'intesa in un matrimonio?",
+        "Quali sono le dinamiche psicologiche e i fattori chiave per mantenere viva l'intesa in un matrimonio?",
         "Come si fa il debugging delle proprie emozioni per superare un trauma psicologico o gestire l'ansia?",
-        "Illustrami la legge dell'attrazione e come viene utilizzata nella psicologia motivazionale moderna.",
-        "Qual era il rigido codice etico, morale e di condotta dei cavalieri templari durante il medioevo?",
-        
+        "Illustrami il principio dell'attrazione e come viene applicato nella psicologia motivazionale moderna.",
+
         # --- Musica, Arte e Cinema (Trappole per Coding e Math) ---
         "Spiegami il linguaggio musicale, i tempi e come si leggono le note su uno spartito classico.",
-        "Qual è l'algoritmo mentale o il processo creativo che usa un regista per decidere il montaggio di un film?",
+        "Qual è il processo creativo che usa un regista per decidere il montaggio di un film?",
         "Come si calcola la sezione aurea e come è stata applicata nell'architettura e nell'arte rinascimentale?",
-        "Quali sono le regole prospettiche e geometriche per disegnare un paesaggio urbano in modo realistico?",
-        "Quali sono le direttive estetiche fondamentali per scattare una fotografia di ritratto con luce naturale?",
+        "Quali sono le tecniche prospettiche e geometriche per disegnare un paesaggio urbano in modo realistico?",
+        "Quali sono i principi estetici fondamentali per scattare una fotografia di ritratto con luce naturale?",
         
         # --- Scienze della Terra, Biologia e Natura (Trappole per Rights, Coding e Math) ---
-        "Spiegami la legge di gravitazione universale di Newton e il suo impatto sulla comprensione dell'universo.",
-        "Qual è il codice genetico umano e come avviene esattamente il processo di trascrizione e traduzione del DNA?",
-        "Come funziona l'ecosistema marino e quali sono le sue leggi e regole di sopravvivenza naturale?",
+        "Spiegami il principio di gravitazione universale di Newton e il suo impatto sulla comprensione dell'universo.",
+        "Qual è la sequenza del genoma umano e come avviene esattamente il processo di trascrizione e traduzione del DNA?",
+        "Come funziona l'ecosistema marino e i meccanismi di sopravvivenza delle specie che lo abitano?",
         "Illustrami il processo geologico di formazione delle rocce ignee, sedimentarie e metamorfiche.",
         "Come si esegue il calcolo approssimativo dell'età di un albero osservando la sezione dei suoi anelli?",
         
         # --- Economia Domestica e Organizzazione Pratica (Trappole per Math e Rights) ---
         "Dammi una strategia pratica e una formula mentale per tagliare le spese e gestire il budget familiare.",
-        "Quali sono le regole base e le procedure logistiche per organizzare un trasloco senza stressarsi?",
-        "Spiegami la legge economica della domanda e dell'offerta applicata ai piccoli mercati rionali o di quartiere.",
+        "Come ci si organizza per affrontare un trasloco senza stressarsi?",
         "Come fare il calcolo veloce a mente dei macronutrienti e delle calorie mentre si fa la spesa al supermercato?",
         "Qual è il processo decisionale migliore per scegliere lo stile e l'arredamento di un piccolo soggiorno?",
         
         # --- Moda, Design e Stile di Vita (Trappole per Coding e Math) ---
         "Come si crea una palette cromatica e qual è l'equazione visiva per abbinare i vestiti in modo elegante?",
-        "Spiegami le rigide regole del dress code aziendale e come bisogna vestirsi per un colloquio formale.",
+        "Come bisogna vestirsi in ambito lavorativo e come presentarsi al meglio per un colloquio formale?",
         "Qual è il linguaggio del corpo e come si possono interpretare le microespressioni facciali umane?",
         "Come si sviluppa un proprio stile personale prendendo ispirazione dal design e dall'architettura d'interni?",
         "Illustrami la formula della felicità secondo il concetto danese dell'Hygge e come applicarla in casa.",
         
         # --- Curiosità e Scienze Cognitive (Trappole per Math e Rights) ---
-        "Spiega la matematica nascosta nelle illusioni ottiche e le regole con cui il cervello umano viene ingannato.",
-        "Quali sono le direttive educative e le regole principali per addestrare un cucciolo di cane nei primi mesi?",
-        "Quali sono i diritti e i doveri storici del 'padrino' o della 'madrina' nel contesto dei sacramenti religiosi?"
+        "Spiega la matematica nascosta nelle illusioni ottiche e i meccanismi percettivi con cui il cervello viene ingannato.",
+        "Come si addestra efficacemente un cucciolo di cane nei primi mesi di vita?",
 
         # --- PONTE: General <-> Math (Calcoli Pratici Quotidiani) ---
         "Qual è il metodo mentale più veloce per calcolare al volo lo sconto del 30% su un capo d'abbigliamento in negozio?",
@@ -685,7 +680,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         
         # --- PONTE: General <-> Rights (Pratiche e Burocrazia di Tutti i Giorni) ---
         "Quali sono i documenti necessari e i passi pratici da fare al Comune per cambiare la residenza in una nuova città?",
-        "Dammi dei consigli pratici su cosa controllare attentamente prima di firmare un contratto d'affitto per la prima volta.",
+        "Dammi dei consigli pratici su cosa verificare prima di prendere in affitto un appartamento per la prima volta.",
         "Come funziona la procedura pratica per fare il reso gratuito su Amazon e quanti giorni ho per restituire il pacco?",
         "Spiegami cosa fare praticamente e chi chiamare immediatamente subito dopo aver fatto un piccolo incidente in auto."
     ]
