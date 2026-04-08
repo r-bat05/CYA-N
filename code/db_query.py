@@ -18,7 +18,19 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Come si usa il costrutto switch-case per valutare molteplici clausole all'interno di un codice in C#?",
         "Sviluppa un modulo riutilizzabile in Python seguendo le best practice di packaging.",
         "Implementa un sistema di gestione delle eccezioni personalizzate in Ruby.",
-        
+
+        # --- Manipolazione Base dei Dati (FIX CRITICITÀ 2) ---
+        "Scrivi una funzione Python che ordina una lista di dizionari in base al valore di una chiave specifica.",
+        "Come si filtra una lista in Python usando una list comprehension o la funzione filter?",
+        "Scrivi il codice per iterare su tutti i valori di un dizionario Python e stamparne le chiavi.",
+        "Come si rimuovono i duplicati da una lista Python preservando l'ordine originale degli elementi?",
+        "Implementa una funzione che raggruppa una lista di oggetti per un attributo comune in Python.",
+        "Come si accede e si modifica il valore di una chiave specifica all'interno di un dizionario annidato?",
+        "Scrivi il codice per unire due liste di dizionari Python usando una chiave comune come identificatore.",
+        "Come si ordina un array di stringhe in ordine alfabetico inverso in JavaScript?",
+        "Implementa una funzione per trovare e restituire tutti gli elementi duplicati in una lista Python.",
+        "Come si converte una lista di tuple in un dizionario Python?",
+
         # --- Calcolo Numerico e Ricerca Operativa (Implementazione) ---
         "Scrivi uno script Python che utilizza il metodo di Newton-Raphson per trovare le radici di un polinomio.",
         "Implementa l'algoritmo del simplesso in C++ per risolvere problemi di programmazione lineare.",
@@ -33,7 +45,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Implementa la scomposizione ai valori singolari (SVD) in codice Python per la riduzione della dimensionalità.",
         "Sviluppa un algoritmo di programmazione dinamica per ottimizzare l'allocazione delle risorse in un processo.",
         "Scrivi il codice sorgente per una simulazione di fluidodinamica computazionale bidimensionale.",
-        
+
         # --- Frontend e Web Development ---
         "Crea un componente React che gestisce uno stato globale usando la Context API.",
         "Come si centra un div verticalmente e orizzontalmente usando CSS Flexbox o Grid?",
@@ -51,7 +63,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Scrivi il codice per il lazy loading delle immagini in una pagina web ad alte prestazioni.",
         "Sviluppa un'applicazione web progressiva (PWA) con Service Workers per l'accesso offline.",
         "Configura il rendering lato server (SSR) per un'applicazione frontend moderna.",
-        
+
         # --- Backend, API e Server ---
         "Spiegami la differenza tra promise e async/await in JavaScript con un esempio pratico di codice.",
         "Crea un server backend usando Node.js e il framework Express.",
@@ -69,7 +81,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Implementa il meccanismo di rate limiting per proteggere le tue API in Node.js.",
         "Scrivi uno script Node.js per elaborare stream di dati binari e salvarli su file.",
         "Sviluppa un sistema di code di messaggi (message broker) usando RabbitMQ o Kafka in Python.",
-        
+
         # --- Database e SQL ---
         "Scrivi una query SQL con costrutti INNER JOIN e GROUP BY.",
         "Come creo un indice su una tabella PostgreSQL per ottimizzare i tempi di lettura?",
@@ -84,7 +96,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Scrivi una query MongoDB complessa usando l'aggregation framework.",
         "Implementa la logica di replica e sharding per un database Cassandra.",
         "Ottimizza lo schema del database per supportare query analitiche (OLAP) in tempo reale.",
-        
+
         # --- DevOps, Git, Docker e OS ---
         "Qual è il comando Git per fare il merge di un branch ed evitare un fast-forward?",
         "Spiegami passo passo come risolvere un merge conflict su GitHub o GitLab.",
@@ -102,7 +114,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Crea uno script di automazione per il backup periodico del database su Amazon S3.",
         "Sviluppa una configurazione Terraform per istanziare macchine virtuali su Azure o AWS.",
         "Scrivi uno script in Python per monitorare l'utilizzo della CPU e della memoria del server in tempo reale.",
-        
+
         # --- Cybersecurity e Crittografia Applicata ---
         "Implementa l'algoritmo di crittografia RSA in Python per cifrare messaggi di testo.",
         "Scrivi il codice per generare un hash sicuro di una password usando bcrypt o argon2.",
@@ -112,7 +124,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Implementa un sistema di crittografia end-to-end per la trasmissione di dati JSON.",
         "Crea una funzione JavaScript che implementa il protocollo OAuth2 per l'autorizzazione.",
         "Scrivi il codice sorgente per un generatore di token di sessione sicuri e casuali.",
-        
+
         # --- ML/AI, Data Science e Automazione ---
         "Scrivi il codice per l'addestramento di una rete neurale convoluzionale usando PyTorch.",
         "Implementa un modello di regressione lineare da zero usando solo la libreria NumPy.",
@@ -123,14 +135,14 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Scrivi il codice per il fine-tuning di un modello Transformer usando la libreria HuggingFace.",
         "Crea una funzione per il calcolo della similarità coseno tra due vettori densi in Python.",
         "Sviluppa uno script per l'estrazione di feature testuali (TF-IDF) da un dataset di documenti.",
-        
+
         # --- Low-Level e Sistemi Embedded ---
         "Scrivi il codice assembly per eseguire una somma tra registri in architettura x86.",
         "Sviluppa un semplice driver per il kernel Linux che scrive messaggi nel buffer di log.",
         "Implementa la gestione degli interrupt hardware in codice C per un microcontrollore Arduino.",
         "Scrivi il codice per comunicare con un sensore tramite protocollo I2C o SPI in C++.",
         "Sviluppa un gestore di memoria custom per allocare blocchi di dati a dimensione fissa.",
-        
+
         # --- Debugging, Errori e Testing ---
         "Correggi questo bug nel codice sorgente e rimuovi gli errori di compilazione.",
         "Come faccio il debug di questa eccezione o runtime error nel mio programma?",
@@ -142,6 +154,34 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Scrivi il codice per il profiling delle prestazioni e l'analisi del consumo di memoria in C#.",
         "Sviluppa un sistema di mock per simulare le risposte di un servizio esterno nei test Jest.",
 
+        # --- PONTE: Coding <-> Rights (FIX CRITICITÀ 1) ---
+        "Scrivi uno script Python che anonimizza i dati personali in un database SQL rispettando il GDPR europeo.",
+        "Implementa il principio di privacy by design in un'architettura software per la gestione dei dati utente.",
+        "Scrivi il codice per garantire la conformità normativa nella raccolta e nel trattamento dei dati personali.",
+        "Come si implementa tecnicamente il diritto all'oblio cancellando irreversibilmente i record di un utente dal database?",
+        "Sviluppa uno script che genera log firmati digitalmente con validità probatoria ammissibile in sede legale.",
+        "Scrivi il codice per uno smart contract Solidity che esegue automaticamente le clausole di un accordo commerciale.",
+        "Implementa un sistema di audit trail immutabile per tracciare gli accessi ai dati sensibili rispettando le normative.",
+        "Come si struttura il codice di un'app per raccogliere il consenso informato degli utenti secondo la direttiva ePrivacy?",
+        "Scrivi il codice per pseudonimizzare i dati personali in un dataset prima di condividerlo con terze parti.",
+        "Sviluppa un modulo software che implementi il controllo degli accessi basato su ruoli (RBAC) secondo i requisiti legali.",
+        "Come si implementa tecnicamente la portabilità dei dati permettendo all'utente di esportare il proprio profilo in JSON?",
+        "Scrivi uno script che verifica automaticamente la conformità GDPR di un database rilevando campi non cifrati.",
+        "Implementa in Python la firma digitale di documenti contrattuali usando certificati X.509 validi legalmente.",
+        "Scrivi il codice per un sistema di notifica automatica delle violazioni dei dati personali entro 72 ore come previsto dalla legge.",
+
+        # --- PONTE: Coding <-> Math ---
+        "Implementa in C++ l'algoritmo della Trasformata di Fourier Veloce (FFT) per analizzare un segnale discreto.",
+        "Scrivi il codice Python che implementa la scomposizione QR di una matrice usando l'algoritmo di Gram-Schmidt.",
+        "Sviluppa uno script che calcola numericamente gli autovalori di una matrice con il metodo delle potenze in Python.",
+        "Implementa in C++ il metodo di Newton-Raphson per trovare le radici reali di un polinomio di terzo grado.",
+        "Scrivi il codice per il calcolo dell'integrale definito usando la quadratura di Gauss-Legendre in Python.",
+        "Implementa l'algoritmo di eliminazione di Gauss-Jordan in C++ per risolvere un sistema lineare denso.",
+        "Sviluppa uno script Python che calcola la derivata numerica di una funzione usando differenze finite centrate.",
+        "Scrivi il codice per risolvere numericamente un'equazione differenziale ordinaria col metodo Runge-Kutta 4.",
+        "Implementa in Python la regressione lineare multipla calcolando i coefficienti tramite la formula delle equazioni normali.",
+        "Scrivi uno script che calcola la distribuzione di probabilità binomiale e la visualizza con un istogramma in Matplotlib.",
+
         # --- Edge Cases e Ibridi Complessi (Stress Test) ---
         "Implementa un parser in Rust per estrarre le clausole contrattuali e le scadenze da un file PDF.",
         "Scrivi il codice per un motore fisico 2D che simula la gravità, l'attrito e le collisioni elastiche tra poligoni.",
@@ -152,8 +192,8 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Scrivi una macro VBA per Excel che generi un report finanziario formattato partendo da dati grezzi in CSV.",
         "Crea un bot in Python che monitora i prezzi e acquista automaticamente i biglietti per i concerti.",
         "Implementa un algoritmo di crittografia omomorfica per eseguire addizioni su dati cifrati in linguaggio C.",
-        "Scrivi una query GraphQL complessa per recuperare l'albero genealogico e le relazioni di parentela di un utente."
-    
+        "Scrivi una query GraphQL complessa per recuperare l'albero genealogico e le relazioni di parentela di un utente.",
+
         # --- PONTE: Coding <-> Math (Fisica Computazionale e Algoritmica Teorica) ---
         "Implementa in C un simulatore fisico per il calcolo della traiettoria balistica considerando l'attrito dell'aria.",
         "Scrivi uno script in Python per simulare l'evoluzione di un automa cellulare bidimensionale come il Gioco della Vita.",
@@ -161,7 +201,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Codice per calcolare i frattali dell'insieme di Mandelbrot e renderizzarli su una griglia di pixel.",
         "Implementa l'algoritmo di crittografia ellittica (ECC) partendo dalle equazioni algebriche su campi finiti."
     ],
-    
+
     'math': [
         # --- Analisi Matematica 1 (Limiti, Serie, Derivate, Integrali) ---
         "Calcola il limite per x che tende a infinito di questa funzione razionale.",
@@ -271,7 +311,26 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Descrivi la teoria del calcolo matriciale necessaria per definire un prodotto tra tensori.",
         "Spiegami la derivazione matematica della formula del TFR stabilita dalla normativa.",
         "Analizza la struttura logica e le equazioni necessarie per descrivere un algoritmo di ricerca.",
-        
+
+        # --- PONTE: Math <-> Rights (FIX CRITICITÀ 1) ---
+        "Qual è la formula matematica esatta stabilita dalla normativa per calcolare il TFR netto di un lavoratore?",
+        "Come si calcola matematicamente il piano di ammortamento alla francese secondo quanto previsto dalla legge sul credito?",
+        "Qual è il metodo numerico previsto per legge per l'adeguamento ISTAT degli assegni di mantenimento?",
+        "Come si quantifica il danno biologico permanente usando le tabelle risarcitorie del Tribunale di Milano?",
+        "Qual è il calcolo legale esatto per la ripartizione millesimale delle spese condominiali di rifacimento tetto?",
+        "Come si determinano matematicamente i valori soglia del tasso usura secondo le circolari della Banca d'Italia?",
+        "Quale procedura di calcolo prevede il codice civile per la rivalutazione monetaria dei crediti risarcitori?",
+        "Come si calcolano gli interessi moratori su un debito commerciale secondo le direttive europee sui ritardi di pagamento?",
+        "Qual è la formula normativa per determinare il valore fiscale di un immobile ai fini dell'imposta di registro?",
+        "Come si calcolano matematicamente le quote di legittima e la quota disponibile in una successione ereditaria complessa?",
+        "Quale modello matematico stabilisce la legge per il calcolo dell'equo indennizzo in caso di espropriazione?",
+        "Come si determina numericamente il tasso effettivo globale (TAEG) secondo la normativa europea sul credito al consumo?",
+        "Qual è il calcolo previsto dalla normativa per la determinazione del valore di avviamento di un'azienda in sede di cessione?",
+
+        # --- PONTE: Math <-> Coding (Teoria Computazionale) ---
+        "Analizza la stabilità numerica e il condizionamento della matrice nel calcolo iterativo della traiettoria balistica.",
+        "Spiega la teoria matematica dietro la scomposizione ai valori singolari applicata alla compressione delle immagini.",
+
         # --- Ibridi Complessi (Stress Test) ---
         "Dimostra la correttezza formale dell'algoritmo di ordinamento QuickSort tramite il principio di induzione.",
         "Calcola il valore atteso e la varianza teorica del lancio simultaneo di due dadi truccati.",
@@ -282,19 +341,15 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Spiega la teoria matematica dei giochi e l'equilibrio di Nash applicati al dilemma del prigioniero.",
         "Calcola il limite teorico di compressione di una stringa di dati secondo la formula dell'entropia di Shannon.",
         "Analizza la distribuzione asintotica dei numeri primi utilizzando la funzione zeta di Riemann e il prolungamento analitico.",
-        "Determina la metrica di similarità ottimale per calcolare la distanza matematica tra due sequenze di DNA."
-    
-        # --- PONTE: Math <-> Coding (Teoria Computazionale) ---
-        "Analizza la stabilità numerica e il condizionamento della matrice nel calcolo iterativo della traiettoria balistica.",
-        "Spiega la teoria matematica dietro la scomposizione ai valori singolari applicata alla compressione delle immagini.",
-        
+        "Determina la metrica di similarità ottimale per calcolare la distanza matematica tra due sequenze di DNA.",
+
         # --- PONTE: Math <-> General (Matematica Applicata al Quotidiano) ---
         "Qual è la proporzione matematica esatta per ricalcolare le dosi di una ricetta passando da 2 a 9 persone?",
         "Come si imposta l'equazione per calcolare il reale tasso di sconto applicato durante i saldi stagionali?",
         "Dimostra matematicamente come il tasso di cambio composto influisce sul costo reale di una vacanza all'estero.",
         "Spiega con formule come calcolare il consumo medio di carburante e l'efficienza energetica di un veicolo su base mensile."
     ],
-    
+
     'rights': [
         # --- Diritto Costituzionale e Pubblico ---
         "Qual è l'iter legis per l'approvazione di una legge costituzionale da parte del Parlamento?",
@@ -380,7 +435,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Spiega la responsabilità oggettiva delle società sportive per il comportamento dei propri tifosi.",
         "Quali sono le norme antidoping previste dal Codice WADA e dal Tribunale Nazionale Antidoping?",
 
-        # --- PONTE SEMANTICO 1: Diritto dell'Informatica (Tech-Law) ---
+        # --- PONTE: Rights <-> Coding (Tech-Law) ---
         "Quali sono gli obblighi legali e le sanzioni del GDPR per la conservazione dei dati in un database?",
         "Cosa prevede la normativa sulla privacy per la cancellazione sicura dei file e il diritto all'oblio?",
         "Quali regole giuridiche deve rispettare un software automatizzato per elaborare dati personali?",
@@ -394,7 +449,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Quali clausole legali automatiche prevede il diritto civile per l'inadempimento di uno smart contract?",
         "Spiega la disciplina giuridica delle firme elettroniche (semplice, avanzata, qualificata) e del CAD.",
 
-        # --- PONTE SEMANTICO 2: Diritto Finanziario e Calcoli Legali (Math-Law) ---
+        # --- PONTE: Rights <-> Math (Calcoli Legali) ---
         "Qual è la formula matematica e legale stabilita dalla normativa per calcolare il TFR netto?",
         "Come si calcola matematicamente il piano di ammortamento alla francese per un mutuo secondo la legge?",
         "Qual è il calcolo legale esatto per la ripartizione millesimale delle spese condominiali del tetto?",
@@ -416,8 +471,8 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Qual è la tutela giuridica del software e dei database originali rispetto alla disciplina dei brevetti per invenzioni industriali?",
         "Quali sono i diritti del lavoratore dipendente e i limiti legali sul controllo a distanza tramite software di monitoraggio aziendale?",
         "Come si ricalcolano matematicamente le tabelle millesimali di un condominio se un condomino effettua un ampliamento volumetrico?",
-        "Quali sono gli estremi legali per configurare il reato di stalking condominiale e quali prove documentali sono ammissibili in giudizio?"
-    
+        "Quali sono gli estremi legali per configurare il reato di stalking condominiale e quali prove documentali sono ammissibili in giudizio?",
+
         # --- Diritto Internazionale ---
         "Quali sono i presupposti giuridici per l'estradizione di un cittadino verso uno Stato extra-europeo?",
         "Spiega il ruolo della Corte Internazionale di Giustizia dell'Aia nella risoluzione delle controversie tra Stati.",
@@ -504,8 +559,8 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Spiega la validità giuridica degli smart contract nella gestione automatizzata delle royalties per lo streaming musicale.",
         "Qual è l'iter legale per registrare un formato televisivo originale presso la SIAE per proteggerlo da imitazioni?",
         "Come si configurano le licenze software open source GPL e le obbligazioni legali legate all'effetto copyleft?",
-        "Quali sono gli strumenti giuridici cautelari e inibitori d'urgenza per bloccare la diffusione di un'opera contraffatta?"
-    
+        "Quali sono gli strumenti giuridici cautelari e inibitori d'urgenza per bloccare la diffusione di un'opera contraffatta?",
+
         # --- PONTE: Rights <-> General (Diritto della Vita Quotidiana) ---
         "Quali sono le clausole obbligatorie per registrare un contratto di affitto transitorio per studenti universitari?",
         "Cosa prevede il Codice del Consumo o la Carta dei Diritti del Passeggero per il rimborso di un volo cancellato o in ritardo?",
@@ -513,7 +568,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Qual è la procedura per la constatazione amichevole (CID) e l'attribuzione delle responsabilità civili in un tamponamento a catena?",
         "Quali sono le norme esatte del codice civile riguardanti il rispetto delle distanze legali e l'immissione di fumo tra vicini?"
     ],
-    
+
     'general': [
         # --- Ricette, Cucina e Istruzioni Procedurali Quotidiane ---
         "Quali sono gli ingredienti e le istruzioni procedurali esatte per preparare il tiramisù perfetto?",
@@ -527,7 +582,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Come si prepara un brodo vegetale saporito partendo da verdure fresche?",
         "Quali sono i segreti per ottenere una frittura di pesce croccante e asciutta?",
         "Spiegami come si fa la pasta frolla e quali sono le proporzioni tra burro e farina.",
-        
+
         # --- Vita Quotidiana, Fai-da-Te e Consigli Pratici ---
         "Come faccio a organizzare un viaggio economico di due settimane in Giappone?",
         "Quali sono i migliori consigli e tecniche per gestire lo stress e l'ansia quotidiana?",
@@ -542,43 +597,43 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Come si rimuovono le macchie di vino rosso o caffè dai tessuti delicati?",
         "Quali sono gli attrezzi indispensabili per iniziare a fare piccoli lavori di falegnameria in casa?",
         "Spiegami come montare una mensola a muro usando correttamente i tasselli e il trapano.",
-        
-        # --- Storia, Geografia e Scienze Umanistiche ---
-        "Quali furono le cause economiche e sociali del crollo dell'Impero Romano d'Occidente?",
-        "Spiegami le origini e le conseguenze storiche della Prima Guerra Mondiale e del trattato di Versailles.",
-        "Come si sviluppò la civiltà egizia lungo il corso del Nilo e quali furono i suoi faraoni?",
-        "Quali fattori storici hanno portato alla Rivoluzione Francese del 1789?",
-        "Raccontami la storia dell'Impero Ottomano e le ragioni geopolitiche del suo declino.",
-        "Chi era Napoleone Bonaparte e qual è stato il suo impatto politico e militare sulla storia europea?",
+
+        # --- Storia, Geografia e Scienze Umanistiche (FIX CRITICITÀ 3 — lessico disambiguato) ---
+        "Quali furono le dinamiche economiche e il contesto culturale del declino dell'Impero Romano d'Occidente?",
+        "Spiegami le origini storiche e le trasformazioni geopolitiche seguite alla Prima Guerra Mondiale e al trattato di Versailles.",
+        "Come si sviluppò la civiltà egizia lungo il corso del Nilo e quali furono i suoi faraoni più importanti?",
+        "Quali fattori storici e culturali portarono alla Rivoluzione Francese del 1789?",
+        "Raccontami la storia dell'Impero Ottomano e le ragioni geopolitiche del suo declino e dissoluzione.",
+        "Chi era Napoleone Bonaparte e qual è stato il suo impatto politico e militare sulla storia europea moderna?",
         "Quali sono i confini geografici, il clima e le caratteristiche demografiche del continente asiatico?",
-        "Spiegami la differenza tra la geografia fisica e la geografia politica dell'Africa.",
-        "Quali sono state le conseguenze politiche e sociali dell'introduzione del suffragio universale in Italia?",
+        "Spiegami la differenza tra la geografia fisica e la geografia politica del continente africano.",
+        "Quali furono le trasformazioni politiche e culturali legate all'introduzione del suffragio universale in Italia?",
         "Raccontami la biografia di Giulio Cesare e il passaggio dalla Repubblica all'Impero Romano.",
-        "Spiegami le tappe fondamentali della colonizzazione delle Americhe e l'impatto sui popoli nativi.",
+        "Spiegami le tappe fondamentali della colonizzazione delle Americhe e l'impatto sui popoli nativi precolombiani.",
         "Quali sono le principali catene montuose del mondo e come influenzano il clima locale?",
-        "Raccontami la storia della Guerra Fredda e il ruolo della cortina di ferro in Europa.",
-        
+        "Raccontami la storia della Guerra Fredda e il ruolo della cortina di ferro nel contesto europeo.",
+
         # --- Filosofia, Letteratura e Arti ---
         "Spiegami la filosofia stoica di Seneca e Marco Aurelio e i suoi principi fondamentali sulla vita.",
         "Qual è la differenza concettuale tra etica deontologica di Kant e l'utilitarismo di Mill?",
         "Cosa intendeva Platone con la sua teoria delle idee e il mito della caverna?",
         "Come si differenziano le grandi correnti del pensiero filosofico orientale dal pensiero occidentale?",
         "Spiegami i temi principali, i personaggi e la struttura della Divina Commedia di Dante Alighieri.",
-        "Quali sono le caratteristiche principali del Romanticismo letterario europeo e i suoi autori?",
+        "Quali sono le caratteristiche principali del Romanticismo letterario europeo e i suoi autori rappresentativi?",
         "Come si distingue il periodo Barocco dal Rinascimento nell'arte e nell'architettura italiana?",
         "Fai un'analisi dell'opera pittorica 'La Gioconda' di Leonardo da Vinci.",
         "Qual è il significato allegorico del romanzo '1984' di George Orwell?",
         "Spiega le differenze stilistiche tra la musica classica di Mozart e quella di Beethoven.",
         "Quali sono gli elementi chiave della tragedia greca e il concetto di catarsi in Aristotele?",
-        "Spiegami l'importanza del Futurismo nell'arte del Novecento e i suoi esponenti principali.",
+        "Spiegami l'importanza del Futurismo nell'arte del Novecento e i suoi principali esponenti.",
         "Qual è la trama e il significato del romanzo 'I Promessi Sposi' di Alessandro Manzoni?",
-        
+
         # --- Scienze Generali, Natura e Astronomia ---
         "Come funziona la fotosintesi clorofilliana nelle piante a foglia larga e negli alberi?",
         "Spiega il meccanismo dell'evoluzione darwiniana, la genetica e la selezione naturale.",
         "Come funziona il sistema immunitario umano in risposta a un'infezione batterica o virale?",
         "Cosa sono le cellule staminali e come vengono utilizzate nella medicina moderna rigenerativa?",
-        "Spiegami la formazione dei buchi neri supermassicci e i concetti base dell'astronomia.",
+        "Spiegami la formazione dei buchi neri supermassicci e i concetti base dell'astronomia moderna.",
         "Come funziona il ciclo dell'acqua sulla Terra e quali sono le sue fasi meteorologiche?",
         "Spiegami la struttura del sistema solare, i pianeti terrestri e i giganti gassosi.",
         "Qual è la differenza biologica tra un virus, un batterio e un fungo patogeno?",
@@ -600,11 +655,11 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Come funziona il gioco degli scacchi e come si gioca in modo competitivo?",
         "Dammi dei consigli su come iniziare a correre (running) evitando infortuni alle ginocchia.",
         "Come si organizza un allenamento funzionale a corpo libero per aumentare la forza?",
-        
+
         # --- Società, Cultura Pop e Attualità ---
-        "Quali sono i pro e i contro psicologici e sociali di vivere in una grande metropoli rispetto alla campagna?",
+        "Quali sono i pro e i contro psicologici e culturali di vivere in una grande metropoli rispetto alla campagna?",
         "Come influisce il cambiamento climatico sugli ecosistemi globali e sull'economia moderna?",
-        "Quali sono le principali cause storiche e attuali della disuguaglianza economica nel mondo?",
+        "Quali sono le principali disparità economiche nel mondo e le loro radici storiche?",
         "Raccontami la trama, l'ambientazione e la lore della saga cinematografica di Star Wars.",
         "Quali sono le differenze tra le varie generazioni sociologiche come Boomer, Millennial e Gen Z?",
         "Come funziona il mercato azionario e quali sono i concetti base per chi vuole iniziare a investire?",
@@ -616,60 +671,60 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Quali sono i principali festival culturali e musicali nel mondo che vale la pena visitare?",
         "Come è cambiata la televisione con l'avvento delle piattaforme di streaming come Netflix?",
         "Spiega l'evoluzione dei videogiochi dalle sale arcade fino alle console di ultima generazione.",
-    
+
         # --- Giochi, Sport e Tempo Libero (Trappole per Rights, Math, Coding) ---
         "Come funziona il sistema di punteggio nel bowling e come si calcola il risultato finale?",
         "Come funziona il vantaggio e il fuorigioco nel rugby moderno?",
-        "Dammi una formula statistica o una strategia infallibile per vincere a Risiko valutando i dadi.",
-        "Spiega l'architettura di un torneo di tennis a eliminazione diretta e il calcolo delle teste di serie.",
-        
-        # --- Linguistica, Scrittura e Letteratura (Trappole per Coding e Rights) ---
+        "Dammi una strategia infallibile per vincere a Risiko valutando le probabilità dei dadi.",
+        "Spiega l'organizzazione di un torneo di tennis a eliminazione diretta e il calcolo delle teste di serie.",
+
+        # --- Linguistica, Scrittura e Letteratura ---
         "Come si struttura l'architettura narrativa e lo sviluppo dei personaggi in un romanzo giallo?",
         "Qual è il linguaggio dei fiori e qual è il significato storico di regalare una rosa gialla?",
         "Aiutami a scrivere uno script teatrale o una sceneggiatura per una commedia brillante in tre atti.",
         "Qual è il programma di studio ideale e le tecniche mnemoniche per imparare una nuova lingua in sei mesi?",
         "Fai un'analisi letteraria e una recensione critica del libro 'Il Codice da Vinci' di Dan Brown.",
-        
-        # --- Cucina, Dietetica e Fai-da-te (Trappole per Math, Coding, Rights) ---
-        "Dammi l'equazione perfetta e la proporzione matematica tra lievito, farina e idratazione per la pizza.",
+
+        # --- Cucina, Dietetica e Fai-da-te ---
+        "Dammi l'equazione perfetta e la proporzione tra lievito, farina e idratazione per la pizza.",
         "Come ci si comporta a tavola in Giappone e quali sono le usanze del galateo locale?",
         "Scrivi un programma di allenamento settimanale e la dieta per lo sviluppo della massa muscolare a casa.",
         "Spiegami il processo logico passo-passo per l'assemblaggio e il montaggio di un armadio IKEA.",
         "In cosa consiste il protocollo di allenamento Tabata e come si implementa a corpo libero?",
-        
-        # --- Psicologia, Sociologia e Relazioni (Trappole per Rights e Coding) ---
+
+        # --- Psicologia, Sociologia e Relazioni ---
         "Quali sono le dinamiche psicologiche e i fattori chiave per mantenere viva l'intesa in un matrimonio?",
         "Come si fa il debugging delle proprie emozioni per superare un trauma psicologico o gestire l'ansia?",
         "Illustrami il principio dell'attrazione e come viene applicato nella psicologia motivazionale moderna.",
 
-        # --- Musica, Arte e Cinema (Trappole per Coding e Math) ---
+        # --- Musica, Arte e Cinema ---
         "Spiegami il linguaggio musicale, i tempi e come si leggono le note su uno spartito classico.",
         "Qual è il processo creativo che usa un regista per decidere il montaggio di un film?",
         "Come si calcola la sezione aurea e come è stata applicata nell'architettura e nell'arte rinascimentale?",
         "Quali sono le tecniche prospettiche e geometriche per disegnare un paesaggio urbano in modo realistico?",
         "Quali sono i principi estetici fondamentali per scattare una fotografia di ritratto con luce naturale?",
-        
-        # --- Scienze della Terra, Biologia e Natura (Trappole per Rights, Coding e Math) ---
+
+        # --- Scienze della Terra, Biologia e Natura ---
         "Spiegami il principio di gravitazione universale di Newton e il suo impatto sulla comprensione dell'universo.",
         "Qual è la sequenza del genoma umano e come avviene esattamente il processo di trascrizione e traduzione del DNA?",
         "Come funziona l'ecosistema marino e i meccanismi di sopravvivenza delle specie che lo abitano?",
         "Illustrami il processo geologico di formazione delle rocce ignee, sedimentarie e metamorfiche.",
         "Come si esegue il calcolo approssimativo dell'età di un albero osservando la sezione dei suoi anelli?",
-        
-        # --- Economia Domestica e Organizzazione Pratica (Trappole per Math e Rights) ---
+
+        # --- Economia Domestica e Organizzazione Pratica ---
         "Dammi una strategia pratica e una formula mentale per tagliare le spese e gestire il budget familiare.",
         "Come ci si organizza per affrontare un trasloco senza stressarsi?",
         "Come fare il calcolo veloce a mente dei macronutrienti e delle calorie mentre si fa la spesa al supermercato?",
         "Qual è il processo decisionale migliore per scegliere lo stile e l'arredamento di un piccolo soggiorno?",
-        
-        # --- Moda, Design e Stile di Vita (Trappole per Coding e Math) ---
-        "Come si crea una palette cromatica e qual è l'equazione visiva per abbinare i vestiti in modo elegante?",
+
+        # --- Moda, Design e Stile di Vita ---
+        "Come si crea una palette cromatica e qual è il metodo visivo per abbinare i vestiti in modo elegante?",
         "Come bisogna vestirsi in ambito lavorativo e come presentarsi al meglio per un colloquio formale?",
         "Qual è il linguaggio del corpo e come si possono interpretare le microespressioni facciali umane?",
         "Come si sviluppa un proprio stile personale prendendo ispirazione dal design e dall'architettura d'interni?",
-        "Illustrami la formula della felicità secondo il concetto danese dell'Hygge e come applicarla in casa.",
-        
-        # --- Curiosità e Scienze Cognitive (Trappole per Math e Rights) ---
+        "Illustrami il concetto danese dell'Hygge e come applicarlo nella vita quotidiana e in casa.",
+
+        # --- Curiosità e Scienze Cognitive ---
         "Spiega la matematica nascosta nelle illusioni ottiche e i meccanismi percettivi con cui il cervello viene ingannato.",
         "Come si addestra efficacemente un cucciolo di cane nei primi mesi di vita?",
 
@@ -677,12 +732,11 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Qual è il metodo mentale più veloce per calcolare al volo lo sconto del 30% su un capo d'abbigliamento in negozio?",
         "Come faccio a calcolare esattamente quanta vernice o metri quadri mi servono per dipingere le pareti della mia stanza?",
         "Spiegami come si convertono mentalmente i gradi Fahrenheit in Celsius quando si viaggia negli Stati Uniti.",
-        
+
         # --- PONTE: General <-> Rights (Pratiche e Burocrazia di Tutti i Giorni) ---
         "Quali sono i documenti necessari e i passi pratici da fare al Comune per cambiare la residenza in una nuova città?",
         "Dammi dei consigli pratici su cosa verificare prima di prendere in affitto un appartamento per la prima volta.",
         "Come funziona la procedura pratica per fare il reso gratuito su Amazon e quanti giorni ho per restituire il pacco?",
         "Spiegami cosa fare praticamente e chi chiamare immediatamente subito dopo aver fatto un piccolo incidente in auto."
     ]
-
 }
