@@ -5,23 +5,22 @@
     del progetto. Modifica questo file per cambiare modelli, soglie RAM
     o parametri di generazione senza toccare la logica del codice.
 
+    Novità V6.4.0:
+    - [UPDATE] knn_min_abs_votes rinominato in knn_min_score per riflettere
+      il passaggio al Distance-Weighted k-NN (V1.4 di vector_store.py).
+      Il valore non e' piu' un conteggio intero di voti ma uno score decimale
+      ponderato sulla distanza. Valore iniziale: 5.0.
+    - [DEPRECATO] knn_min_abs_votes rimosso (non piu' letto dal codice).
+
     Novità V6.3.1:
-    - [TUNING] knn_min_abs_votes alzato da 3 a 4. Con k=10, il secondo dominio
-      deve ora convincere almeno 4 vicini su 10 per attivare la pipeline ibrida.
-      Riduce i falsi positivi causati da termini ambigui (es. "calcolo", "formula",
-      "differenza") che statisticamente raccoglievano 3 voti per coincidenza lessicale.
+    - [TUNING] knn_min_abs_votes alzato da 3 a 4.
 
     Novità V6.3.0:
     - [FEATURE] Parametri k-NN aggiunti a SEMANTIC_SETTINGS per il nuovo
       motore VectorStore (vector_store.py + LanceDB).
-      knn_k, knn_min_vote_ratio, knn_min_abs_votes sostituiscono la logica
-      a centroide e i parametri di spread/min_score ormai deprecati.
-    - [DEPRECATO] confidence_threshold, multi_domain_spread, multi_domain_min_score
-      rimangono per riferimento ma non sono più letti dal codice di routing.
 
     Novità V6.2.4:
-    - [DEPRECATO] confidence_threshold in SEMANTIC_SETTINGS non è più usato
-      come gate di routing. Il parametro rimane per riferimento e debug.
+    - [DEPRECATO] confidence_threshold in SEMANTIC_SETTINGS non e' piu' usato.
 
     Novità V6.0:
     - [FEATURE] Aggiunta sezione PIPELINE_SETTINGS per la configurazione
@@ -102,44 +101,41 @@ LEV_TOLERANCE_MAP = {
 # - confidence_threshold: era il gate sul margin coseno (V6.2.3 e precedenti).
 # - multi_domain_spread:  era la soglia per lo spread coseno tra domini.
 # - multi_domain_min_score: score assoluto minimo del secondo dominio.
-# Questi parametri NON sono più letti dal codice di routing (V6.3.0+).
+# - knn_min_abs_votes: conteggio intero voti (V6.3.x). Sostituito da knn_min_score.
+# Questi parametri NON sono piu' letti dal codice di routing (V6.4.0+).
 #
-# PARAMETRI k-NN ATTIVI (VectorStore V1.0):
-# - knn_k: numero di vicini più prossimi estratti per ogni query.
-#   Aumentare per maggiore stabilità statistica; ridurre per velocità.
-#   Valore consigliato: 10 (bilanciamento precisione/performance).
+# PARAMETRI k-NN ATTIVI (VectorStore V1.4 — Distance-Weighted):
+# - knn_k: numero di vicini piu' prossimi estratti per ogni query.
 #
-# - knn_min_vote_ratio: percentuale minima di voti che il secondo dominio
+# - knn_min_vote_ratio: percentuale minima di score che il secondo dominio
 #   deve ottenere sul totale combinato (top + second) per attivare la pipeline.
-#   Formula: second_votes / (top_votes + second_votes) >= knn_min_vote_ratio
-#   Con k=10: 0.30 significa che il secondo dominio deve avere ≥3 voti su 10
-#   combinati col primo. Abbassare rende il sistema più sensibile agli ibridi.
+#   Formula: second_score / (top_score + second_score) >= knn_min_vote_ratio
 #
-# - knn_min_abs_votes: numero assoluto minimo di voti del secondo dominio.
-#   Questo filtro è la vera difesa contro i falsi ibridi: un dominio con
-#   pochi voti non può mai attivare la pipeline, indipendentemente dal ratio.
-#   Con k=10 e min_abs_votes=4: il secondo dominio deve vincere almeno 4
-#   query dei 10 vicini più prossimi (alzato da 3 in V6.3.1 per ridurre
-#   i falsi positivi da termini ambigui come "calcolo", "formula", "codice").
+# - knn_min_score: score ponderato minimo del secondo dominio (float).
+#   Sostituisce knn_min_abs_votes. Con la formula 1/(dist+0.001):
+#     dist ~0.01  -> peso ~90   (clone perfetto)
+#     dist ~0.15  -> peso ~6.25 (match buono)
+#     dist ~0.50  -> peso ~2.0  (vettore rumore)
+#   Valore 5.0: il secondo dominio deve avere almeno un vettore mediamente
+#   vicino per attivare la pipeline. Da calibrare con i test empirici.
 #
-# - debug: se True, stampa i voti k-NN dettagliati per ogni query.
-#   Impostare False in produzione.
+# - debug: se True, stampa gli score k-NN dettagliati per ogni query.
 
 SEMANTIC_SETTINGS = {
     'enabled':               True,
     'embedding_model':       'nomic-embed-text',
 
-    # --- Deprecati (V6.2.x) — non più letti dal routing ---
+    # --- Deprecati (V6.2.x / V6.3.x) — non piu' letti dal routing ---
     'confidence_threshold':  0.06,
     'multi_domain_spread':   0.08,
     'multi_domain_min_score':0.58,
 
-    'debug': False,
+    'debug': True,
 
-    # --- Parametri k-NN attivi (V6.3.0 / VectorStore V1.0) ---
+    # --- Parametri k-NN attivi (V6.4.0 / VectorStore V1.4) ---
     'knn_k':              10,    # vicini da estrarre per query
-    'knn_min_vote_ratio': 0.30,  # % minima voti secondo dominio su combined
-    'knn_min_abs_votes':  4,     # voti assoluti minimi per il secondo dominio (alzato da 3 in V6.3.1)
+    'knn_min_vote_ratio': 0.30,  # % minima score secondo dominio su combined
+    'knn_min_score':      7.5,   # score ponderato minimo per il secondo dominio
 }
 
 # --- 7. CONFIGURAZIONE PIPELINE MULTI-AGENTE ---
@@ -149,14 +145,9 @@ SEMANTIC_SETTINGS = {
 #
 # min_words_for_pipeline:
 #   Numero minimo di parole per autorizzare l'arco multi-agente.
-#   Query sotto soglia vengono degradate a mono-dominio.
 #
 # pipeline_order_matrix:
 #   Ordine autoritativo degli agenti nella pipeline.
-#   Criterio primario: chi parla per primo definisce il contesto.
-#   - RIGHTS → CODING: la norma vincola l'implementazione tecnica
-#   - MATH   → CODING: la formula precede la sua implementazione
-#   - RIGHTS → MATH:   la norma determina il calcolo da applicare
 
 PIPELINE_SETTINGS = {
     'hybrid_threshold': 0.30,

@@ -1,24 +1,24 @@
 """
-    CYA N - AI LOCAL DISPATCHER V6.3.1
+    CYA N - AI LOCAL DISPATCHER V6.4.0
     Entry Point dell'applicazione.
+
+    Novità V6.4.0 — Distance-Weighted k-NN:
+    - [UPDATE] Label debug aggiornate: "min_abs_votes" -> "min_score",
+      score formattati con :.2f per leggibilita' a terminale.
+    - [INVARIATO] Tutta la logica di routing, pipeline ibrida e mono-dominio
+      e' identica alla V6.3.1.
 
     Novità V6.3.1 — Gestione OOM tramite eccezione tipizzata:
     - [FIX] Rimosso l'anti-pattern del check testuale startswith(_ERROR_PREFIXES)
       per le chiamate resolve, resolve_pipeline_a, resolve_pipeline_b e
       execute_critic_pass. Tutte le chiamate agli agenti sono ora avvolte in
       un blocco try/except ResourceExhaustedError importato da ai_engine.
-      L'intercettazione è tipizzata: nessuna stringa di errore può "bucare"
-      il filtro per mancanza di emoji prefix.
-    - [INVARIATO] Il check _ERROR_PREFIXES rimane attivo solo dove ha senso:
-      sugli errori Ollama (ResponseError, eccezione generica) che generate()
-      restituisce ancora via return testuale.
+    - [INVARIATO] Il check _ERROR_PREFIXES rimane attivo solo sugli errori
+      Ollama (ResponseError, eccezione generica).
 
     Novità V6.3.0 — VectorStore k-NN:
-    - [FEATURE] Aggiunta chiamata a initialize_store() all'avvio, prima del loop.
+    - [FEATURE] Aggiunta chiamata a initialize_store() all'avvio.
     - [UPDATE] Import di initialize_store da vector_store.
-    - [UPDATE] Label debug aggiornate da "Margin/spread" a "Confidence/voti k-NN".
-    - [INVARIATO] Tutta la logica di routing, pipeline ibrida e mono-dominio
-      è identica alla V6.2.4.
 
     Novità V6.2.4 — Routing Semantico come Autorità Primaria:
     - [BREAKING] classify() del SemanticRouter restituisce ora 3 valori:
@@ -36,13 +36,13 @@ from semantic_router import semantic_router as sem_router
 from vector_store import initialize_store
 
 # Prefissi per errori Ollama (ResponseError, connessione) restituiti via return
-# testuale da generate(). NON usati per il check OOM (ora gestito da eccezione).
+# testuale da generate(). NON usati per il check OOM (gestito da eccezione).
 _ERROR_PREFIXES = ("Errore Ollama:", "Errore Generico:", "ATTENZIONE:")
 
 
 def print_banner():
     print("\n" + "=" * 60)
-    print("      CYA N  |  AI LOCAL DISPATCHER V6.3.1    ")
+    print("      CYA N  |  AI LOCAL DISPATCHER V6.4.0    ")
     print("      (Coding • Math • Rights • General)      ")
     print("=" * 60 + "\n")
 
@@ -50,7 +50,7 @@ def print_banner():
 def main():
     print_banner()
 
-    print("⚙️  Inizializzazione Vector Store (k-NN su LanceDB)...")
+    print("⚙️  Inizializzazione Vector Store (Distance-Weighted k-NN su LanceDB)...")
     store_ok = initialize_store()
     if not store_ok:
         print("⚠️  VectorStore non disponibile. Il sistema userà il fallback a keyword per tutto il routing.")
@@ -78,9 +78,9 @@ def main():
                 break
 
             # ---------------------------------------------------------
-            # FASE 0: ROUTING SEMANTICO VETTORIALE (k-NN)
+            # FASE 0: ROUTING SEMANTICO VETTORIALE (Distance-Weighted k-NN)
             # ---------------------------------------------------------
-            print("\n⚙️  Fase 0 — Valutazione Arco Semantico Vettoriale (k-NN)...")
+            print("\n⚙️  Fase 0 — Valutazione Arco Semantico Vettoriale (Distance-Weighted k-NN)...")
             sem_domains, sem_confidence, sem_ok = sem_router.classify(user_input)
 
             is_hybrid = False
@@ -116,7 +116,7 @@ def main():
 
                 if len(sem_domains) == 2:
                     print(f"🔍 [DEBUG SEMANTICO] Arco Ibrido confermato "
-                          f"(min_abs_votes={config.SEMANTIC_SETTINGS.get('knn_min_abs_votes', 3)}, "
+                          f"(min_score={config.SEMANTIC_SETTINGS.get('knn_min_score', 5.0):.2f}, "
                           f"min_vote_ratio={config.SEMANTIC_SETTINGS.get('knn_min_vote_ratio', 0.30)}).")
                     is_hybrid = True
 
@@ -129,7 +129,7 @@ def main():
                     else:
                         domain_a, domain_b = sem_domains[0], sem_domains[1]
                         print(f"🔍 [DEBUG SEMANTICO] Coppia non in matrice. "
-                              f"Ordine da voti k-NN: {domain_a.upper()} → {domain_b.upper()}")
+                              f"Ordine da score k-NN: {domain_a.upper()} → {domain_b.upper()}")
 
                 else:
                     target = sem_domains[0]

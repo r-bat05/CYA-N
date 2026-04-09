@@ -1,29 +1,33 @@
 """
-    VECTOR STORE V1.2 — LanceDB k-NN Engine
+    VECTOR STORE V1.4 — LanceDB Distance-Weighted k-NN Engine
+
+    Novita' V1.4:
+    - [FEATURE] Distance-Weighted Voting: abbandonato il conteggio uniforme
+      (1 vettore = 1 voto). Ogni vettore estratto dal k-NN contribuisce con un
+      peso inversamente proporzionale alla sua distanza spaziale dalla query.
+      Formula: weight = 1.0 / (dist + 0.001). L'epsilon 0.001 previene la
+      divisione per zero in caso di match testuale esatto (dist ~ 0.0).
+    - [FIX] Eliminata la "Tirannia della Maggioranza": un singolo clone perfetto
+      (distanza ~0.01, peso ~90) supera numericamente 9 vettori rumore distanti
+      (distanza ~0.5, peso ~2 ciascuno, totale ~18).
+    - [UPDATE] knn_min_abs_votes rinominato in knn_min_score in config.py.
+      Il default interno _DEFAULT_MIN_SCORE riflette il nuovo range decimale.
+    - [UPDATE] Log debug aggiornati: "voti" -> "score", valori float a 2 decimali.
 
     Novita' V1.2:
-    - [REFACTOR] Il dizionario INTENT_SENTENCES è stato separato e spostato in `db_query.py`
-      per migliorare la leggibilità e la scalabilità del file principale.
-    - [FIX] Aggiornato il metodo deprecato table_names() con list_tables() per
-      evitare warning durante la verifica del database.
+    - [REFACTOR] Il dizionario INTENT_SENTENCES e' stato separato in `db_query.py`.
+    - [FIX] Aggiornato il metodo deprecato table_names() con list_tables().
 
     Novita' V1.1:
-    - [TUNING] Aggiunte 4 frasi anti-trappola a INTENT_SENTENCES per ancorare
-      il k-NN su query edge-case identificate durante lo stress test.
+    - [TUNING] Aggiunte 4 frasi anti-trappola a INTENT_SENTENCES.
 
     V1.0 — LanceDB k-NN Engine:
-    Sostituisce il PrototypeStore a centroide (semantic_router.py V2.0) con un
-    database vettoriale su disco e ricerca k-Nearest Neighbors esatti.
+    Sostituisce il PrototypeStore a centroide (semantic_router.py V2.0).
 
     Logica di ibridazione (doppia condizione):
     Un secondo dominio viene attivato SOLO SE raggiunge ENTRAMBE:
-    - knn_min_abs_votes  : voti assoluti minimi (es. >= 4 su 10 da V6.3.1)
-    - knn_min_vote_ratio : % voti su combinato top+second (es. >= 30%)
-
-    Gestione del ciclo di vita:
-    - Primo avvio: il DB non esiste -> initialize_store() lo costruisce
-    - Avvii successivi: il DB esiste -> caricamento istantaneo da disco
-    - Per forzare una ricostruzione: eseguire `python vector_store.py`
+    - knn_min_score     : score ponderato minimo (es. >= 5.0)
+    - knn_min_vote_ratio: % score su combinato top+second (es. >= 30%)
 """
 
 import os
@@ -40,7 +44,7 @@ except ImportError as e:
     ) from e
 
 import config
-from db_query import INTENT_SENTENCES  # <-- Importazione del dizionario separato
+from db_query import INTENT_SENTENCES
 
 # ---------------------------------------------------------------------------
 # COSTANTI
@@ -52,7 +56,7 @@ VECTOR_DIM = 768  # dimensione output di nomic-embed-text
 
 _DEFAULT_K              = 10
 _DEFAULT_MIN_VOTE_RATIO = 0.30
-_DEFAULT_MIN_ABS_VOTES  = 3
+_DEFAULT_MIN_SCORE      = 5.0
 
 _table = None
 
@@ -175,16 +179,19 @@ def _get_table():
 
 
 # ---------------------------------------------------------------------------
-# CLASSIFICAZIONE k-NN
+# CLASSIFICAZIONE k-NN (Distance-Weighted)
 # ---------------------------------------------------------------------------
 
 def classify_knn(text: str) -> Tuple[List[str], float, bool]:
     """
-    Classifica il testo tramite votazione k-NN sui vettori del database.
+    Classifica il testo tramite votazione k-NN pesata sulla distanza.
+
+    Ogni vettore estratto contribuisce con peso = 1.0 / (dist + 0.001),
+    in modo che i cloni ravvicinati dominino sui vettori rumore distanti.
     """
     k         = config.SEMANTIC_SETTINGS.get('knn_k',              _DEFAULT_K)
     min_ratio = config.SEMANTIC_SETTINGS.get('knn_min_vote_ratio', _DEFAULT_MIN_VOTE_RATIO)
-    min_votes = config.SEMANTIC_SETTINGS.get('knn_min_abs_votes',  _DEFAULT_MIN_ABS_VOTES)
+    min_score = config.SEMANTIC_SETTINGS.get('knn_min_score',      _DEFAULT_MIN_SCORE)
     model     = config.SEMANTIC_SETTINGS['embedding_model']
 
     table = _get_table()
@@ -207,36 +214,39 @@ def classify_knn(text: str) -> Tuple[List[str], float, bool]:
     if not results:
         return ['general'], 0.0, False
 
-    vote_counts: Dict[str, int] = {}
+    # --- Distance-Weighted Voting ---
+    vote_counts: Dict[str, float] = {}
     for row in results:
         domain_val = row['domain']
-        vote_counts[domain_val] = vote_counts.get(domain_val, 0) + 1
+        dist = row.get('_distance', 0.0)
+        weight = 1.0 / (dist + 0.001)
+        vote_counts[domain_val] = vote_counts.get(domain_val, 0.0) + weight
 
     ranked        = sorted(vote_counts.items(), key=lambda x: x[1], reverse=True)
-    top_domain,   top_votes   = ranked[0]
-    second_domain             = ranked[1][0] if len(ranked) > 1 else None
-    second_votes              = ranked[1][1] if len(ranked) > 1 else 0
+    top_domain,   top_score    = ranked[0]
+    second_domain              = ranked[1][0] if len(ranked) > 1 else None
+    second_score               = ranked[1][1] if len(ranked) > 1 else 0.0
 
-    total_results = len(results)
-    confidence    = top_votes / total_results if total_results > 0 else 0.0
+    total_score = sum(s for _, s in ranked)
+    confidence  = top_score / total_score if total_score > 0 else 0.0
 
-    combined = top_votes + second_votes
+    combined = top_score + second_score
     domains  = [top_domain]
 
     if (second_domain is not None
-            and second_votes >= min_votes
+            and second_score >= min_score
             and combined > 0
-            and (second_votes / combined) >= min_ratio):
+            and (second_score / combined) >= min_ratio):
         domains.append(second_domain)
 
     if config.SEMANTIC_SETTINGS.get('debug', False):
-        print(f"\n   [k-NN DEBUG] Voti: { {d: v for d, v in ranked} }")
+        print(f"\n   [k-NN DEBUG] Score: { {d: f'{s:.2f}' for d, s in ranked} }")
         print(f"   [k-NN DEBUG] Domini={domains} | Confidence={confidence:.2f} "
-              f"| k={k} | min_votes={min_votes} | min_ratio={min_ratio}")
+              f"| k={k} | min_score={min_score:.2f} | min_ratio={min_ratio}")
         if second_domain:
-            ratio_str = f"{second_votes}/{combined} = {second_votes/combined:.2f}" if combined else "N/A"
+            ratio_str = f"{second_score:.2f}/{combined:.2f} = {second_score/combined:.2f}" if combined else "N/A"
             print(f"   [k-NN DEBUG] Secondo dominio '{second_domain}': "
-                  f"voti={second_votes}, ratio={ratio_str}, "
+                  f"score={second_score:.2f}, ratio={ratio_str}, "
                   f"ibrido={'SI' if len(domains) > 1 else 'NO'}")
 
     return domains, confidence, True
