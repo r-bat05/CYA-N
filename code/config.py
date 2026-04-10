@@ -126,8 +126,8 @@ PIPELINE_SETTINGS = {
     'min_words_for_pipeline':    8,
 
     # [P2] Limite caratteri per il contesto passato tra agenti.
-    # Sostituisce il magic number 6000 in ai_engine.py.
-    'pipeline_max_context_chars': 6000,
+    # Sostituisce il magic number 9000 in ai_engine.py.
+    'pipeline_max_context_chars': 9000,
 
     # [P4] Timeout (secondi) per la sincronizzazione RAM tra Agente A e B.
     # Aumentare su macchine lente o con modelli pesanti (es. 40–60s).

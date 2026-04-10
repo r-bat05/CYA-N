@@ -1,6 +1,13 @@
 """
     DATABASE QUERY — Frasi di training per il Vector Store.
 
+    Novità V2.1:
+    - [FIX] Aggiunte frasi math su teoria dei segnali (Nyquist-Shannon, DFT, Fourier)
+      e metodi Monte Carlo / convergenza stocastica. Queste aree erano scoperte,
+      causando score math troppo bassi (<3.0) su query ibride MATH->CODING e
+      mancata attivazione della pipeline.
+    - [FIX] Aggiunte frasi bridge ('coding','math') per FFT/campionamento e Monte Carlo.
+
     Novità V2.0:
     - [P3] Rimossi tutti i cloni manuali ("Trucco del Clone") dai domini.
       Le frasi bridge erano duplicate fisicamente in ogni dominio coinvolto,
@@ -292,6 +299,32 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Verifica se l'insieme fornito costituisce un gruppo abeliano rispetto all'operazione data.",
         "Definisci i concetti di omomorfismo e isomorfismo tra due strutture algebriche o anelli.",
 
+        # --- Teoria dei Segnali, Trasformate e Campionamento [V2.1 NEW] ---
+        "Enuncia il teorema di Nyquist-Shannon e calcola la frequenza minima di campionamento per un segnale a banda limitata.",
+        "Spiega la teoria matematica della trasformata di Fourier discreta (DFT) e la sua relazione con la DFT continua.",
+        "Analizza matematicamente la convergenza della serie di Fourier per funzioni periodiche discontinue (fenomeno di Gibbs).",
+        "Calcola la risposta in frequenza di un filtro passa-basso ideale usando la trasformata di Fourier.",
+        "Dimostra matematicamente il teorema di Parseval per le serie di Fourier e l'uguaglianza delle norme L2.",
+        "Dimostra il teorema del campionamento di Shannon e ricava la formula di ricostruzione tramite sinc interpolation.",
+        "Calcola lo spettro di frequenze di un segnale periodico applicando la serie di Fourier complessa.",
+        "Spiega la relazione matematica tra trasformata di Fourier, trasformata Z e trasformata di Laplace.",
+        "Analizza il fenomeno dell'aliasing matematicamente e determina la condizione per evitarlo.",
+        "Dimostra la proprietà di convoluzione della trasformata di Fourier e le sue implicazioni per i filtri lineari.",
+        "Calcola la trasformata di Fourier di un segnale rettangolare e interpreta il risultato nel dominio delle frequenze.",
+        "Spiega il principio di indeterminazione di Heisenberg nella formulazione matematica di Fourier.",
+
+        # --- Metodi Stocastici, Monte Carlo e Convergenza [V2.1 NEW] ---
+        "Analizza la velocità di convergenza del metodo Monte Carlo usando il teorema del limite centrale.",
+        "Dimostra matematicamente perché la varianza dell'estimatore Monte Carlo decresce come 1/N al crescere dei campioni.",
+        "Calcola l'errore statistico atteso di una stima Monte Carlo in funzione del numero di campioni N e della varianza.",
+        "Spiega la teoria matematica dei processi di Markov e la convergenza alla distribuzione stazionaria.",
+        "Analizza la complessità statistica del metodo di integrazione Monte Carlo rispetto ai metodi deterministici di quadratura.",
+        "Dimostra la consistenza e la non distorsione dello stimatore della media campionaria con la legge dei grandi numeri.",
+        "Calcola l'intervallo di confidenza per una stima Monte Carlo dell'integrale di una funzione multivariata.",
+        "Spiega il metodo di importance sampling e come riduce matematicamente la varianza dell'estimatore Monte Carlo.",
+        "Analizza la convergenza del metodo di campionamento MCMC (Markov Chain Monte Carlo) in termini di mixing time.",
+        "Dimostra matematicamente l'errore di quadratura del metodo Monte Carlo rispetto al metodo dei trapezi compositi.",
+
         # --- Anti-trappola ed Edge Cases ---
         "Quali sono gli autovalori e gli autovettori della matrice identità 3x3?",
         "Descrivi la teoria del calcolo matriciale necessaria per definire un prodotto tra tensori.",
@@ -327,6 +360,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Come funziona il sistema di giustizia costituzionale e l'accesso in via incidentale.",
 
         # --- Diritto Amministrativo ---
+        "Come si compila e si presenta correttamente il modello F24 per pagare le imposte sui redditi all'Agenzia delle Entrate?"
         "Come funziona il ricorso gerarchico e il ricorso al TAR nel diritto amministrativo?",
         "Spiega la differenza tra nullità e annullabilità di un provvedimento amministrativo.",
         "Quali sono i requisiti normativi per richiedere la cittadinanza italiana per residenza?",
@@ -723,8 +757,7 @@ BRIDGE_SENTENCES: Dict[Tuple[str, str], List[str]] = {
     ],
 
     # -------------------------------------------------------------------------
-    # CODING <-> MATH (10 frasi uniche)
-    # Frasi che richiedono implementazione numerica/algoritmica
+    # CODING <-> MATH (frasi uniche) — V2.1: aggiunte FFT/campionamento e Monte Carlo
     # -------------------------------------------------------------------------
     ('coding', 'math'): [
         "Implementa in C++ l'algoritmo della Trasformata di Fourier Veloce (FFT) per analizzare un segnale discreto.",
@@ -737,12 +770,22 @@ BRIDGE_SENTENCES: Dict[Tuple[str, str], List[str]] = {
         "Scrivi il codice per risolvere numericamente un'equazione differenziale ordinaria col metodo Runge-Kutta 4.",
         "Implementa in Python la regressione lineare multipla calcolando i coefficienti tramite la formula delle equazioni normali.",
         "Scrivi uno script che calcola la distribuzione di probabilità binomiale e la visualizza con un istogramma in Matplotlib.",
+        # --- V2.1 NEW: FFT e campionamento ---
+        "Dimostra il teorema di Nyquist-Shannon e scrivi il codice Python per la campionatura e ricostruzione di un segnale audio con FFT.",
+        "Implementa in Python la trasformata di Fourier discreta da zero e verifica i risultati confrontandoli con numpy.fft.",
+        "Scrivi il codice per applicare un filtro passa-basso nel dominio delle frequenze usando FFT e spiega la base matematica.",
+        "Analizza matematicamente il fenomeno dell'aliasing e scrivi uno script Python che lo dimostra visivamente con un segnale sinusoidale.",
+        "Implementa il metodo di Cooley-Tukey per la FFT in Python e analizza la sua complessità computazionale O(N log N).",
+        # --- V2.1 NEW: Monte Carlo e convergenza ---
+        "Scrivi il codice per un simulatore Monte Carlo che stima il valore di π e analizza matematicamente la convergenza statistica al variare di N.",
+        "Implementa in Python un integratore Monte Carlo multidimensionale e confronta l'errore con il metodo dei trapezi al variare dei campioni.",
+        "Sviluppa uno script che dimostra empiricamente la convergenza 1/sqrt(N) dell'errore Monte Carlo tramite esperimenti numerici.",
+        "Scrivi il codice per un simulatore Monte Carlo di cammini aleatori e analizza la distribuzione delle posizioni finali.",
+        "Implementa il metodo di importance sampling in Python e mostra la riduzione della varianza rispetto al Monte Carlo standard.",
     ],
 
     # -------------------------------------------------------------------------
     # MATH <-> RIGHTS (23 frasi uniche)
-    # Lato math: formule normative con orientamento numerico
-    # Lato rights: stesse tematiche con orientamento giuridico
     # -------------------------------------------------------------------------
     ('math', 'rights'): [
         # --- Lato math ---
@@ -763,7 +806,6 @@ BRIDGE_SENTENCES: Dict[Tuple[str, str], List[str]] = {
 
     # -------------------------------------------------------------------------
     # GENERAL <-> MATH (7 frasi uniche)
-    # Frasi di calcolo quotidiano: matematica applicata alla vita pratica
     # -------------------------------------------------------------------------
     ('general', 'math'): [
         # --- Lato math (più formale) ---
@@ -779,7 +821,6 @@ BRIDGE_SENTENCES: Dict[Tuple[str, str], List[str]] = {
 
     # -------------------------------------------------------------------------
     # GENERAL <-> RIGHTS (9 frasi uniche)
-    # Frasi di diritto quotidiano: normativa applicata alla vita pratica
     # -------------------------------------------------------------------------
     ('general', 'rights'): [
         # --- Lato rights (più formale) ---

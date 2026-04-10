@@ -1,156 +1,45 @@
-* [X] Scrivi uno script Python che utilizza il metodo di Newton-Raphson per trovare le radici di un polinomio di terzo grado.
-* [X] Quali sono i requisiti normativi per richiedere la cittadinanza italiana per residenza?
-* [X] Progetta l'architettura di un'app web per la gestione dei consensi cookie rispettando scrupolosamente la direttiva europea sulla privacy
-* [X] Risolvi l'equazione differenziale lineare del secondo ordine a coefficienti costanti omogenea.
-* [X] Spiegami in modo semplice come funziona la fotosintesi clorofilliana nelle piante a foglia larga.
-* [X] Spiegami la differenza tra promise e async/await in JavaScript con un esempio pratico di codice.
-* [X] Qual è la formula matematica esatta stabilita dalla legge per calcolare il TFR netto di un lavoratore dipendente?
-* [ ] Implementa in C++ un algoritmo efficiente per calcolare la trasformata di Fourier veloce (FFT) di un segnale discreto.
-* [X] Spiegami la differenza tra dolo, colpa cosciente e preterintenzione all'interno del codice penale italiano.
-* [X] Scrivi una funzione in Python che ordina una lista di dizionari in base al valore di una chiave specifica.
-* [ ] Quali sono state le cause principali, economiche e sociali, della caduta dell'Impero Romano d'Occidente?
-* [ ] Scrivi uno script in Python che anonimizza i dati di un database SQL in piena conformità con il GDPR europeo.
-* [X] Quali sono gli autovalori e gli autovettori della matrice identità 3x3?
-* [X] Spiegami come si calcolano matematicamente le quote di legittima e la quota disponibile in una complessa successione ereditaria.
-* [X] Come configuro un cluster Kubernetes per gestire il bilanciamento del carico tra i pod in produzione?
-* [ ] Come ottimizzo la complessità asintotica Big O di un algoritmo di moltiplicazione tra matrici sparse in Java?
-* [X] Come funziona l'istituto del patteggiamento e in quali casi specifici non può assolutamente essere richiesto dall'imputato?
-* [X] Dammi una ricetta tradizionale per preparare la carbonara romana, con i dosaggi esatti.
-* [ ] Come si applica il calcolo delle probabilità nella valutazione del rischio attuariale secondo le direttive e normative assicurative vigenti?
-* [X] Crea un componente React che gestisce uno stato globale usando la Context API.
-* [ ] Sviluppa un esempio di smart contract in Solidity che implementi una clausola di risoluzione automatica per inadempimento contrattuale.
-* [ ] Dimostra il teorema di Lagrange e spiegami le sue applicazioni pratiche nello studio di funzione.
-* [ ] Quali sono i pro e i contro psicologici e sociali di vivere in una grande metropoli rispetto alla campagna?
-* [ ] Crea una funzione in JavaScript che calcola la distanza euclidea tra due vettori in uno spazio n-dimensionale.
-* [ ] Quale formula o metodo di calcolo numerico prevede la giurisprudenza italiana per l'adeguamento ISTAT degli assegni di mantenimento?
-* [ ] Quali sono le tutele legali previste dallo Statuto dei Lavoratori contro il licenziamento ritenuto discriminatorio?
-* [ ] Come configuro un server di log in Linux per far sì che i file generati abbiano validità probatoria incontestabile in tribunale?
-* [ ] Calcola l'integrale definito da 0 a pi greco di x moltiplicato per il seno di x in **$dx$**.
-* [ ] Come si calcola la prescrizione di un reato informatico secondo l'ordinamento penale?
-* [ ] Cosa succede legalmente se un dipendente ruba il codice sorgente dell'azienda e lo pubblica su GitHub?
-* [ ] Come si quantifica matematicamente il danno biologico permanente usando le tabelle del Tribunale di Milano?
-* [ ] Spiegami la teoria del calcolo matriciale e poi implementa il prodotto tra due matrici in Python.
-* [ ] Quali sono le regole e i procedimenti per la risoluzione di un'equazione differenziale non lineare?
-* [ ] Dimostra che l'insieme dei numeri reali non è numerabile usando l'argomento diagonale di Cantor.
-* [ ] Qual è l'architettura migliore per scalare un database relazionale su cloud oltre il milione di record?
-* [ ] Quali sono gli ingredienti e le istruzioni procedurali esatte per preparare il tiramisù perfetto?
-* [ ] Sviluppa uno script in Bash che cancelli in modo sicuro i file di database per rispettare il diritto all'oblio imposto dal GDPR.
-* [ ] Come si usa il costrutto switch-case per valutare molteplici clausole all'interno di un algoritmo in C#?
-* [ ] Spiegami dettagliatamente le regole del fuorigioco nel calcio moderno e come interviene il VAR.
-* [ ] Qual è il calcolo numerico esatto per la ripartizione millesimale delle spese per il rifacimento del tetto condominiale?
-* [ ] Quali sono i presupposti normativi per la dichiarazione di fallimento o liquidazione giudiziale di una società commerciale?
-* [ ] Spiegami come funziona il garbage collector in Java e come interviene l'algoritmo per prevenire i memory leak.
-* [ ] Spiega il paradosso del gatto di Schrödinger e le sue implicazioni filosofiche sulla meccanica quantistica.
-* [ ] Crea una macro in Excel con VBA per automatizzare l'estrazione dei dati da una fattura.
-* [ ] Spiegami come si calcola matematicamente il piano di ammortamento alla francese per un mutuo ipotecario.
-* [ ] Come si quantificano gli interessi di mora su un debito commerciale scaduto secondo le direttive europee?
-* [ ] Quali sono state le conseguenze politiche e sociali dell'introduzione del suffragio universale in Italia?
-* [ ] Cosa prevede il codice civile e il regolamento di condominio per la gestione degli animali domestici negli spazi comuni?
-* [ ] Spiega il funzionamento dell'algoritmo di crittografia RSA basato sulla fattorizzazione dei numeri primi.
-* [ ] Scrivi il codice per l'addestramento di una rete neurale convoluzionale usando PyTorch e la backpropagation.
-* [ ] Spiegami la formazione dei buchi neri supermassicci utilizzando i concetti della relatività generale.
-* [ ] Quali sono i termini legali e le condizioni standard per la licenza d'uso di un software open source proprietario?
-* [ ] Implementa un albero binario di ricerca e scrivi un metodo per calcolarne l'altezza massima.
-* [ ] Come si compila e si presenta correttamente il modello F24 per pagare le imposte sui redditi all'Agenzia delle Entrate?
-* [ ] Spiegami il teorema di incompletezza di Gödel e perché ha sconvolto i fondamenti della logica formale.
-* [ ] Qual è la procedura esatta da terminale per fare il commit e il push delle modifiche su un repository Git remoto?
-* [ ] Quali sono le responsabilità penali dirette dell'amministratore delegato in caso di bancarotta fraudolenta documentale?
-* [ ] Come si applicano i principi della termodinamica per progettare il sistema di raffreddamento di un motore a combustione?
+    
 
-Scrivi una classe in C# per implementare il design pattern Singleton in un'applicazione multithread.
+**Scrivi il codice per un simulatore Monte Carlo che stima il valore di π e analizza la convergenza statistica al variare del numero di campioni. → [CODING→MATH]**
 
-Come si configura un bilanciatore di carico Nginx per distribuire il traffico su tre server backend Node.js?
+**Qual è il calcolo attuariale del valore attuale netto di una rendita perpetua crescente e quali norme del TUF regolano la sua commercializzazione? → [MATH→RIGHTS]**
 
-Spiegami la differenza tra un database relazionale e uno NoSQL come MongoDB, fornendo un esempio di schema JSON.
+**Dimostra il teorema di Nyquist-Shannon e scrivi il codice Python per la campionatura e ricostruzione di un segnale audio con FFT. → [MATH→CODING]**
 
-Crea uno script in Bash per automatizzare il backup di una cartella locale su un bucket AWS S3 ogni notte.
+**Spiega la crittografia omomorfica partendo dall'algebra degli anelli quoziente e implementa in Python un esempio di addizione su dati cifrati con il schema BGV semplificato. → [MATH→CODING]**
 
-Scrivi un componente React funzionale che utilizza l'hook useEffect per fare il fetch di dati da un'API esterna.
-
-Calcola l'integrale definito tra 0 e 2 pi greco della funzione coseno al quadrato di x.
-
-Trova gli asintoti orizzontali, verticali e obliqui della seguente funzione razionale fratta.
-
-Dimostra il teorema del limite centrale e spiegami la sua importanza nel campionamento statistico.
-
-Calcola la matrice inversa di una matrice 3x3 utilizzando il metodo dei cofattori o di Cramer.
-
-Risolvi il problema di Cauchy associato a questa equazione differenziale lineare del primo ordine.
-
-Qual è l'iter legislativo completo per l'approvazione di una legge costituzionale da parte del Parlamento italiano?
-
-Spiega la differenza giuridica tra risoluzione del contratto per inadempimento e impossibilità sopravvenuta.
-
-Quali sono i requisiti normativi per richiedere l'affidamento condiviso dei figli minori in caso di separazione?
-
-Cosa prevede il Testo Unico dell'Edilizia in caso di abusi edilizi e conseguente ordinanza di demolizione?
-
-Quali sono i presupposti giuridici per la dichiarazione di liquidazione giudiziale di un'impresa commerciale?
-
-Quali sono le istruzioni procedurali esatte per cucinare la paella valenciana tradizionale?
-
-Dammi dei consigli pratici su come arredare un soggiorno molto piccolo per ottimizzare e ampliare gli spazi.
-
-Spiegami le origini storiche e le trasformazioni geopolitiche che hanno portato alla fine della Prima Guerra Mondiale.
-
-Come si coltivano le orchidee in casa e quali sono i segreti per non far marcire le radici?
-
-Spiega il meccanismo dell'evoluzione darwiniana e il ruolo della selezione naturale nella biologia.
-
-Scrivi uno script in Python che anonimizza in modo irreversibile i dati personali di un database SQL rispettando il GDPR.
-
-Come si sviluppa un modulo software per il controllo degli accessi (RBAC) conforme ai requisiti legali della privacy?
-
-Implementa in Solidity uno smart contract per un accordo commerciale che esegua automaticamente le clausole legali.
-
-Scrivi il codice di un sistema di audit trail immutabile per tracciare gli accessi ai dati sensibili come richiesto dalla normativa.
-
-Come strutturo il codice di un'app per la raccolta del consenso informato dei cookie rispettando la direttiva ePrivacy?
-
-Crea uno script che verifica automaticamente se un database è conforme al GDPR rilevando campi password non cifrati.
-
-* [ ] Implementa in C++ il metodo numerico di Newton-Raphson per calcolare le radici reali di un polinomio di terzo grado.
-
-Scrivi il codice in Python che implementa la scomposizione QR di una matrice usando l'algoritmo di Gram-Schmidt.
-
-Sviluppa uno script per risolvere numericamente un'equazione differenziale ordinaria utilizzando il metodo Runge-Kutta 4.
-
-Implementa in Java l'algoritmo di eliminazione di Gauss-Jordan per risolvere un sistema lineare denso.
-
-Scrivi una funzione Python che calcola numericamente gli autovalori di una matrice utilizzando il metodo delle potenze.
-
-Sviluppa in C++ la logica per il calcolo dell'integrale definito applicando il metodo di quadratura di Gauss-Legendre.
-
-Qual è la formula matematica esatta stabilita dalla normativa italiana per calcolare il TFR netto di un lavoratore dipendente?
-
-Spiegami come si calcola matematicamente il piano di ammortamento alla francese per un mutuo secondo le leggi sul credito.
-
-Qual è il calcolo legale e numerico previsto per la ripartizione millesimale delle spese di rifacimento del tetto condominiale?
-
-Come si quantifica esattamente il danno biologico permanente utilizzando le tabelle risarcitorie del Tribunale di Milano?
-
-Quale metodo di calcolo numerico prevede la legge italiana per applicare l'adeguamento ISTAT agli assegni di mantenimento?
-
-Come si determinano matematicamente i valori soglia del tasso usura in base alle circolari della Banca d'Italia?
-
-* [ ] Qual è il metodo mentale più rapido per calcolare lo sconto del 30% su un paio di scarpe mentre sono in negozio?
-
-Qual è la proporzione matematica esatta per ricalcolare tutte le dosi di una ricetta per torte passando da 2 a 9 persone?
-
-Spiegami come convertire mentalmente i gradi Fahrenheit in Celsius se mi trovo in vacanza negli Stati Uniti.
-
-Dimostra matematicamente come il tasso di cambio composto applicato dalla carta di credito influisce sui costi di un viaggio all'estero.
-
-Come calcolo esattamente quanti litri di vernice e metri quadri mi servono per dipingere i muri della mia stanza?
-
-Quali sono i documenti necessari e la procedura pratica al Comune per cambiare la residenza in una nuova città?
-
-* [ ] Spiegami quali sono i passi pratici e chi devo chiamare immediatamente subito dopo aver fatto un piccolo incidente stradale.
-
-Dammi dei consigli pratici su cosa verificare nei documenti prima di prendere in affitto un appartamento per la prima volta.
-
-Come funziona la procedura pratica per fare un reso gratuito su Amazon e quali sono i miei diritti sui giorni di restituzione?
-
-* [ ] Quali sono le regole esatte del codice civile per il rispetto delle distanze legali degli alberi e l'immissione di fumo tra vicini?
-
-Cosa prevede la normativa a tutela del passeggero per chiedere il rimborso di un volo aereo cancellato o in forte ritardo?
+* Calcola il prodotto vettoriale tra due vettori in R3 e interpreta geometricamente il risultato. → [MATH]
+* Quali sono le differenze tra interdizione giudiziale e amministrazione di sostegno secondo il codice civile? → [RIGHTS]
+* Spiegami come funziona il motore a scoppio a quattro tempi. → [GENERAL]
+* Implementa in Python un grafo orientato pesato usando liste di adiacenza e calcola il cammino minimo con Bellman-Ford. → [CODING]
+* Risolvi il sistema di equazioni differenziali lineari con la matrice degli esponenziali. → [MATH]
+* Cosa prevede il D.Lgs. 231/2001 sulla responsabilità amministrativa degli enti per reati commessi dai dipendenti? → [RIGHTS]
+* Quali sono le tecniche migliori per imparare a suonare la chitarra classica da autodidatta? → [GENERAL]
+* Scrivi un'implementazione in Go di un server TCP concorrente che gestisce connessioni multiple con goroutine. → [CODING]
+* Dimostra che la somma dei quadrati dei primi n numeri naturali è n(n+1)(2n+1)/6 per induzione. → [MATH]
+* Quali sono le tutele giuridiche per il lavoratore in caso di trasferimento d'azienda ai sensi dell'art. 47 L. 428/90? → [RIGHTS]
+* Come si alleva e si cura un acquario d'acqua dolce con pesci tropicali? → [GENERAL]
+* Calcola l'area della superficie di una sfera usando l'integrale di superficie e le coordinate sferiche. → [MATH]
+* Spiegami le origini storiche e le tradizioni del Carnevale di Venezia. → [GENERAL]
+* Scrivi il codice Python per addestrare un modello XGBoost su un dataset CSV con cross-validation k-fold. → [CODING]
+* Applica il test di Kolmogorov-Smirnov per verificare se un campione segue una distribuzione normale. → [MATH]
+* Cosa prevede la normativa italiana riguardo alla responsabilità del produttore per danni da prodotto difettoso? → [RIGHTS]
+* Come si costruisce una casetta in legno per uccelli? → [GENERAL]
+* Scrivi il codice Python che implementa l'algoritmo RSA partendo dalla generazione dei numeri primi e calcola matematicamente l'esponente privato usando l'algoritmo di Euclide esteso. → [CODING→MATH]
+* Dimostra il teorema fondamentale del calcolo e implementa un integratore numerico adattivo in C++ che minimizza l'errore relativo. → [MATH→CODING]
+* Quali sono le sanzioni penali previste per l'accesso abusivo a un sistema informatico ex art. 615-ter c.p. e come si implementa tecnicamente un sistema di autenticazione conforme? → [RIGHTS→CODING]
+* Qual è la formula legale per il calcolo degli interessi di mora secondo il D.Lgs. 231/2002 e come si implementa uno script Python che li calcola automaticamente su un foglio di debitori? → [RIGHTS→MATH→CODING — usa pipeline RIGHTS→CODING con math implicita]
+* Spiega le implicazioni legali della firma digitale qualificata (eIDAS) e scrivi il codice Python per verificare un certificato X.509. → [RIGHTS→CODING]
+* Qual è la formula matematica esatta per calcolare la pensione con il sistema contributivo secondo la normativa INPS vigente? → [MATH→RIGHTS]
+* Implementa in JavaScript un sistema di cifratura AES-256-GCM e spiega le basi matematiche dell'algebra sui campi di Galois GF(2^8). → [CODING→MATH]
+* Cosa prevede il GDPR per il trasferimento di dati verso paesi terzi e come si implementa tecnicamente il meccanismo di anonimizzazione k-anonymity? → [RIGHTS→CODING]
+* Dimostra la correttezza dell'algoritmo di Dijkstra tramite invariante di ciclo e implementalo in Rust con una priority queue basata su heap binario. → [MATH→CODING]
+* Qual è la procedura matematica per calcolare i millesimi di proprietà in un condominio e quali norme del codice civile ne regolano la revisione? → [MATH→RIGHTS]
+* Dimostra l'ottimalità dello schema di firma ECDSA usando le proprietà delle curve ellittiche e implementane la verifica in Python. → [MATH→CODING]
+* Quali sono le responsabilità civili di un amministratore di sistema in caso di data breach secondo il GDPR e come si implementa un sistema di incident response automatizzato? → [RIGHTS→CODING]
+* Calcola il tasso interno di rendimento (TIR) di un piano di investimento usando il metodo di Newton-Raphson e spiega quale normativa fiscale si applica alle plusvalenze. → [MATH→RIGHTS]
+* Spiega la complessità computazionale della moltiplicazione di matrici sparse e implementa l'algoritmo di Strassen in C++ ottimizzato per cache. → [MATH→CODING]
+* Cosa prevede la normativa sul whistleblowing (D.Lgs. 24/2023) e come si implementa un canale di segnalazione anonimo crittografato end-to-end? → [RIGHTS→CODING]
+* Qual è la procedura legale per la registrazione di un marchio comunitario e come si scrive uno script che monitora automaticamente le scadenze di rinnovo via API EUIPO? → [RIGHTS→CODING]
+* Analizza matematicamente la complessità spaziale e temporale dell'algoritmo di Karatsuba per la moltiplicazione di interi grandi e implementalo in Python. → [MATH→CODING]
+* Cosa stabilisce il Codice delle Comunicazioni Elettroniche sulla conservazione dei metadati e come si progetta un database conforme con politiche di retention automatizzate? → [RIGHTS→CODING]
