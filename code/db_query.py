@@ -1,4 +1,21 @@
-from typing import Dict, List
+"""
+    DATABASE QUERY — Frasi di training per il Vector Store.
+
+    Novità V2.0:
+    - [P3] Rimossi tutti i cloni manuali ("Trucco del Clone") dai domini.
+      Le frasi bridge erano duplicate fisicamente in ogni dominio coinvolto,
+      causando debito tecnico e rischio di desincronizzazione.
+    - [P3] Aggiunto BRIDGE_SENTENCES: Dict[Tuple[str, str], List[str]].
+      Ogni coppia di domini mappa alle frasi condivise. vector_store.py
+      le itera, le embeda UNA SOLA VOLTA e crea record per entrambi i domini.
+      Questo garantisce un'unica sorgente di verità per le frasi di confine.
+"""
+
+from typing import Dict, List, Tuple
+
+# =============================================================================
+# INTENT_SENTENCES — Frasi mono-dominio (nessun clone di bridge)
+# =============================================================================
 
 INTENT_SENTENCES: Dict[str, List[str]] = {
     'coding': [
@@ -153,34 +170,6 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Scrivi il codice per il profiling delle prestazioni e l'analisi del consumo di memoria in C#.",
         "Sviluppa un sistema di mock per simulare le risposte di un servizio esterno nei test Jest.",
 
-        # --- PONTE: Coding <-> Rights (clone identico anche in rights) ---
-        "Scrivi uno script Python che anonimizza i dati personali in un database SQL rispettando il GDPR europeo.",
-        "Implementa il principio di privacy by design in un'architettura software per la gestione dei dati utente.",
-        "Scrivi il codice per garantire la conformità normativa nella raccolta e nel trattamento dei dati personali.",
-        "Come si implementa tecnicamente il diritto all'oblio cancellando irreversibilmente i record di un utente dal database?",
-        "Sviluppa uno script che genera log firmati digitalmente con validità probatoria ammissibile in sede legale.",
-        "Scrivi il codice per uno smart contract Solidity che esegue automaticamente le clausole di un accordo commerciale.",
-        "Implementa un sistema di audit trail immutabile per tracciare gli accessi ai dati sensibili rispettando le normative.",
-        "Come si struttura il codice di un'app per raccogliere il consenso informato degli utenti secondo la direttiva ePrivacy?",
-        "Scrivi il codice per pseudonimizzare i dati personali in un dataset prima di condividerlo con terze parti.",
-        "Sviluppa un modulo software che implementi il controllo degli accessi basato su ruoli (RBAC) secondo i requisiti legali.",
-        "Come si implementa tecnicamente la portabilità dei dati permettendo all'utente di esportare il proprio profilo in JSON?",
-        "Scrivi uno script che verifica automaticamente la conformità GDPR di un database rilevando campi non cifrati.",
-        "Implementa in Python la firma digitale di documenti contrattuali usando certificati X.509 validi legalmente.",
-        "Scrivi il codice per un sistema di notifica automatica delle violazioni dei dati personali entro 72 ore come previsto dalla legge.",
-
-        # --- PONTE: Coding <-> Math (clone identico anche in math) ---
-        "Implementa in C++ l'algoritmo della Trasformata di Fourier Veloce (FFT) per analizzare un segnale discreto.",
-        "Scrivi il codice Python che implementa la scomposizione QR di una matrice usando l'algoritmo di Gram-Schmidt.",
-        "Sviluppa uno script che calcola numericamente gli autovalori di una matrice con il metodo delle potenze in Python.",
-        "Implementa in C++ il metodo di Newton-Raphson per trovare le radici reali di un polinomio di terzo grado.",
-        "Scrivi il codice per il calcolo dell'integrale definito usando la quadratura di Gauss-Legendre in Python.",
-        "Implementa l'algoritmo di eliminazione di Gauss-Jordan in C++ per risolvere un sistema lineare denso.",
-        "Sviluppa uno script Python che calcola la derivata numerica di una funzione usando differenze finite centrate.",
-        "Scrivi il codice per risolvere numericamente un'equazione differenziale ordinaria col metodo Runge-Kutta 4.",
-        "Implementa in Python la regressione lineare multipla calcolando i coefficienti tramite la formula delle equazioni normali.",
-        "Scrivi uno script che calcola la distribuzione di probabilità binomiale e la visualizza con un istogramma in Matplotlib.",
-
         # --- Edge Cases e Ibridi Complessi ---
         "Implementa un parser in Rust per estrarre le clausole contrattuali e le scadenze da un file PDF.",
         "Scrivi il codice per un motore fisico 2D che simula la gravità, l'attrito e le collisioni elastiche tra poligoni.",
@@ -309,33 +298,6 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Spiegami la derivazione matematica della formula del TFR stabilita dalla normativa.",
         "Analizza la struttura logica e le equazioni necessarie per descrivere un algoritmo di ricerca.",
 
-        # --- PONTE: Math <-> Rights (clone identico anche in rights) ---
-        "Qual è la formula matematica esatta stabilita dalla normativa per calcolare il TFR netto di un lavoratore?",
-        "Come si calcola matematicamente il piano di ammortamento alla francese secondo quanto previsto dalla legge sul credito?",
-        "Qual è il metodo numerico previsto per legge per l'adeguamento ISTAT degli assegni di mantenimento?",
-        "Come si quantifica il danno biologico permanente usando le tabelle risarcitorie del Tribunale di Milano?",
-        "Qual è il calcolo legale esatto per la ripartizione millesimale delle spese condominiali di rifacimento tetto?",
-        "Come si determinano matematicamente i valori soglia del tasso usura secondo le circolari della Banca d'Italia?",
-        "Quale procedura di calcolo prevede il codice civile per la rivalutazione monetaria dei crediti risarcitori?",
-        "Come si calcolano gli interessi moratori su un debito commerciale secondo le direttive europee sui ritardi di pagamento?",
-        "Qual è la formula normativa per determinare il valore fiscale di un immobile ai fini dell'imposta di registro?",
-        "Come si calcolano matematicamente le quote di legittima e la quota disponibile in una successione ereditaria complessa?",
-        "Quale modello matematico stabilisce la legge per il calcolo dell'equo indennizzo in caso di espropriazione?",
-        "Come si determina numericamente il tasso effettivo globale (TAEG) secondo la normativa europea sul credito al consumo?",
-        "Qual è il calcolo previsto dalla normativa per la determinazione del valore di avviamento di un'azienda in sede di cessione?",
-
-        # --- CLONE PONTE: Coding <-> Math (identico a sezione coding) ---
-        "Implementa in C++ l'algoritmo della Trasformata di Fourier Veloce (FFT) per analizzare un segnale discreto.",
-        "Scrivi il codice Python che implementa la scomposizione QR di una matrice usando l'algoritmo di Gram-Schmidt.",
-        "Sviluppa uno script che calcola numericamente gli autovalori di una matrice con il metodo delle potenze in Python.",
-        "Implementa in C++ il metodo di Newton-Raphson per trovare le radici reali di un polinomio di terzo grado.",
-        "Scrivi il codice per il calcolo dell'integrale definito usando la quadratura di Gauss-Legendre in Python.",
-        "Implementa l'algoritmo di eliminazione di Gauss-Jordan in C++ per risolvere un sistema lineare denso.",
-        "Sviluppa uno script Python che calcola la derivata numerica di una funzione usando differenze finite centrate.",
-        "Scrivi il codice per risolvere numericamente un'equazione differenziale ordinaria col metodo Runge-Kutta 4.",
-        "Implementa in Python la regressione lineare multipla calcolando i coefficienti tramite la formula delle equazioni normali.",
-        "Scrivi uno script che calcola la distribuzione di probabilità binomiale e la visualizza con un istogramma in Matplotlib.",
-
         # --- Ibridi Complessi ---
         "Dimostra la correttezza formale dell'algoritmo di ordinamento QuickSort tramite il principio di induzione.",
         "Calcola il valore atteso e la varianza teorica del lancio simultaneo di due dadi truccati.",
@@ -349,12 +311,6 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Determina la metrica di similarità ottimale per calcolare la distanza matematica tra due sequenze di DNA.",
         "Analizza la stabilità numerica e il condizionamento della matrice nel calcolo iterativo della traiettoria balistica.",
         "Spiega la teoria matematica dietro la scomposizione ai valori singolari applicata alla compressione delle immagini.",
-
-        # --- PONTE: Math <-> General ---
-        "Qual è la proporzione matematica esatta per ricalcolare le dosi di una ricetta passando da 2 a 9 persone?",
-        "Come si imposta l'equazione per calcolare il reale tasso di sconto applicato durante i saldi stagionali?",
-        "Dimostra matematicamente come il tasso di cambio composto influisce sul costo reale di una vacanza all'estero.",
-        "Spiega con formule come calcolare il consumo medio di carburante e l'efficienza energetica di un veicolo su base mensile.",
     ],
 
     'rights': [
@@ -442,7 +398,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Spiega la responsabilità oggettiva delle società sportive per il comportamento dei propri tifosi.",
         "Quali sono le norme antidoping previste dal Codice WADA e dal Tribunale Nazionale Antidoping?",
 
-        # --- PONTE: Rights <-> Coding (originali lato rights) ---
+        # --- Lato rights: frasi originali Coding-Rights ---
         "Quali sono gli obblighi legali e le sanzioni del GDPR per la conservazione dei dati in un database?",
         "Cosa prevede la normativa sulla privacy per la cancellazione sicura dei file e il diritto all'oblio?",
         "Quali regole giuridiche deve rispettare un software automatizzato per elaborare dati personali?",
@@ -456,48 +412,17 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Quali clausole legali automatiche prevede il diritto civile per l'inadempimento di uno smart contract?",
         "Spiega la disciplina giuridica delle firme elettroniche (semplice, avanzata, qualificata) e del CAD.",
 
-        # --- CLONE PONTE: Coding <-> Rights (identico a sezione coding) ---
-        "Scrivi uno script Python che anonimizza i dati personali in un database SQL rispettando il GDPR europeo.",
-        "Implementa il principio di privacy by design in un'architettura software per la gestione dei dati utente.",
-        "Scrivi il codice per garantire la conformità normativa nella raccolta e nel trattamento dei dati personali.",
-        "Come si implementa tecnicamente il diritto all'oblio cancellando irreversibilmente i record di un utente dal database?",
-        "Sviluppa uno script che genera log firmati digitalmente con validità probatoria ammissibile in sede legale.",
-        "Scrivi il codice per uno smart contract Solidity che esegue automaticamente le clausole di un accordo commerciale.",
-        "Implementa un sistema di audit trail immutabile per tracciare gli accessi ai dati sensibili rispettando le normative.",
-        "Come si struttura il codice di un'app per raccogliere il consenso informato degli utenti secondo la direttiva ePrivacy?",
-        "Scrivi il codice per pseudonimizzare i dati personali in un dataset prima di condividerlo con terze parti.",
-        "Sviluppa un modulo software che implementi il controllo degli accessi basato su ruoli (RBAC) secondo i requisiti legali.",
-        "Come si implementa tecnicamente la portabilità dei dati permettendo all'utente di esportare il proprio profilo in JSON?",
-        "Scrivi uno script che verifica automaticamente la conformità GDPR di un database rilevando campi non cifrati.",
-        "Implementa in Python la firma digitale di documenti contrattuali usando certificati X.509 validi legalmente.",
-        "Scrivi il codice per un sistema di notifica automatica delle violazioni dei dati personali entro 72 ore come previsto dalla legge.",
-
-        # --- PONTE: Rights <-> Math (originali lato rights) ---
-        "Qual è la formula matematica e legale stabilita dalla normativa per calcolare il TFR netto?",
+        # --- Lato rights: frasi originali Math-Rights ---
+        "Qual è la formula matematica e legale stabilita dalla normativa italiana per calcolare il TFR netto?",
         "Come si calcola matematicamente il piano di ammortamento alla francese per un mutuo secondo la legge?",
         "Qual è il calcolo legale esatto per la ripartizione millesimale delle spese condominiali del tetto?",
         "Cosa prevede la giurisprudenza per il calcolo dell'anatocismo e degli interessi di mora sui debiti?",
         "Spiegami come si calcolano matematicamente le quote di legittima in una successione complessa.",
-        "Quale metodo di calcolo numerico prevede la legge per l'adeguamento ISTAT dell'assegno di mantenimento?",
+        "Quale metodo di calcolo numerico prevede la legge italiana per applicare l'adeguamento ISTAT agli assegni di mantenimento?",
         "Come si quantifica il danno biologico permanente usando le tabelle del Tribunale di Milano?",
         "Cosa prevede la normativa europea in merito al calcolo del TAEG nei contratti di finanziamento?",
         "Come si calcola l'imposta di registro e l'IVA per la compravendita immobiliare secondo l'erario.",
         "Quali sono i criteri legali per determinare il superamento del tasso soglia dell'usura bancaria?",
-
-        # --- CLONE PONTE: Math <-> Rights (identico a sezione math) ---
-        "Qual è la formula matematica esatta stabilita dalla normativa per calcolare il TFR netto di un lavoratore?",
-        "Come si calcola matematicamente il piano di ammortamento alla francese secondo quanto previsto dalla legge sul credito?",
-        "Qual è il metodo numerico previsto per legge per l'adeguamento ISTAT degli assegni di mantenimento?",
-        "Come si quantifica il danno biologico permanente usando le tabelle risarcitorie del Tribunale di Milano?",
-        "Qual è il calcolo legale esatto per la ripartizione millesimale delle spese condominiali di rifacimento tetto?",
-        "Come si determinano matematicamente i valori soglia del tasso usura secondo le circolari della Banca d'Italia?",
-        "Quale procedura di calcolo prevede il codice civile per la rivalutazione monetaria dei crediti risarcitori?",
-        "Come si calcolano gli interessi moratori su un debito commerciale secondo le direttive europee sui ritardi di pagamento?",
-        "Qual è la formula normativa per determinare il valore fiscale di un immobile ai fini dell'imposta di registro?",
-        "Come si calcolano matematicamente le quote di legittima e la quota disponibile in una successione ereditaria complessa?",
-        "Quale modello matematico stabilisce la legge per il calcolo dell'equo indennizzo in caso di espropriazione?",
-        "Come si determina numericamente il tasso effettivo globale (TAEG) secondo la normativa europea sul credito al consumo?",
-        "Qual è il calcolo previsto dalla normativa per la determinazione del valore di avviamento di un'azienda in sede di cessione?",
 
         # --- Edge Cases e Ibridi Complessi ---
         "Di chi è la responsabilità civile e penale se un bot di trading algoritmico autonomo causa un crac finanziario?",
@@ -598,13 +523,6 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Qual è l'iter legale per registrare un formato televisivo originale presso la SIAE per proteggerlo da imitazioni?",
         "Come si configurano le licenze software open source GPL e le obbligazioni legali legate all'effetto copyleft?",
         "Quali sono gli strumenti giuridici cautelari e inibitori d'urgenza per bloccare la diffusione di un'opera contraffatta?",
-
-        # --- PONTE: Rights <-> General ---
-        "Quali sono le clausole obbligatorie per registrare un contratto di affitto transitorio per studenti universitari?",
-        "Cosa prevede il Codice del Consumo o la Carta dei Diritti del Passeggero per il rimborso di un volo cancellato o in ritardo?",
-        "Come si attiva la garanzia legale di conformità per un prodotto difettoso acquistato su un portale e-commerce?",
-        "Qual è la procedura per la constatazione amichevole (CID) e l'attribuzione delle responsabilità civili in un tamponamento a catena?",
-        "Quali sono le norme esatte del codice civile riguardanti il rispetto delle distanze legali e l'immissione di fumo tra vicini?",
     ],
 
     'general': [
@@ -636,7 +554,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Quali sono gli attrezzi indispensabili per iniziare a fare piccoli lavori di falegnameria in casa?",
         "Spiegami come montare una mensola a muro usando correttamente i tasselli e il trapano.",
 
-        # --- Storia, Geografia e Scienze Umanistiche (FIX CRITICITÀ 3 — re-ancorato con blindatura umanistica) ---
+        # --- Storia, Geografia e Scienze Umanistiche ---
         "Quali furono le cause sociali, le dinamiche economiche e le battaglie storiche che portarono alla caduta dell'Impero Romano d'Occidente?",
         "Spiegami le origini storiche, le battaglie decisive e le trasformazioni geopolitiche seguite alla Prima Guerra Mondiale e al trattato di Versailles.",
         "Come si sviluppò la civiltà egizia lungo il corso del Nilo, quali faraoni regnarono e quali monumenti storici costruirono?",
@@ -765,16 +683,115 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         # --- Curiosità e Scienze Cognitive ---
         "Spiega la matematica nascosta nelle illusioni ottiche e i meccanismi percettivi con cui il cervello viene ingannato.",
         "Come si addestra efficacemente un cucciolo di cane nei primi mesi di vita?",
+    ],
+}
 
-        # --- PONTE: General <-> Math ---
+
+# =============================================================================
+# BRIDGE_SENTENCES — Frasi di confine condivise tra domini
+#
+# Ogni chiave è una tupla di 2 domini. vector_store.py le processa così:
+#   1. Embeda la frase UNA SOLA VOLTA (nessun doppio calcolo).
+#   2. Crea un record per CIASCUN dominio nella tupla.
+# Questo garantisce un'unica sorgente di verità e azzera il debito tecnico
+# dei cloni manuali precedentemente presenti in INTENT_SENTENCES.
+# =============================================================================
+
+BRIDGE_SENTENCES: Dict[Tuple[str, str], List[str]] = {
+
+    # -------------------------------------------------------------------------
+    # CODING <-> RIGHTS (26 frasi uniche)
+    # Lato coding: frasi "implementazione + normativa"
+    # Lato rights: frasi "normativa + implicazioni sul software"
+    # -------------------------------------------------------------------------
+    ('coding', 'rights'): [
+        # --- Lato coding ---
+        "Scrivi uno script Python che anonimizza i dati personali in un database SQL rispettando il GDPR europeo.",
+        "Implementa il principio di privacy by design in un'architettura software per la gestione dei dati utente.",
+        "Scrivi il codice per garantire la conformità normativa nella raccolta e nel trattamento dei dati personali.",
+        "Come si implementa tecnicamente il diritto all'oblio cancellando irreversibilmente i record di un utente dal database?",
+        "Sviluppa uno script che genera log firmati digitalmente con validità probatoria ammissibile in sede legale.",
+        "Scrivi il codice per uno smart contract Solidity che esegue automaticamente le clausole di un accordo commerciale.",
+        "Implementa un sistema di audit trail immutabile per tracciare gli accessi ai dati sensibili rispettando le normative.",
+        "Come si struttura il codice di un'app per raccogliere il consenso informato degli utenti secondo la direttiva ePrivacy?",
+        "Scrivi il codice per pseudonimizzare i dati personali in un dataset prima di condividerlo con terze parti.",
+        "Sviluppa un modulo software che implementi il controllo degli accessi basato su ruoli (RBAC) secondo i requisiti legali.",
+        "Come si implementa tecnicamente la portabilità dei dati permettendo all'utente di esportare il proprio profilo in JSON?",
+        "Scrivi uno script che verifica automaticamente la conformità GDPR di un database rilevando campi non cifrati.",
+        "Implementa in Python la firma digitale di documenti contrattuali usando certificati X.509 validi legalmente.",
+        "Scrivi il codice per un sistema di notifica automatica delle violazioni dei dati personali entro 72 ore come previsto dalla legge.",
+    ],
+
+    # -------------------------------------------------------------------------
+    # CODING <-> MATH (10 frasi uniche)
+    # Frasi che richiedono implementazione numerica/algoritmica
+    # -------------------------------------------------------------------------
+    ('coding', 'math'): [
+        "Implementa in C++ l'algoritmo della Trasformata di Fourier Veloce (FFT) per analizzare un segnale discreto.",
+        "Scrivi il codice Python che implementa la scomposizione QR di una matrice usando l'algoritmo di Gram-Schmidt.",
+        "Sviluppa uno script che calcola numericamente gli autovalori di una matrice con il metodo delle potenze in Python.",
+        "Implementa in C++ il metodo di Newton-Raphson per trovare le radici reali di un polinomio di terzo grado.",
+        "Scrivi il codice per il calcolo dell'integrale definito usando la quadratura di Gauss-Legendre in Python.",
+        "Implementa l'algoritmo di eliminazione di Gauss-Jordan in C++ per risolvere un sistema lineare denso.",
+        "Sviluppa uno script Python che calcola la derivata numerica di una funzione usando differenze finite centrate.",
+        "Scrivi il codice per risolvere numericamente un'equazione differenziale ordinaria col metodo Runge-Kutta 4.",
+        "Implementa in Python la regressione lineare multipla calcolando i coefficienti tramite la formula delle equazioni normali.",
+        "Scrivi uno script che calcola la distribuzione di probabilità binomiale e la visualizza con un istogramma in Matplotlib.",
+    ],
+
+    # -------------------------------------------------------------------------
+    # MATH <-> RIGHTS (23 frasi uniche)
+    # Lato math: formule normative con orientamento numerico
+    # Lato rights: stesse tematiche con orientamento giuridico
+    # -------------------------------------------------------------------------
+    ('math', 'rights'): [
+        # --- Lato math ---
+        "Qual è la formula matematica esatta stabilita dalla normativa per calcolare il TFR netto di un lavoratore?",
+        "Come si calcola matematicamente il piano di ammortamento alla francese secondo quanto previsto dalla legge sul credito?",
+        "Qual è il metodo numerico previsto per legge per l'adeguamento ISTAT degli assegni di mantenimento?",
+        "Come si quantifica il danno biologico permanente usando le tabelle risarcitorie del Tribunale di Milano?",
+        "Qual è il calcolo legale esatto per la ripartizione millesimale delle spese condominiali di rifacimento tetto?",
+        "Come si determinano matematicamente i valori soglia del tasso usura secondo le circolari della Banca d'Italia?",
+        "Quale procedura di calcolo prevede il codice civile per la rivalutazione monetaria dei crediti risarcitori?",
+        "Come si calcolano gli interessi moratori su un debito commerciale secondo le direttive europee sui ritardi di pagamento?",
+        "Qual è la formula normativa per determinare il valore fiscale di un immobile ai fini dell'imposta di registro?",
+        "Come si calcolano matematicamente le quote di legittima e la quota disponibile in una successione ereditaria complessa?",
+        "Quale modello matematico stabilisce la legge per il calcolo dell'equo indennizzo in caso di espropriazione?",
+        "Come si determina numericamente il tasso effettivo globale (TAEG) secondo la normativa europea sul credito al consumo?",
+        "Qual è il calcolo previsto dalla normativa per la determinazione del valore di avviamento di un'azienda in sede di cessione?",
+    ],
+
+    # -------------------------------------------------------------------------
+    # GENERAL <-> MATH (7 frasi uniche)
+    # Frasi di calcolo quotidiano: matematica applicata alla vita pratica
+    # -------------------------------------------------------------------------
+    ('general', 'math'): [
+        # --- Lato math (più formale) ---
+        "Qual è la proporzione matematica esatta per ricalcolare le dosi di una ricetta passando da 2 a 9 persone?",
+        "Come si imposta l'equazione per calcolare il reale tasso di sconto applicato durante i saldi stagionali?",
+        "Dimostra matematicamente come il tasso di cambio composto influisce sul costo reale di una vacanza all'estero.",
+        "Spiega con formule come calcolare il consumo medio di carburante e l'efficienza energetica di un veicolo su base mensile.",
+        # --- Lato general (più pratico) ---
         "Qual è il metodo mentale più veloce per calcolare al volo lo sconto del 30% su un capo d'abbigliamento in negozio?",
         "Come faccio a calcolare esattamente quanta vernice o metri quadri mi servono per dipingere le pareti della mia stanza?",
         "Spiegami come si convertono mentalmente i gradi Fahrenheit in Celsius quando si viaggia negli Stati Uniti.",
+    ],
 
-        # --- PONTE: General <-> Rights ---
+    # -------------------------------------------------------------------------
+    # GENERAL <-> RIGHTS (9 frasi uniche)
+    # Frasi di diritto quotidiano: normativa applicata alla vita pratica
+    # -------------------------------------------------------------------------
+    ('general', 'rights'): [
+        # --- Lato rights (più formale) ---
+        "Quali sono le clausole obbligatorie per registrare un contratto di affitto transitorio per studenti universitari?",
+        "Cosa prevede il Codice del Consumo o la Carta dei Diritti del Passeggero per il rimborso di un volo cancellato o in ritardo?",
+        "Come si attiva la garanzia legale di conformità per un prodotto difettoso acquistato su un portale e-commerce?",
+        "Qual è la procedura per la constatazione amichevole (CID) e l'attribuzione delle responsabilità civili in un tamponamento a catena?",
+        "Quali sono le norme esatte del codice civile riguardanti il rispetto delle distanze legali e l'immissione di fumo tra vicini?",
+        # --- Lato general (più pratico) ---
         "Quali sono i documenti necessari e i passi pratici da fare al Comune per cambiare la residenza in una nuova città?",
         "Dammi dei consigli pratici su cosa verificare prima di prendere in affitto un appartamento per la prima volta.",
         "Come funziona la procedura pratica per fare il reso gratuito su Amazon e quanti giorni ho per restituire il pacco?",
         "Spiegami cosa fare praticamente e chi chiamare immediatamente subito dopo aver fatto un piccolo incidente in auto.",
-    ]
+    ],
 }

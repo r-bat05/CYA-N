@@ -1,29 +1,16 @@
 """
-    CYA N - AI LOCAL DISPATCHER V6.4.0
+    CYA N - AI LOCAL DISPATCHER V6.5.0
     Entry Point dell'applicazione.
 
-    Novità V6.4.0 — Distance-Weighted k-NN:
-    - [UPDATE] Label debug aggiornate: "min_abs_votes" -> "min_score",
-      score formattati con :.2f per leggibilita' a terminale.
-    - [INVARIATO] Tutta la logica di routing, pipeline ibrida e mono-dominio
-      e' identica alla V6.3.1.
-
-    Novità V6.3.1 — Gestione OOM tramite eccezione tipizzata:
-    - [FIX] Rimosso l'anti-pattern del check testuale startswith(_ERROR_PREFIXES)
-      per le chiamate resolve, resolve_pipeline_a, resolve_pipeline_b e
-      execute_critic_pass. Tutte le chiamate agli agenti sono ora avvolte in
-      un blocco try/except ResourceExhaustedError importato da ai_engine.
-    - [INVARIATO] Il check _ERROR_PREFIXES rimane attivo solo sugli errori
-      Ollama (ResponseError, eccezione generica).
-
-    Novità V6.3.0 — VectorStore k-NN:
-    - [FEATURE] Aggiunta chiamata a initialize_store() all'avvio.
-    - [UPDATE] Import di initialize_store da vector_store.
-
-    Novità V6.2.4 — Routing Semantico come Autorità Primaria:
-    - [BREAKING] classify() del SemanticRouter restituisce ora 3 valori:
-      (domains, confidence, sem_ok).
-    - [FIX ARCHITETTURALE] Rimosso il gate confidence_threshold.
+    Novità V6.5.0:
+    - [P0] GENERAL isolation: dopo la determinazione del routing (semantico o
+      keyword), se uno dei due domini della pipeline ibrida è 'general', la
+      pipeline viene degradata a mono-dominio sull'altro dominio. GENERAL non
+      partecipa mai come agente in una pipeline multi-agente perché non è
+      presente nella pipeline_order_matrix e causa archi ibridi non regolamentati
+      (semantic bleed su termini quotidiani come "sconto", "negozio", "incidente").
+    - [P4] timeout_sincronizzazione ora letto da
+      config.PIPELINE_SETTINGS['ram_sync_timeout'] invece di 20.0 hardcoded.
 """
 
 import sys
@@ -35,14 +22,12 @@ from ai_engine import get_ai_model, ResourceExhaustedError
 from semantic_router import semantic_router as sem_router
 from vector_store import initialize_store
 
-# Prefissi per errori Ollama (ResponseError, connessione) restituiti via return
-# testuale da generate(). NON usati per il check OOM (gestito da eccezione).
 _ERROR_PREFIXES = ("Errore Ollama:", "Errore Generico:", "ATTENZIONE:")
 
 
 def print_banner():
     print("\n" + "=" * 60)
-    print("      CYA N  |  AI LOCAL DISPATCHER V6.4.0    ")
+    print("      CYA N  |  AI LOCAL DISPATCHER V6.5.0    ")
     print("      (Coding • Math • Rights • General)      ")
     print("=" * 60 + "\n")
 
@@ -116,7 +101,7 @@ def main():
 
                 if len(sem_domains) == 2:
                     print(f"🔍 [DEBUG SEMANTICO] Arco Ibrido confermato "
-                          f"(min_score={config.SEMANTIC_SETTINGS.get('knn_min_score', 5.0):.2f}, "
+                          f"(min_score={config.SEMANTIC_SETTINGS.get('knn_min_score', 3.0):.2f}, "
                           f"min_vote_ratio={config.SEMANTIC_SETTINGS.get('knn_min_vote_ratio', 0.30)}).")
                     is_hybrid = True
 
@@ -138,6 +123,20 @@ def main():
                         categories_segments[target] = [user_input]
                     else:
                         categories_segments['general'] = [user_input]
+
+            # ---------------------------------------------------------
+            # [P0] GUARDIA GENERAL: il dominio GENERAL non partecipa mai
+            # a una pipeline ibrida. Se uno dei due domini è 'general',
+            # declassa a mono-dominio sull'altro dominio (o su 'general'
+            # se entrambi fossero general, caso teoricamente impossibile
+            # ma gestito per robustezza).
+            # ---------------------------------------------------------
+            if is_hybrid and 'general' in (domain_a, domain_b):
+                other = domain_b if domain_a == 'general' else domain_a
+                print(f"🔍 [P0 GENERAL GUARD] Downgrade ibrido: GENERAL isolato. "
+                      f"Routing mono-dominio → {other.upper()}")
+                is_hybrid = False
+                categories_segments[other] = [user_input]
 
             # ---------------------------------------------------------
             # ESECUZIONE PIPELINE IBRIDA
@@ -162,10 +161,10 @@ def main():
                     print("\n" + "_" * 60 + "\n")
                     continue
 
-                # Sincronizzazione RAM
+                # Sincronizzazione RAM [P4]
                 print("⚙️  Sincronizzazione — Attendendo lo scaricamento del modello precedente...")
                 target_ram               = agents[domain_b].primary_ram_req
-                timeout_sincronizzazione = 20.0
+                timeout_sincronizzazione = config.PIPELINE_SETTINGS.get('ram_sync_timeout', 20.0)
                 inizio_attesa            = time.time()
 
                 while (time.time() - inizio_attesa) < timeout_sincronizzazione:

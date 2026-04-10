@@ -1,42 +1,31 @@
 """
     CONFIGURAZIONE CENTRALE (CYA N)
 
-    Questo file contiene tutte le costanti, i percorsi e le impostazioni
-    del progetto. Modifica questo file per cambiare modelli, soglie RAM
-    o parametri di generazione senza toccare la logica del codice.
+    Novità V6.5.0:
+    - [P1] knn_weight_epsilon aggiunto a SEMANTIC_SETTINGS.
+      Sostituisce l'epsilon hardcoded 0.001 in vector_store.py con un valore
+      configurabile (default 0.1). Ricalibrato knn_min_score da 7.5 a 3.0
+      per il nuovo range di pesi (con epsilon=0.1 i pesi sono nell'ordine 1-10,
+      non 2-1000).
+    - [P2] pipeline_max_context_chars aggiunto a PIPELINE_SETTINGS.
+      Sostituisce il magic number 6000 hardcoded in ai_engine.py.
+    - [P2] think_open_tag / think_close_tag aggiunti a SYSTEM_SETTINGS.
+      Permettono di cambiare il tag di ragionamento senza toccare ai_engine.py.
+    - [P4] ram_sync_timeout aggiunto a PIPELINE_SETTINGS.
+      Sostituisce il magic number 20.0 hardcoded in main.py.
 
     Novità V6.4.0:
-    - [UPDATE] knn_min_abs_votes rinominato in knn_min_score per riflettere
-      il passaggio al Distance-Weighted k-NN (V1.4 di vector_store.py).
-      Il valore non e' piu' un conteggio intero di voti ma uno score decimale
-      ponderato sulla distanza. Valore iniziale: 5.0.
-    - [DEPRECATO] knn_min_abs_votes rimosso (non piu' letto dal codice).
-
-    Novità V6.3.1:
-    - [TUNING] knn_min_abs_votes alzato da 3 a 4.
-
-    Novità V6.3.0:
-    - [FEATURE] Parametri k-NN aggiunti a SEMANTIC_SETTINGS per il nuovo
-      motore VectorStore (vector_store.py + LanceDB).
-
-    Novità V6.2.4:
-    - [DEPRECATO] confidence_threshold in SEMANTIC_SETTINGS non e' piu' usato.
-
-    Novità V6.0:
-    - [FEATURE] Aggiunta sezione PIPELINE_SETTINGS per la configurazione
-      della pipeline sequenziale multi-agente (query ibride).
+    - [UPDATE] knn_min_abs_votes rinominato in knn_min_score (Distance-Weighted).
 """
 
 import os
 
 # --- 1. GESTIONE PERCORSI (Cross-Platform) ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Percorso della cartella keywords/
 KEYWORDS_DIR = os.path.join(BASE_DIR, '../keywords')
 
 # --- 2. COSTANTI HARDWARE ---
-GB = 1024 * 1024 * 1024  # Byte in 1 GB
+GB = 1024 * 1024 * 1024
 
 RAM_THRESHOLDS = {
     'small':    2.0 * GB,
@@ -81,12 +70,16 @@ MODELS_CONFIG = {
 SYSTEM_SETTINGS = {
     'spinner_timeout':  60,
     'ollama_keep_alive': '60s',
-    'ctx_size':         4096
+    'ctx_size':         4096,
+
+    # [P2] Tag di ragionamento del modello. Cambiarli qui per supportare
+    # modelli alternativi (es. Qwen Reasoning usa <|thought|>...</|thought|>).
+    # NOTA: aggiornare anche clean_response() in helper.py se si cambia il tag.
+    'think_open_tag':  '<think>',
+    'think_close_tag': '</think>',
 }
 
 # --- 5. CONFIGURAZIONE DISPATCHER (SMART MATCH & LEVENSHTEIN) ---
-# Usato solo come fallback quando il servizio embedding è non disponibile.
-
 LEV_MIN_LEN = 4
 
 LEV_TOLERANCE_MAP = {
@@ -96,62 +89,50 @@ LEV_TOLERANCE_MAP = {
 }
 
 # --- 6. CONFIGURAZIONE SEMANTIC ROUTER ---
-#
-# PARAMETRI DEPRECATI (mantenuti solo per riferimento storico e debug):
-# - confidence_threshold: era il gate sul margin coseno (V6.2.3 e precedenti).
-# - multi_domain_spread:  era la soglia per lo spread coseno tra domini.
-# - multi_domain_min_score: score assoluto minimo del secondo dominio.
-# - knn_min_abs_votes: conteggio intero voti (V6.3.x). Sostituito da knn_min_score.
-# Questi parametri NON sono piu' letti dal codice di routing (V6.4.0+).
-#
-# PARAMETRI k-NN ATTIVI (VectorStore V1.4 — Distance-Weighted):
-# - knn_k: numero di vicini piu' prossimi estratti per ogni query.
-#
-# - knn_min_vote_ratio: percentuale minima di score che il secondo dominio
-#   deve ottenere sul totale combinato (top + second) per attivare la pipeline.
-#   Formula: second_score / (top_score + second_score) >= knn_min_vote_ratio
-#
-# - knn_min_score: score ponderato minimo del secondo dominio (float).
-#   Sostituisce knn_min_abs_votes. Con la formula 1/(dist+0.001):
-#     dist ~0.01  -> peso ~90   (clone perfetto)
-#     dist ~0.15  -> peso ~6.25 (match buono)
-#     dist ~0.50  -> peso ~2.0  (vettore rumore)
-#   Valore 5.0: il secondo dominio deve avere almeno un vettore mediamente
-#   vicino per attivare la pipeline. Da calibrare con i test empirici.
-#
-# - debug: se True, stampa gli score k-NN dettagliati per ogni query.
-
 SEMANTIC_SETTINGS = {
     'enabled':               True,
     'embedding_model':       'nomic-embed-text',
 
-    # --- Deprecati (V6.2.x / V6.3.x) — non piu' letti dal routing ---
+    # --- Deprecati (mantenuti per riferimento storico) ---
     'confidence_threshold':  0.06,
     'multi_domain_spread':   0.08,
     'multi_domain_min_score':0.58,
 
     'debug': True,
 
-    # --- Parametri k-NN attivi (V6.4.0 / VectorStore V1.4) ---
-    'knn_k':              10,    # vicini da estrarre per query
-    'knn_min_vote_ratio': 0.30,  # % minima score secondo dominio su combined
-    'knn_min_score':      7.5,   # score ponderato minimo per il secondo dominio
+    # --- Parametri k-NN attivi (V6.5.0) ---
+    'knn_k':              10,
+
+    # [P1] Epsilon per la formula peso = 1 / (dist + epsilon).
+    # Valore precedente: 0.001 (causava pesi estremi fino a 1000).
+    # Valore attuale:    0.1   (pesi nell'ordine 1–10, molto più stabili).
+    # Impatto sul ratio: con epsilon=0.1 e due cloni a dist~0.05, il secondo
+    # dominio ottiene weight~6.67 vs il primo ~6.67: ratio=50% → hybrid ✓
+    # Con il vecchio epsilon, il ratio collassava a <2% per match esatti.
+    'knn_weight_epsilon': 0.1,
+
+    'knn_min_vote_ratio': 0.30,
+
+    # [P1] Ricalibrato da 7.5 a 3.0 per il nuovo range di pesi (epsilon=0.1).
+    # Con epsilon=0.1: dist~0.15 → weight~4.0 (era ~6.25 con epsilon=0.001).
+    # knn_min_score=3.0 richiede almeno un vettore con dist < 0.23 nel secondo
+    # dominio per attivare la pipeline. Calibrare empiricamente se necessario.
+    'knn_min_score':      3.0,
 }
 
 # --- 7. CONFIGURAZIONE PIPELINE MULTI-AGENTE ---
-#
-# hybrid_threshold:
-#   Soglia proporzionale per il keyword fallback (sem_ok=False).
-#
-# min_words_for_pipeline:
-#   Numero minimo di parole per autorizzare l'arco multi-agente.
-#
-# pipeline_order_matrix:
-#   Ordine autoritativo degli agenti nella pipeline.
-
 PIPELINE_SETTINGS = {
-    'hybrid_threshold': 0.30,
-    'min_words_for_pipeline': 8,
+    'hybrid_threshold':          0.30,
+    'min_words_for_pipeline':    8,
+
+    # [P2] Limite caratteri per il contesto passato tra agenti.
+    # Sostituisce il magic number 6000 in ai_engine.py.
+    'pipeline_max_context_chars': 6000,
+
+    # [P4] Timeout (secondi) per la sincronizzazione RAM tra Agente A e B.
+    # Aumentare su macchine lente o con modelli pesanti (es. 40–60s).
+    'ram_sync_timeout':           20.0,
+
     'pipeline_order_matrix': {
         frozenset({'rights', 'coding'}): ('rights', 'coding'),
         frozenset({'math',   'coding'}): ('math',   'coding'),

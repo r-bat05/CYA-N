@@ -1,33 +1,21 @@
 """
-    VECTOR STORE V1.4 — LanceDB Distance-Weighted k-NN Engine
+    VECTOR STORE V1.5 — LanceDB Distance-Weighted k-NN Engine
+
+    Novita' V1.5:
+    - [P1] knn_weight_epsilon configurabile: la formula peso = 1/(dist+epsilon)
+      ora legge l'epsilon da config.SEMANTIC_SETTINGS['knn_weight_epsilon']
+      (default 0.1). L'epsilon hardcoded 0.001 causava pesi estremi (fino a 1000)
+      che collassavano il vote_ratio del secondo dominio a <2%, disabilitando
+      di fatto l'ibridazione per match esatti. Con epsilon=0.1 i pesi sono
+      nell'ordine 1–10, stabili e confrontabili.
+    - [P3] Supporto BRIDGE_SENTENCES: initialize_store() ora importa anche
+      BRIDGE_SENTENCES da db_query.py e crea record per entrambi i domini
+      di ogni coppia, embeddando ogni frase UNA SOLA VOLTA. Questo elimina
+      i cloni manuali che erano mantenuti fisicamente duplicati in INTENT_SENTENCES.
 
     Novita' V1.4:
-    - [FEATURE] Distance-Weighted Voting: abbandonato il conteggio uniforme
-      (1 vettore = 1 voto). Ogni vettore estratto dal k-NN contribuisce con un
-      peso inversamente proporzionale alla sua distanza spaziale dalla query.
-      Formula: weight = 1.0 / (dist + 0.001). L'epsilon 0.001 previene la
-      divisione per zero in caso di match testuale esatto (dist ~ 0.0).
-    - [FIX] Eliminata la "Tirannia della Maggioranza": un singolo clone perfetto
-      (distanza ~0.01, peso ~90) supera numericamente 9 vettori rumore distanti
-      (distanza ~0.5, peso ~2 ciascuno, totale ~18).
-    - [UPDATE] knn_min_abs_votes rinominato in knn_min_score in config.py.
-      Il default interno _DEFAULT_MIN_SCORE riflette il nuovo range decimale.
-    - [UPDATE] Log debug aggiornati: "voti" -> "score", valori float a 2 decimali.
-
-    Novita' V1.2:
-    - [REFACTOR] Il dizionario INTENT_SENTENCES e' stato separato in `db_query.py`.
-    - [FIX] Aggiornato il metodo deprecato table_names() con list_tables().
-
-    Novita' V1.1:
-    - [TUNING] Aggiunte 4 frasi anti-trappola a INTENT_SENTENCES.
-
-    V1.0 — LanceDB k-NN Engine:
-    Sostituisce il PrototypeStore a centroide (semantic_router.py V2.0).
-
-    Logica di ibridazione (doppia condizione):
-    Un secondo dominio viene attivato SOLO SE raggiunge ENTRAMBE:
-    - knn_min_score     : score ponderato minimo (es. >= 5.0)
-    - knn_min_vote_ratio: % score su combinato top+second (es. >= 30%)
+    - [FEATURE] Distance-Weighted Voting con formula 1/(dist+epsilon).
+    - [UPDATE] knn_min_abs_votes rinominato in knn_min_score.
 """
 
 import os
@@ -44,7 +32,7 @@ except ImportError as e:
     ) from e
 
 import config
-from db_query import INTENT_SENTENCES
+from db_query import INTENT_SENTENCES, BRIDGE_SENTENCES
 
 # ---------------------------------------------------------------------------
 # COSTANTI
@@ -56,7 +44,8 @@ VECTOR_DIM = 768  # dimensione output di nomic-embed-text
 
 _DEFAULT_K              = 10
 _DEFAULT_MIN_VOTE_RATIO = 0.30
-_DEFAULT_MIN_SCORE      = 5.0
+_DEFAULT_MIN_SCORE      = 3.0
+_DEFAULT_EPSILON        = 0.1
 
 _table = None
 
@@ -65,11 +54,6 @@ _table = None
 # ---------------------------------------------------------------------------
 
 def l2_normalize(vec: List[float]) -> List[float]:
-    """
-    Normalizza un vettore alla lunghezza unitaria (norma L2 = 1).
-    Con vettori normalizzati, la distanza L2 di LanceDB e' monotonicamente
-    equivalente alla distanza coseno, senza richiedere una metrica specifica.
-    """
     norm = math.sqrt(sum(x * x for x in vec))
     if norm == 0.0:
         return vec
@@ -77,7 +61,6 @@ def l2_normalize(vec: List[float]) -> List[float]:
 
 
 def _embed(text: str, model: str) -> Optional[List[float]]:
-    """Chiama ollama.embeddings e restituisce il vettore grezzo, o None in caso di errore."""
     try:
         response = ollama.embeddings(model=model, prompt=text)
         return response['embedding']
@@ -93,6 +76,11 @@ def _embed(text: str, model: str) -> Optional[List[float]]:
 def initialize_store() -> bool:
     """
     Inizializza il Vector Store su disco (LanceDB).
+
+    [P3] Processa sia INTENT_SENTENCES (frasi mono-dominio) sia
+    BRIDGE_SENTENCES (frasi condivise tra due domini). Per le frasi bridge,
+    l'embedding viene calcolato UNA SOLA VOLTA e vengono creati due record
+    distinti (uno per ciascun dominio della coppia).
     """
     global _table
 
@@ -116,14 +104,22 @@ def initialize_store() -> bool:
             _table = None
 
     # --- Caso 2: costruzione da zero ---
-    total_sentences = sum(len(v) for v in INTENT_SENTENCES.values())
-    print(f"\nCostruzione Vector Store ({total_sentences} frasi totali, salvataggio su disco)...")
+    total_mono   = sum(len(v) for v in INTENT_SENTENCES.values())
+    total_bridge = sum(
+        len(sentences) * len(domains)
+        for domains, sentences in BRIDGE_SENTENCES.items()
+    )
+    total_records = total_mono + total_bridge
+
+    print(f"\nCostruzione Vector Store ({total_mono} frasi mono + {total_bridge} record bridge"
+          f" = {total_records} totali, salvataggio su disco)...")
     print(f"   Percorso DB: {DB_PATH}")
     print(f"   Questo avviene solo al primo avvio. Gli avvii successivi saranno istantanei.\n")
 
     records = []
-    all_ok = True
+    all_ok  = True
 
+    # --- [STEP 1] Frasi mono-dominio ---
     for domain, sentences in INTENT_SENTENCES.items():
         embedded_count = 0
         for sentence in sentences:
@@ -131,16 +127,41 @@ def initialize_store() -> bool:
             if vec is None:
                 all_ok = False
                 continue
-            norm_vec = l2_normalize(vec)
             records.append({
-                "vector": norm_vec,
-                "domain": domain,
+                "vector":   l2_normalize(vec),
+                "domain":   domain,
                 "sentence": sentence
             })
             embedded_count += 1
 
         status = "OK" if embedded_count == len(sentences) else "WARN"
-        print(f"   {status}  [{domain:7s}] {embedded_count}/{len(sentences)} frasi embeddate")
+        print(f"   {status}  [{domain:7s}] {embedded_count}/{len(sentences)} frasi mono embeddate")
+
+    # --- [STEP 2] Frasi bridge (P3) ---
+    bridge_totals: Dict[str, int] = {}
+    for domain_pair, sentences in BRIDGE_SENTENCES.items():
+        pair_label = f"{domain_pair[0]}<->{domain_pair[1]}"
+        embedded_count = 0
+        for sentence in sentences:
+            vec = _embed(sentence, model)
+            if vec is None:
+                all_ok = False
+                continue
+            norm_vec = l2_normalize(vec)
+            # Un solo embedding → due record (uno per dominio)
+            for domain in domain_pair:
+                records.append({
+                    "vector":   norm_vec,
+                    "domain":   domain,
+                    "sentence": sentence
+                })
+            embedded_count += 1
+
+        expected = len(sentences)
+        status = "OK" if embedded_count == expected else "WARN"
+        print(f"   {status}  [bridge {pair_label}] {embedded_count}/{expected} frasi embeddate "
+              f"→ {embedded_count * len(domain_pair)} record creati")
+        bridge_totals[pair_label] = embedded_count
 
     if not records:
         print("\nERRORE VectorStore: nessun vettore generato.")
@@ -149,7 +170,7 @@ def initialize_store() -> bool:
 
     try:
         _table = db.create_table(TABLE_NAME, data=records, mode="overwrite")
-        print(f"\n   OK  VectorStore creato: {len(records)}/{total_sentences} vettori salvati su disco.\n")
+        print(f"\n   OK  VectorStore creato: {len(records)} record totali salvati su disco.\n")
         if not all_ok:
             print("   WARN Alcune frasi non sono state embeddate. Il routing potrebbe essere meno preciso.")
         return True
@@ -160,13 +181,9 @@ def initialize_store() -> bool:
 
 
 def _get_table():
-    """
-    Restituisce il riferimento alla tabella LanceDB.
-    """
     global _table
     if _table is not None:
         return _table
-
     try:
         db = lancedb.connect(DB_PATH)
         if TABLE_NAME in db.list_tables():
@@ -174,7 +191,6 @@ def _get_table():
             return _table
     except Exception:
         pass
-
     return None
 
 
@@ -186,12 +202,15 @@ def classify_knn(text: str) -> Tuple[List[str], float, bool]:
     """
     Classifica il testo tramite votazione k-NN pesata sulla distanza.
 
-    Ogni vettore estratto contribuisce con peso = 1.0 / (dist + 0.001),
-    in modo che i cloni ravvicinati dominino sui vettori rumore distanti.
+    [P1] Formula peso: weight = 1.0 / (dist + epsilon)
+    dove epsilon = config.SEMANTIC_SETTINGS['knn_weight_epsilon'] (default 0.1).
+    Con epsilon=0.1 i pesi sono stabili nell'ordine 1–10, evitando il collasso
+    del vote_ratio che si verificava con l'epsilon hardcoded 0.001.
     """
     k         = config.SEMANTIC_SETTINGS.get('knn_k',              _DEFAULT_K)
     min_ratio = config.SEMANTIC_SETTINGS.get('knn_min_vote_ratio', _DEFAULT_MIN_VOTE_RATIO)
     min_score = config.SEMANTIC_SETTINGS.get('knn_min_score',      _DEFAULT_MIN_SCORE)
+    epsilon   = config.SEMANTIC_SETTINGS.get('knn_weight_epsilon', _DEFAULT_EPSILON)  # [P1]
     model     = config.SEMANTIC_SETTINGS['embedding_model']
 
     table = _get_table()
@@ -214,12 +233,12 @@ def classify_knn(text: str) -> Tuple[List[str], float, bool]:
     if not results:
         return ['general'], 0.0, False
 
-    # --- Distance-Weighted Voting ---
+    # --- Distance-Weighted Voting [P1] ---
     vote_counts: Dict[str, float] = {}
     for row in results:
         domain_val = row['domain']
-        dist = row.get('_distance', 0.0)
-        weight = 1.0 / (dist + 0.001)
+        dist       = row.get('_distance', 0.0)
+        weight     = 1.0 / (dist + epsilon)
         vote_counts[domain_val] = vote_counts.get(domain_val, 0.0) + weight
 
     ranked        = sorted(vote_counts.items(), key=lambda x: x[1], reverse=True)
@@ -242,7 +261,7 @@ def classify_knn(text: str) -> Tuple[List[str], float, bool]:
     if config.SEMANTIC_SETTINGS.get('debug', False):
         print(f"\n   [k-NN DEBUG] Score: { {d: f'{s:.2f}' for d, s in ranked} }")
         print(f"   [k-NN DEBUG] Domini={domains} | Confidence={confidence:.2f} "
-              f"| k={k} | min_score={min_score:.2f} | min_ratio={min_ratio}")
+              f"| k={k} | epsilon={epsilon} | min_score={min_score:.2f} | min_ratio={min_ratio}")
         if second_domain:
             ratio_str = f"{second_score:.2f}/{combined:.2f} = {second_score/combined:.2f}" if combined else "N/A"
             print(f"   [k-NN DEBUG] Secondo dominio '{second_domain}': "

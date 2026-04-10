@@ -1,42 +1,22 @@
 """
-    MOTORE AI IBRIDO V6.2.3 (LLM Pipeline & Critic Pass)
+    MOTORE AI IBRIDO V6.5.0 (LLM Pipeline & Critic Pass)
+
+    Novita' V6.5.0:
+    - [P2] Rimossi magic numbers da ai_engine.py:
+      * Tag <think>/<think> ora letti da config.SYSTEM_SETTINGS['think_open_tag']
+        e ['think_close_tag']. Supporto futuro per modelli con tag diversi
+        (es. Qwen Reasoning: <|thought|>) modificando solo config.py.
+        NOTA: aggiornare anche clean_response() in helper.py in quel caso.
+      * _GUARD ricalcolato dinamicamente da len(think_close_tag) - 1.
+      * Limite troncamento contesto pipeline spostato in
+        config.PIPELINE_SETTINGS['pipeline_max_context_chars'] (era 6000).
+      * Aggiunto BaseAI._truncate_context() per centralizzare la logica:
+        le tre implementazioni di resolve_pipeline_b() ora vi delegano.
 
     Novita' V6.2.3:
     - [FIX CRITICO] Anti-pattern return testuale per OOM: il metodo generate()
       ora solleva ResourceExhaustedError invece di restituire una stringa senza
-      prefisso emoji. Questo permette a main.py di intercettare correttamente
-      l'esaurimento delle risorse con un blocco try/except tipizzato, evitando
-      che l'output di errore venga passato al secondo agente della pipeline.
-
-    Novita' V6.2.2:
-    - [FIX CRITICO] Bug tag <think> frammentati sullo streaming: il controllo
-      per chunk singolo (`"<think>" in content`) fallisce quando Ollama spezza
-      il tag su piu' token consecutivi (es. chunk1="<th", chunk2="ink>").
-      Il contenuto di ragionamento "bucava" il filtro e veniva stampato a video,
-      creando incoerenza tra output visibile e full_response interna.
-      Fix: introdotto stream_buf come buffer di accumulo. Per ogni chunk il
-      contenuto viene appeso al buffer e poi drenato in un loop finche' non
-      ci sono piu' operazioni possibili. La ricerca dei tag avviene sempre
-      sul buffer completo, non sul singolo chunk. La soglia di flush conserva
-      gli ultimi _GUARD=7 caratteri se contengono un '<' che potrebbe essere
-      l'inizio di un tag incompleto, rimandando l'output al chunk successivo.
-
-    Novita' V6.2.1:
-    - [FIX CRITICO] Bug "buco nero" tag <think> in streaming: la logica
-      precedente usava due `if` sequenziali indipendenti. Quando il chunk
-      conteneva entrambi i tag (<think>pensiero</think>risposta), il primo `if`
-      eseguiva content.split("<think>", 1)[0], riducendo `content` a stringa
-      vuota PRIMA che il secondo `if` potesse trovare </think>. Risultato:
-      is_thinking rimaneva bloccato su True e tutto l'output successivo veniva
-      scartato silenziosamente.
-
-    Novita' V6.2:
-    - [FIX] Bug prefisso errori: rimosso "\\n\\n" iniziale dai return degli except.
-    - [FIX] Bug chunk thinking misto (parziale, completato in V6.2.1).
-
-    Novita' V6.1:
-    - [FIX] Vulnerabilita' C: troncamento difensivo in resolve_pipeline_b (max 6000 chars).
-    - [FIX] Vulnerabilita' B: firma execute_critic_pass aggiornata con original_query.
+      prefisso emoji.
 """
 
 import ollama
@@ -47,18 +27,22 @@ from helper import clean_response, SpinnerContext, print_time_elapsed
 from prompts_templates import get_prompts, PIPELINE_PROMPTS
 import config
 
-# Lunghezza del tag piu' lungo che dobbiamo rilevare: len("</think>") = 8.
-# Teniamo _GUARD = 7 caratteri in coda al buffer se contengono '<',
-# per non perdere un tag spezzato tra due chunk consecutivi.
-_GUARD = len("</think>") - 1  # 7
+# --- Tag di ragionamento (configurabili via config.SYSTEM_SETTINGS) ---
+# Modificare solo config.py per supportare modelli con tag diversi.
+# ATTENZIONE: se si cambiano questi tag, aggiornare anche clean_response()
+# in helper.py che usa un pattern regex hardcoded su <think>...</think>.
+_OPEN_TAG  = config.SYSTEM_SETTINGS.get('think_open_tag',  '<think>')
+_CLOSE_TAG = config.SYSTEM_SETTINGS.get('think_close_tag', '</think>')
+
+# Numero di caratteri da conservare in coda al buffer per non perdere
+# un tag di chiusura spezzato su due chunk consecutivi.
+_GUARD = len(_CLOSE_TAG) - 1
 
 
 class ResourceExhaustedError(Exception):
     """
     Sollevata da generate() quando check_resources() fallisce.
-    Sostituisce il precedente anti-pattern del return testuale senza prefisso
-    emoji, permettendo a main.py di intercettarla con un blocco tipizzato
-    invece di affidarsi al fragile check startswith(_ERROR_PREFIXES).
+    Permette a main.py di intercettarla con un blocco try/except tipizzato.
     """
     pass
 
@@ -79,6 +63,16 @@ class BaseAI(ABC):
         if self.cfg['fallback_ram_threshold']:
             self.fallback_ram_req = config.RAM_THRESHOLDS[self.cfg['fallback_ram_threshold']]
         self.is_using_fallback = False
+
+    def _truncate_context(self, text: str) -> str:
+        """
+        [P2] Tronca il contesto passato tra agenti al limite configurato.
+        Centralizza la logica che era duplicata in ogni resolve_pipeline_b().
+        """
+        limit = config.PIPELINE_SETTINGS.get('pipeline_max_context_chars', 6000)
+        if len(text) > limit:
+            return text[:limit] + "\n...[ARCO INFORMATIVO TRONCATO PER LIMITI DI CONTESTO]..."
+        return text
 
     def check_resources(self):
         try:
@@ -132,8 +126,6 @@ class BaseAI(ABC):
         spinner = SpinnerContext(spinner_msg)
         spinner.start()
 
-        # Buffer di accumulo per la gestione robusta dei tag <think> frammentati.
-        # Ogni chunk viene appeso qui prima di essere processato.
         stream_buf  = ""
         is_thinking = False
 
@@ -150,34 +142,26 @@ class BaseAI(ABC):
                 stream_buf += chunk['message']['content']
 
                 # --- DRAIN LOOP ---
-                # Processa il buffer finche' ci sono operazioni completabili.
-                # Si ferma quando: non ci sono tag completi e il residuo e'
-                # troppo corto per determinare se un '<' e' un tag parziale.
                 keep_draining = True
                 while keep_draining:
                     keep_draining = False
 
                     if is_thinking:
-                        close_idx = stream_buf.find("</think>")
+                        close_idx = stream_buf.find(_CLOSE_TAG)
                         if close_idx != -1:
-                            # Tag di chiusura trovato: esci dalla modalita' thinking
                             is_thinking = False
-                            stream_buf = stream_buf[close_idx + 8:]  # 8 = len("</think>")
+                            stream_buf = stream_buf[close_idx + len(_CLOSE_TAG):]
                             if stream_output:
                                 spinner.stop()
-                            keep_draining = True  # potrebbe esserci contenuto dopo </think>
+                            keep_draining = True
                         else:
-                            # Nessun </think> ancora: scarta il contenuto di thinking
-                            # ma tieni gli ultimi _GUARD chars per non perdere il tag spezzato
                             if len(stream_buf) > _GUARD:
                                 stream_buf = stream_buf[-_GUARD:]
-                            # Non possiamo fare altro: aspetta il prossimo chunk
                     else:
-                        open_idx = stream_buf.find("<think>")
+                        open_idx = stream_buf.find(_OPEN_TAG)
                         if open_idx != -1:
-                            # Tag di apertura trovato: emetti tutto cio' che precede
                             safe = stream_buf[:open_idx]
-                            stream_buf = stream_buf[open_idx + 7:]  # 7 = len("<think>")
+                            stream_buf = stream_buf[open_idx + len(_OPEN_TAG):]
                             is_thinking = True
                             if safe:
                                 display_content = clean_response(safe)
@@ -185,18 +169,13 @@ class BaseAI(ABC):
                                     spinner.stop()
                                     print(display_content, end="", flush=True)
                                 full_response += safe
-                            keep_draining = True  # processa il resto del buffer
+                            keep_draining = True
                         else:
-                            # Nessun <think> nel buffer. Determina il punto di flush sicuro.
-                            # Se c'e' un '<' negli ultimi _GUARD caratteri, potrebbe essere
-                            # l'inizio di un <think> spezzato: non emettere oltre quel punto.
                             lt_pos = stream_buf.rfind('<')
                             if lt_pos != -1 and lt_pos >= len(stream_buf) - _GUARD:
-                                # '<' vicino alla fine: emetti solo fino a lt_pos
                                 safe = stream_buf[:lt_pos]
                                 stream_buf = stream_buf[lt_pos:]
                             else:
-                                # Nessun '<' pericoloso in coda: flush completo
                                 safe = stream_buf
                                 stream_buf = ""
 
@@ -206,11 +185,8 @@ class BaseAI(ABC):
                                     spinner.stop()
                                     print(display_content, end="", flush=True)
                                 full_response += safe
-                            # Non c'e' altro da drenare: aspetta il prossimo chunk
 
             # --- FLUSH FINALE ---
-            # Lo stream e' terminato. Qualsiasi contenuto rimasto nel buffer
-            # che non sia inside un blocco thinking deve essere emesso.
             if stream_buf and not is_thinking:
                 display_content = clean_response(stream_buf)
                 if display_content and stream_output:
@@ -275,8 +251,7 @@ class CodeLlamaAI(BaseAI):
         return self.generate(messages, stream_output=False, force_unload=True)
 
     def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str):
-        if len(output_a) > 6000:
-            output_a = output_a[:6000] + "\n...[ARCO INFORMATIVO TRONCATO PER LIMITI DI CONTESTO]..."
+        output_a = self._truncate_context(output_a)  # [P2]
         sys_prompt, _, _ = get_prompts('coding')
         handoff = PIPELINE_PROMPTS['handoff'].format(
             original_query=original_prompt,
@@ -321,8 +296,7 @@ class DeepSeekAI(BaseAI):
         return self.generate(messages, stream_output=False, force_unload=True)
 
     def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str):
-        if len(output_a) > 6000:
-            output_a = output_a[:6000] + "\n...[ARCO INFORMATIVO TRONCATO PER LIMITI DI CONTESTO]..."
+        output_a = self._truncate_context(output_a)  # [P2]
         _, _, enforcement = get_prompts('math')
         handoff = PIPELINE_PROMPTS['handoff'].format(
             original_query=original_prompt,
@@ -371,8 +345,7 @@ class GptOssAI(BaseAI):
         return self.generate(messages, stream_output=False, force_unload=True)
 
     def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str):
-        if len(output_a) > 6000:
-            output_a = output_a[:6000] + "\n...[ARCO INFORMATIVO TRONCATO PER LIMITI DI CONTESTO]..."
+        output_a = self._truncate_context(output_a)  # [P2]
         sys_prompt, _, _ = get_prompts(self.category)
         handoff = PIPELINE_PROMPTS['handoff'].format(
             original_query=original_prompt,
