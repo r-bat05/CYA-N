@@ -43,6 +43,17 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Sviluppa un modulo riutilizzabile in Python seguendo le best practice di packaging.",
         "Implementa un sistema di gestione delle eccezioni personalizzate in Ruby.",
 
+        # Cloud, Serverless, Mobile, Game Dev
+        "Come si configura una funzione serverless su AWS Lambda con Node.js usando il framework Serverless?",
+        "Come si effettua il deploy di un'applicazione containerizzata su Google Cloud Run o AWS ECS?",
+        "Spiegami l'architettura event-driven su cloud con AWS SQS, SNS e Lambda.",
+        "Come si gestisce lo stato in un'app Flutter usando Riverpod o il pattern BLoC?",
+        "Scrivi il codice Kotlin per effettuare chiamate di rete asincrone usando le coroutine di Android.",
+        "Come si ottimizza un'app Android nativa per ridurre il consumo di batteria in background?",
+        "Quali design pattern si usano per strutturare l'architettura di un videogioco in Unity con C#?",
+        "Come si implementa il raycasting in un motore 3D usando WebGL o OpenGL?",
+        "Come si configura un ambiente di test End-to-End con Cypress o Playwright per un'app web?",
+
         # --- Manipolazione Base dei Dati ---
         "Scrivi una funzione Python che ordina una lista di dizionari in base al valore di una chiave specifica.",
         "Come si filtra una lista in Python usando una list comprehension o la funzione filter?",
@@ -279,6 +290,16 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Determina l'area di un triangolo sferico utilizzando il teorema di Gauss-Bonnet.",
         "Verifica se due rette nello spazio sono parallele, incidenti o sghembe.",
 
+        #Topologia e Geometria Differenziale
+        "Definisci gli insiemi aperti, chiusi e gli intorni in uno spazio topologico generale.",
+        "Spiega le proprietà degli spazi di Hausdorff e la separabilità in topologia generale.",
+        "Dimostra che ogni spazio metrico è uno spazio topologico di Hausdorff.",
+        "Definisci il concetto di compattezza e enuncia il teorema di Heine-Borel per sottoinsiemi di R^n.",
+        "Spiega la connessione per archi e la connessione topologica con esempi in spazi metrici.",
+        "Definisci una varietà differenziabile e lo spazio tangente in un punto nella geometria differenziale.",
+        "Calcola la curvatura di Gauss e la curvatura media di una superficie parametrizzata.",
+        "Enuncia il teorema di colorazione dei grafi planari e il relativo argomento combinatorio.",
+
         # --- Probabilità e Statistica ---
         "Calcola la probabilità condizionata dell'evento A sapendo che si è verificato B col teorema di Bayes.",
         "Determina il valore atteso (media), la varianza e la deviazione standard della distribuzione.",
@@ -360,9 +381,17 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
     ],
 
     'rights': [
-        # Fix Q17: giurisdizione extraterritoriale / spazio
+        # Giurisdizione extraterritoriale / spazio
         "Quale giurisdizione penale si applica a un reato commesso a bordo di una stazione spaziale internazionale o di un aereo?",
         "Spiega le norme di diritto internazionale sulla giurisdizione extraterritoriale per reati commessi oltre i confini nazionali.",
+        
+        #AI Act, DSA, Diritto Animali
+        "Cosa prevede il Regolamento Europeo sull'Intelligenza Artificiale (AI Act) per i sistemi ad alto rischio?",
+        "Quali obblighi impone il Digital Services Act (DSA) alle piattaforme online di grandi dimensioni?",
+        "Spiega la disciplina del Cyber Resilience Act europeo e gli obblighi per i produttori di software.",
+        "Cosa prevede la legislazione italiana sulla tutela del benessere animale e il maltrattamento (L. 189/2004)?",
+        "Quali sono le sanzioni penali per il reato di maltrattamento e abbandono di animali domestici?",
+        "Come si applica la normativa vigente sulla responsabilità civile del proprietario di un animale (art. 2052 c.c.)?",
         
         # --- Diritto Costituzionale e Pubblico ---
         "Qual è l'iter legis per l'approvazione di una legge costituzionale da parte del Parlamento?",
@@ -580,6 +609,15 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         # Fix Q4: "parabola" in contesto fisico quotidiano (non matematico)
         "Mio figlio ha rotto qualcosa in casa per un lancio sbagliato, chi è responsabile dei danni verso il vicino?",
         "Come ci si comporta quando si rompe accidentalmente qualcosa di proprietà altrui durante un'attività sportiva?",
+
+        #Macroeconomia, bilanci, finanza quotidiana
+        "Spiegami le cause e le conseguenze dell'inflazione e come le banche centrali usano i tassi d'interesse.",
+        "Come si legge un bilancio aziendale di base e qual è la differenza tra stato patrimoniale e conto economico?",
+        "Cosa sono i titoli di stato, le obbligazioni e come funziona il mercato obbligazionario?",
+        "Spiegami il concetto di PIL, crescita economica e recessione in termini semplici.",
+        "Come funziona il Quantitative Easing e qual è il suo impatto sull'economia reale?",
+        "Qual è la differenza tra politica monetaria e politica fiscale in un'economia moderna?",
+        "Come funziona la borsa valori e cosa determina il prezzo di un'azione quotata?",
 
         # Fix Q2: volume oggetti in contesto pratico (ancora su GENERAL, non MATH)
         "Come si stima approssimativamente la quantità di legna ricavabile da un albero tagliato in giardino?",
