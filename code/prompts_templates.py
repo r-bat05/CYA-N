@@ -106,9 +106,12 @@ PIPELINE_PROMPTS = {
         "{output_a}\n"
         "--- FINE OUTPUT [{domain_a}] ---\n\n"
         "[IL TUO COMPITO]:\n"
-        "Analizza l'output precedente e aggiungi la prospettiva relativa al tuo dominio ({domain_b}). "
-        "NON riscrivere il codice o l'output dell'altro agente se non per correggere errori fattuali. "
+        "Analizza l'output precedente e aggiungi SOLO la prospettiva relativa al tuo dominio ({domain_b}). "
+        "Se l'output di [{domain_a}] ha già risposto in modo completo ed esaustivo alla richiesta originale, "
+        "limitati a validarlo e integrare esclusivamente gli aspetti mancanti del tuo dominio, senza riscrivere. "
+        "NON riscrivere il codice o l'output dell'altro agente se non per correggere errori. "
         "NON ripetere spiegazioni tecniche già fornite. "
+        "NON aggiungere prologhi o epiloghi se non hai contributi sostanziali da dare. "
         "Produci UNA risposta finale che integri entrambe le prospettive in modo organico e coerente."
     ),
     'critic': (

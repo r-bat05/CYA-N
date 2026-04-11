@@ -88,6 +88,19 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Sviluppa un'applicazione web progressiva (PWA) con Service Workers per l'accesso offline.",
         "Configura il rendering lato server (SSR) per un'applicazione frontend moderna.",
 
+        # Fix Q3: "permessi" bleed RIGHTS
+        "Come risolvere l'errore di permessi negati (permission denied) su un database PostgreSQL o MySQL da terminale Linux?",
+        "Imposta i permessi corretti su file e directory Linux usando i comandi chmod, chown e chgrp da riga di comando.",
+        "Come si configurano i permessi di accesso a un database per un utente specifico con GRANT e REVOKE in SQL?",
+
+        # Fix Q18 + Q23: grafi, teoria, parsing
+        "Implementa in Python un grafo orientato usando dizionari e matrici di adiacenza per mappare nodi e archi.",
+        "Scrivi il codice Python per creare un grafo con NetworkX e trovare il percorso minimo tra due nodi.",
+        "Come si visita un grafo in Python usando BFS e DFS su una lista di adiacenza?",
+        "Implementa l'algoritmo di Prim o Kruskal in Python per trovare l'albero di copertura minimo di un grafo.",
+        "Come si fa il parsing di testi con NLTK o spaCy in Python per estrarre token, lemmi e frequenze?",
+        "Scrivi uno script Python per analizzare la frequenza delle parole in un corpus di testi usando Counter.",
+
         # --- Backend, API e Server ---
         "Spiegami la differenza tra promise e async/await in JavaScript con un esempio pratico di codice.",
         "Crea un server backend usando Node.js e il framework Express.",
@@ -347,6 +360,10 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
     ],
 
     'rights': [
+        # Fix Q17: giurisdizione extraterritoriale / spazio
+        "Quale giurisdizione penale si applica a un reato commesso a bordo di una stazione spaziale internazionale o di un aereo?",
+        "Spiega le norme di diritto internazionale sulla giurisdizione extraterritoriale per reati commessi oltre i confini nazionali.",
+        
         # --- Diritto Costituzionale e Pubblico ---
         "Qual è l'iter legis per l'approvazione di una legge costituzionale da parte del Parlamento?",
         "Spiegami i limiti e i presupposti per l'emanazione di un decreto legge da parte del Governo.",
@@ -560,6 +577,12 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
     ],
 
     'general': [
+        # Fix Q4: "parabola" in contesto fisico quotidiano (non matematico)
+        "Mio figlio ha rotto qualcosa in casa per un lancio sbagliato, chi è responsabile dei danni verso il vicino?",
+        "Come ci si comporta quando si rompe accidentalmente qualcosa di proprietà altrui durante un'attività sportiva?",
+
+        # Fix Q2: volume oggetti in contesto pratico (ancora su GENERAL, non MATH)
+        "Come si stima approssimativamente la quantità di legna ricavabile da un albero tagliato in giardino?",
         # --- Ricette, Cucina e Istruzioni Procedurali Quotidiane ---
         "Quali sono gli ingredienti e le istruzioni procedurali esatte per preparare il tiramisù perfetto?",
         "Dammi la ricetta tradizionale esatta e i passaggi procedurali per cucinare la carbonara romana.",
