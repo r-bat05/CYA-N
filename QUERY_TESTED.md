@@ -1,3 +1,5 @@
+### QUERY IBRIDE 
+
 Scrivi uno script Python che utilizza il metodo di Newton-Raphson per trovare le radici di un polinomio di terzo grado.
 
 Quali sono i requisiti normativi per richiedere la cittadinanza italiana per residenza?
@@ -309,7 +311,6 @@ Calcola il prodotto vettoriale tra due vettori in R3 e interpreta geometricament
 Quali sono le tecniche migliori per imparare a suonare la chitarra classica da autodidatta? → [GENERAL]
 
 Quali sono le tutele giuridiche per il lavoratore in caso di trasferimento d'azienda ai sensi dell'art. 47 L. 428/90? → [RIGHTS]
-
 
 ### 🩸 Categoria 1: Semantic Bleed (Parole con doppio significato)
 
