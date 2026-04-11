@@ -125,18 +125,14 @@ def main():
                         categories_segments['general'] = [user_input]
 
             # ---------------------------------------------------------
-            # [P0] GUARDIA GENERAL: il dominio GENERAL non partecipa mai
-            # a una pipeline ibrida. Se uno dei due domini è 'general',
-            # declassa a mono-dominio sull'altro dominio (o su 'general'
-            # se entrambi fossero general, caso teoricamente impossibile
-            # ma gestito per robustezza).
+            # [P0] GUARDIA GENERAL: se general è primario → GENERAL, se è secondario → l'altro
             # ---------------------------------------------------------
             if is_hybrid and 'general' in (domain_a, domain_b):
-                other = domain_b if domain_a == 'general' else domain_a
+                target = 'general' if domain_a == 'general' else domain_a
                 print(f"🔍 [P0 GENERAL GUARD] Downgrade ibrido: GENERAL isolato. "
-                      f"Routing mono-dominio → {other.upper()}")
+                    f"Routing mono-dominio → {target.upper()}")
                 is_hybrid = False
-                categories_segments[other] = [user_input]
+                categories_segments[target] = [user_input]
 
             # ---------------------------------------------------------
             # ESECUZIONE PIPELINE IBRIDA

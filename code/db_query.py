@@ -587,6 +587,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Come si rimuovono le macchie di vino rosso o caffè dai tessuti delicati?",
         "Quali sono gli attrezzi indispensabili per iniziare a fare piccoli lavori di falegnameria in casa?",
         "Spiegami come montare una mensola a muro usando correttamente i tasselli e il trapano.",
+        "Quali sono le tecniche migliori per imparare a suonare la chitarra classica da autodidatta?",
 
         # --- Storia, Geografia e Scienze Umanistiche ---
         "Quali furono le cause sociali, le dinamiche economiche e le battaglie storiche che portarono alla caduta dell'Impero Romano d'Occidente?",
@@ -754,6 +755,13 @@ BRIDGE_SENTENCES: Dict[Tuple[str, str], List[str]] = {
         "Scrivi uno script che verifica automaticamente la conformità GDPR di un database rilevando campi non cifrati.",
         "Implementa in Python la firma digitale di documenti contrattuali usando certificati X.509 validi legalmente.",
         "Scrivi il codice per un sistema di notifica automatica delle violazioni dei dati personali entro 72 ore come previsto dalla legge.",
+        # --- Sicurezza, autenticazione e implementazione normativa [FIX] ---
+        "Come si implementa tecnicamente un sistema di autenticazione a più fattori conforme alle normative sulla sicurezza informatica?",
+        "Quali sono le sanzioni penali per l'accesso abusivo a sistemi informatici ex art. 615-ter e come si implementa tecnicamente la prevenzione?",
+        "Come si costruisce un canale di segnalazione anonimo crittografato end-to-end rispettando i requisiti legali del whistleblowing (D.Lgs. 24/2023)?",
+        "Scrivi uno script Python che calcola gli interessi di mora su un foglio di debitori secondo la normativa D.Lgs. 231/2002 sui ritardi di pagamento.",
+        "Come si implementa tecnicamente la conformità GDPR in un sistema di autenticazione con logging sicuro e validità probatoria legale?",
+        "Quali adempimenti normativi deve soddisfare un sistema di crittografia end-to-end per canali di comunicazione riservati in ambito aziendale?",
     ],
 
     # -------------------------------------------------------------------------
@@ -802,6 +810,10 @@ BRIDGE_SENTENCES: Dict[Tuple[str, str], List[str]] = {
         "Quale modello matematico stabilisce la legge per il calcolo dell'equo indennizzo in caso di espropriazione?",
         "Come si determina numericamente il tasso effettivo globale (TAEG) secondo la normativa europea sul credito al consumo?",
         "Qual è il calcolo previsto dalla normativa per la determinazione del valore di avviamento di un'azienda in sede di cessione?",
+        # --- Analisi finanziaria e normativa fiscale [FIX] ---
+        "Qual è la formula matematica per calcolare il tasso interno di rendimento (TIR) di un investimento e quale normativa fiscale si applica alle plusvalenze?",
+        "Come si calcola il valore attuale netto di un piano di investimento e quali obblighi dichiarativi prevede il TUIR per le plusvalenze finanziarie?",
+        "Qual è il modello attuariale per la valutazione di una rendita e come la normativa del TUF ne regola la commercializzazione?",
     ],
 
     # -------------------------------------------------------------------------

@@ -72,6 +72,21 @@ def _embed(text: str, model: str) -> Optional[List[float]]:
 # ---------------------------------------------------------------------------
 # INIZIALIZZAZIONE E ACCESSO AL DB
 # ---------------------------------------------------------------------------
+def _keyword_confirm(text: str, domain: str) -> bool:
+    """Keyword check puntuale su un singolo dominio."""
+    import re
+    from dispatcher_request import _count_hits, keyword_loader
+    kw_map = {
+        'coding': keyword_loader.CODING,
+        'math':   keyword_loader.MATH,
+        'rights': keyword_loader.RIGHTS,
+    }
+    if domain not in kw_map:
+        return False
+    s_lower = text.lower()
+    tokens  = set(re.findall(r'[a-zA-Z0-9_+#]+', s_lower))
+    return _count_hits(tokens, s_lower, kw_map[domain]) > 0
+
 
 def initialize_store() -> bool:
     """
@@ -252,18 +267,36 @@ def classify_knn(text: str) -> Tuple[List[str], float, bool]:
     combined = top_score + second_score
     domains  = [top_domain]
 
+    _ratio = round(second_score / combined, 2) if combined else 0.0
+
     if (second_domain is not None
             and second_score >= min_score
-            and combined > 0
-            and (second_score / combined) >= min_ratio):
+            and _ratio >= min_ratio):
         domains.append(second_domain)
+    elif (second_domain is not None
+            and second_score >= min_score
+            and 0.27 <= _ratio < min_ratio):
+        # Soft zone: keyword check sul secondo dominio
+        if _keyword_confirm(text, second_domain):
+            domains.append(second_domain)
+            if config.SEMANTIC_SETTINGS.get('debug', False):
+                print(f"   [k-NN SOFT ZONE] '{second_domain}' confermato da keyword. Pipeline attivata.")
+        elif config.SEMANTIC_SETTINGS.get('debug', False):
+            print(f"   [k-NN SOFT ZONE] '{second_domain}' ratio={_ratio} in soft zone, 0 keyword hit. Mono-dominio.")
+
+    # Top-domain guard: se dominio specializzato ha 0 keyword hit → general
+    if len(domains) == 1 and top_domain != 'general':
+        if not _keyword_confirm(text, top_domain):
+            if config.SEMANTIC_SETTINGS.get('debug', False):
+                print(f"   [k-NN TOP GUARD] '{top_domain}' ha 0 keyword hit. Fallback → GENERAL.")
+            domains = ['general']
 
     if config.SEMANTIC_SETTINGS.get('debug', False):
         print(f"\n   [k-NN DEBUG] Score: { {d: f'{s:.2f}' for d, s in ranked} }")
         print(f"   [k-NN DEBUG] Domini={domains} | Confidence={confidence:.2f} "
               f"| k={k} | epsilon={epsilon} | min_score={min_score:.2f} | min_ratio={min_ratio}")
         if second_domain:
-            ratio_str = f"{second_score:.2f}/{combined:.2f} = {second_score/combined:.2f}" if combined else "N/A"
+            ratio_str = f"{second_score:.2f}/{combined:.2f} = {_ratio}" if combined else "N/A"
             print(f"   [k-NN DEBUG] Secondo dominio '{second_domain}': "
                   f"score={second_score:.2f}, ratio={ratio_str}, "
                   f"ibrido={'SI' if len(domains) > 1 else 'NO'}")
