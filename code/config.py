@@ -1,18 +1,20 @@
 """
     CONFIGURAZIONE CENTRALE (CYA N)
 
+    Novità V6.7.0:
+    - [STICKY] sticky_short_words e sticky_confidence_threshold aggiunti a
+      SYSTEM_SETTINGS per la logica di Domain Retention (Sticky Routing).
+
+    Novità V6.6.0:
+    - [CHAT] max_history_turns aggiunto a SYSTEM_SETTINGS.
+      Controlla la profondità della sliding window della chat history.
+      Impostato a 3 (= 6 messaggi totali) per sicurezza su 8GB RAM con ctx=4096.
+
     Novità V6.5.0:
     - [P1] knn_weight_epsilon aggiunto a SEMANTIC_SETTINGS.
-      Sostituisce l'epsilon hardcoded 0.001 in vector_store.py con un valore
-      configurabile (default 0.1). Ricalibrato knn_min_score da 7.5 a 3.0
-      per il nuovo range di pesi (con epsilon=0.1 i pesi sono nell'ordine 1-10,
-      non 2-1000).
     - [P2] pipeline_max_context_chars aggiunto a PIPELINE_SETTINGS.
-      Sostituisce il magic number 6000 hardcoded in ai_engine.py.
     - [P2] think_open_tag / think_close_tag aggiunti a SYSTEM_SETTINGS.
-      Permettono di cambiare il tag di ragionamento senza toccare ai_engine.py.
     - [P4] ram_sync_timeout aggiunto a PIPELINE_SETTINGS.
-      Sostituisce il magic number 20.0 hardcoded in main.py.
 
     Novità V6.4.0:
     - [UPDATE] knn_min_abs_votes rinominato in knn_min_score (Distance-Weighted).
@@ -72,11 +74,25 @@ SYSTEM_SETTINGS = {
     'ollama_keep_alive': '60s',
     'ctx_size':         4096,
 
-    # [P2] Tag di ragionamento del modello. Cambiarli qui per supportare
-    # modelli alternativi (es. Qwen Reasoning usa <|thought|>...</|thought|>).
-    # NOTA: aggiornare anche clean_response() in helper.py se si cambia il tag.
+    # [P2] Tag di ragionamento del modello.
     'think_open_tag':  '<think>',
     'think_close_tag': '</think>',
+
+    # [CHAT] Profondità sliding window della chat history.
+    # Valore = numero di scambi completi (user+assistant).
+    # 3 turni = 6 messaggi totali. Abbassare a 2 su hardware molto limitato.
+    'max_history_turns': 3,
+
+    # [STICKY] Soglia parole per query "corta" → candidata allo sticky routing.
+    # Query con meno di N parole sono considerate follow-up ad alta probabilità.
+    'sticky_short_words': 7,
+
+    # [STICKY] Soglia di confidenza k-NN sotto la quale il risultato è
+    # considerato "non affidabile" e lo sticky routing può prevalere.
+    # Se il k-NN assegna 'general' con confidenza < questa soglia, si applica
+    # il domain retention verso l'ultimo dominio attivo.
+    # Range consigliato: 0.55–0.70. Con 0.65 si mantiene sensibilità buona.
+    'sticky_confidence_threshold': 0.65,
 }
 
 # --- 5. CONFIGURAZIONE DISPATCHER (SMART MATCH & LEVENSHTEIN) ---
@@ -102,21 +118,8 @@ SEMANTIC_SETTINGS = {
 
     # --- Parametri k-NN attivi (V6.5.0) ---
     'knn_k':              10,
-
-    # [P1] Epsilon per la formula peso = 1 / (dist + epsilon).
-    # Valore precedente: 0.001 (causava pesi estremi fino a 1000).
-    # Valore attuale:    0.1   (pesi nell'ordine 1–10, molto più stabili).
-    # Impatto sul ratio: con epsilon=0.1 e due cloni a dist~0.05, il secondo
-    # dominio ottiene weight~6.67 vs il primo ~6.67: ratio=50% → hybrid ✓
-    # Con il vecchio epsilon, il ratio collassava a <2% per match esatti.
     'knn_weight_epsilon': 0.1,
-
     'knn_min_vote_ratio': 0.30,
-
-    # [P1] Ricalibrato da 7.5 a 3.0 per il nuovo range di pesi (epsilon=0.1).
-    # Con epsilon=0.1: dist~0.15 → weight~4.0 (era ~6.25 con epsilon=0.001).
-    # knn_min_score=3.0 richiede almeno un vettore con dist < 0.23 nel secondo
-    # dominio per attivare la pipeline. Calibrare empiricamente se necessario.
     'knn_min_score':      3.0,
 }
 
@@ -126,11 +129,9 @@ PIPELINE_SETTINGS = {
     'min_words_for_pipeline':    8,
 
     # [P2] Limite caratteri per il contesto passato tra agenti.
-    # Sostituisce il magic number 9000 in ai_engine.py.
     'pipeline_max_context_chars': 9000,
 
-    # [P4] Timeout (secondi) per la sincronizzazione RAM tra Agente A e B.
-    # Aumentare su macchine lente o con modelli pesanti (es. 40–60s).
+    # [P4] Timeout sincronizzazione RAM tra Agente A e B.
     'ram_sync_timeout':           20.0,
 
     'pipeline_order_matrix': {

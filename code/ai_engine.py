@@ -1,22 +1,23 @@
 """
-    MOTORE AI IBRIDO V6.5.0 (LLM Pipeline & Critic Pass)
+    MOTORE AI IBRIDO V6.6.0 (LLM Pipeline & Critic Pass)
 
-    Novita' V6.5.0:
-    - [P2] Rimossi magic numbers da ai_engine.py:
-      * Tag <think>/<think> ora letti da config.SYSTEM_SETTINGS['think_open_tag']
-        e ['think_close_tag']. Supporto futuro per modelli con tag diversi
-        (es. Qwen Reasoning: <|thought|>) modificando solo config.py.
-        NOTA: aggiornare anche clean_response() in helper.py in quel caso.
-      * _GUARD ricalcolato dinamicamente da len(think_close_tag) - 1.
-      * Limite troncamento contesto pipeline spostato in
-        config.PIPELINE_SETTINGS['pipeline_max_context_chars'] (era 6000).
-      * Aggiunto BaseAI._truncate_context() per centralizzare la logica:
-        le tre implementazioni di resolve_pipeline_b() ora vi delegano.
+    Novità V6.6.0:
+    - [CHAT] Chat History integrata in resolve(), resolve_pipeline_a(),
+      resolve_pipeline_b(). Firme aggiornate con parametro opzionale
+      `history: list = None` per retrocompatibilità.
+    - [CHAT] few_shot fuso nel system prompt per tutti i metodi che usano history,
+      evitando che l'esempio virtuso appaia come ultimo messaggio utente prima
+      dei turni storici (problema di posizionamento cronologico).
+    - [CHAT] execute_critic_pass() invariato: non riceve history per design
+      (focalizzato solo su bozza + query originale).
 
-    Novita' V6.2.3:
-    - [FIX CRITICO] Anti-pattern return testuale per OOM: il metodo generate()
-      ora solleva ResourceExhaustedError invece di restituire una stringa senza
-      prefisso emoji.
+    Novità V6.5.0:
+    - [P2] Rimossi magic numbers da ai_engine.py.
+    - [P2] Aggiunto BaseAI._truncate_context().
+
+    Novità V6.2.3:
+    - [FIX CRITICO] generate() solleva ResourceExhaustedError invece di
+      restituire stringa senza prefisso emoji.
 """
 
 import ollama
@@ -28,21 +29,14 @@ from prompts_templates import get_prompts, PIPELINE_PROMPTS
 import config
 
 # --- Tag di ragionamento (configurabili via config.SYSTEM_SETTINGS) ---
-# Modificare solo config.py per supportare modelli con tag diversi.
-# ATTENZIONE: se si cambiano questi tag, aggiornare anche clean_response()
-# in helper.py che usa un pattern regex hardcoded su <think>...</think>.
 _OPEN_TAG  = config.SYSTEM_SETTINGS.get('think_open_tag',  '<think>')
 _CLOSE_TAG = config.SYSTEM_SETTINGS.get('think_close_tag', '</think>')
-
-# Numero di caratteri da conservare in coda al buffer per non perdere
-# un tag di chiusura spezzato su due chunk consecutivi.
 _GUARD = len(_CLOSE_TAG) - 1
 
 
 class ResourceExhaustedError(Exception):
     """
     Sollevata da generate() quando check_resources() fallisce.
-    Permette a main.py di intercettarla con un blocco try/except tipizzato.
     """
     pass
 
@@ -67,12 +61,22 @@ class BaseAI(ABC):
     def _truncate_context(self, text: str) -> str:
         """
         [P2] Tronca il contesto passato tra agenti al limite configurato.
-        Centralizza la logica che era duplicata in ogni resolve_pipeline_b().
         """
         limit = config.PIPELINE_SETTINGS.get('pipeline_max_context_chars', 6000)
         if len(text) > limit:
             return text[:limit] + "\n...[ARCO INFORMATIVO TRONCATO PER LIMITI DI CONTESTO]..."
         return text
+
+    @staticmethod
+    def _merge_few_shot(sys_prompt: str, few_shot: str) -> str:
+        """
+        [CHAT] Fonde il few-shot nel system prompt.
+        Evita che il few-shot venga posizionato come ultimo user message
+        prima della history, alterando la cronologia percepita dal modello.
+        """
+        if few_shot and few_shot.strip():
+            return f"{sys_prompt}\n\n{few_shot.strip()}"
+        return sys_prompt
 
     def check_resources(self):
         try:
@@ -214,13 +218,13 @@ class BaseAI(ABC):
         return clean_response(full_response)
 
     @abstractmethod
-    def resolve(self, prompt: str): pass
+    def resolve(self, prompt: str, history: list = None): pass
 
     @abstractmethod
-    def resolve_pipeline_a(self, prompt: str, domain_b: str): pass
+    def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None): pass
 
     @abstractmethod
-    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str): pass
+    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None): pass
 
     @abstractmethod
     def execute_critic_pass(self, draft_b: str, original_prompt: str): pass
@@ -230,28 +234,35 @@ class CodeLlamaAI(BaseAI):
     def __init__(self):
         super().__init__('coding')
 
-    def resolve(self, prompt: str):
+    def resolve(self, prompt: str, history: list = None):
+        history = history or []
         sys_prompt, few_shot, _ = get_prompts('coding')
-        final_prompt = (f"{few_shot}\n[RICHIESTA]: {prompt}\n\n"
+        combined_sys = self._merge_few_shot(sys_prompt, few_shot)
+        final_prompt = (f"[RICHIESTA]: {prompt}\n\n"
                         f"[IMPORTANTE]: Spiega il codice e i concetti ESCLUSIVAMENTE IN ITALIANO.")
         messages = [
-            {'role': 'system', 'content': sys_prompt},
+            {'role': 'system', 'content': combined_sys},
+            *history,
             {'role': 'user',   'content': final_prompt}
         ]
         return self.generate(messages)
 
-    def resolve_pipeline_a(self, prompt: str, domain_b: str):
+    def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None):
+        history = history or []
         sys_prompt, few_shot, _ = get_prompts('coding')
+        combined_sys = self._merge_few_shot(sys_prompt, few_shot)
         directional = PIPELINE_PROMPTS['directional'].format(domain_b=domain_b.upper())
-        final_prompt = f"{few_shot}\n[RICHIESTA]: {prompt}\n{directional}"
+        final_prompt = f"[RICHIESTA]: {prompt}\n{directional}"
         messages = [
-            {'role': 'system', 'content': sys_prompt},
+            {'role': 'system', 'content': combined_sys},
+            *history,
             {'role': 'user',   'content': final_prompt}
         ]
         return self.generate(messages, stream_output=False, force_unload=True)
 
-    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str):
-        output_a = self._truncate_context(output_a)  # [P2]
+    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None):
+        output_a = self._truncate_context(output_a)
+        history = history or []
         sys_prompt, _, _ = get_prompts('coding')
         handoff = PIPELINE_PROMPTS['handoff'].format(
             original_query=original_prompt,
@@ -261,11 +272,13 @@ class CodeLlamaAI(BaseAI):
         )
         messages = [
             {'role': 'system', 'content': sys_prompt},
+            *history,
             {'role': 'user',   'content': handoff}
         ]
         return self.generate(messages, stream_output=False, force_unload=False)
 
     def execute_critic_pass(self, draft_b: str, original_prompt: str):
+        # Nessuna history: focalizzato su bozza vs query originale.
         sys_prompt, _, _ = get_prompts('coding')
         critic_template = PIPELINE_PROMPTS['critic']
         if "{original_query}" in critic_template:
@@ -284,19 +297,29 @@ class DeepSeekAI(BaseAI):
     def __init__(self):
         super().__init__('math')
 
-    def resolve(self, prompt: str):
+    def resolve(self, prompt: str, history: list = None):
+        # DeepSeekAI non usa system prompt per design — history preposta al messaggio user.
+        history = history or []
         _, _, enforcement = get_prompts('math')
-        messages = [{'role': 'user', 'content': f"{prompt}{enforcement}"}]
+        messages = [
+            *history,
+            {'role': 'user', 'content': f"{prompt}{enforcement}"}
+        ]
         return self.generate(messages)
 
-    def resolve_pipeline_a(self, prompt: str, domain_b: str):
+    def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None):
+        history = history or []
         _, _, enforcement = get_prompts('math')
         directional = PIPELINE_PROMPTS['directional'].format(domain_b=domain_b.upper())
-        messages = [{'role': 'user', 'content': f"{prompt}{enforcement}{directional}"}]
+        messages = [
+            *history,
+            {'role': 'user', 'content': f"{prompt}{enforcement}{directional}"}
+        ]
         return self.generate(messages, stream_output=False, force_unload=True)
 
-    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str):
-        output_a = self._truncate_context(output_a)  # [P2]
+    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None):
+        output_a = self._truncate_context(output_a)
+        history = history or []
         _, _, enforcement = get_prompts('math')
         handoff = PIPELINE_PROMPTS['handoff'].format(
             original_query=original_prompt,
@@ -304,10 +327,14 @@ class DeepSeekAI(BaseAI):
             output_a=output_a,
             domain_b=self.category.upper()
         )
-        messages = [{'role': 'user', 'content': f"{handoff}{enforcement}"}]
+        messages = [
+            *history,
+            {'role': 'user', 'content': f"{handoff}{enforcement}"}
+        ]
         return self.generate(messages, stream_output=False, force_unload=False)
 
     def execute_critic_pass(self, draft_b: str, original_prompt: str):
+        # Nessuna history: focalizzato su bozza vs query originale.
         critic_template = PIPELINE_PROMPTS['critic']
         if "{original_query}" in critic_template:
             critic = critic_template.format(original_query=original_prompt)
@@ -324,28 +351,35 @@ class GptOssAI(BaseAI):
     def __init__(self, category='general'):
         super().__init__(category)
 
-    def resolve(self, prompt: str):
+    def resolve(self, prompt: str, history: list = None):
+        history = history or []
         sys_prompt, few_shot, _ = get_prompts(self.category)
-        full_user_content = (f"{few_shot}\n[RICHIESTA UTENTE]: {prompt}\n\n"
+        combined_sys = self._merge_few_shot(sys_prompt, few_shot)
+        full_user_content = (f"[RICHIESTA UTENTE]: {prompt}\n\n"
                              f"[IMPORTANTE]: Rispondi IN ITALIANO.")
         messages = [
-            {'role': 'system', 'content': sys_prompt},
+            {'role': 'system', 'content': combined_sys},
+            *history,
             {'role': 'user',   'content': full_user_content}
         ]
         return self.generate(messages)
 
-    def resolve_pipeline_a(self, prompt: str, domain_b: str):
+    def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None):
+        history = history or []
         sys_prompt, few_shot, _ = get_prompts(self.category)
+        combined_sys = self._merge_few_shot(sys_prompt, few_shot)
         directional = PIPELINE_PROMPTS['directional'].format(domain_b=domain_b.upper())
-        full_user_content = f"{few_shot}\n[RICHIESTA UTENTE]: {prompt}\n{directional}"
+        full_user_content = f"[RICHIESTA UTENTE]: {prompt}\n{directional}"
         messages = [
-            {'role': 'system', 'content': sys_prompt},
+            {'role': 'system', 'content': combined_sys},
+            *history,
             {'role': 'user',   'content': full_user_content}
         ]
         return self.generate(messages, stream_output=False, force_unload=True)
 
-    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str):
-        output_a = self._truncate_context(output_a)  # [P2]
+    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None):
+        output_a = self._truncate_context(output_a)
+        history = history or []
         sys_prompt, _, _ = get_prompts(self.category)
         handoff = PIPELINE_PROMPTS['handoff'].format(
             original_query=original_prompt,
@@ -355,11 +389,13 @@ class GptOssAI(BaseAI):
         )
         messages = [
             {'role': 'system', 'content': sys_prompt},
+            *history,
             {'role': 'user',   'content': handoff}
         ]
         return self.generate(messages, stream_output=False, force_unload=False)
 
     def execute_critic_pass(self, draft_b: str, original_prompt: str):
+        # Nessuna history: focalizzato su bozza vs query originale.
         sys_prompt, _, _ = get_prompts(self.category)
         critic_template = PIPELINE_PROMPTS['critic']
         if "{original_query}" in critic_template:

@@ -1,16 +1,28 @@
 """
-    CYA N - AI LOCAL DISPATCHER V6.5.0
+    CYA N - AI LOCAL DISPATCHER V6.7.0
     Entry Point dell'applicazione.
 
+    Novità V6.7.0:
+    - [STICKY] Implementazione Domain Retention (Sticky Routing).
+      last_active_domain: str traccia il dominio primario dell'ultimo turno valido.
+      Per pipeline ibride, eredita domain_b (il risolutore finale/Critic).
+    - [STICKY] _should_sticky_route(): logica algoritmica senza magic words.
+      Condizioni di innesco: query corta (< sticky_short_words) oppure k-NN
+      atterra su 'general' con bassa confidenza (< sticky_confidence_threshold).
+      Condizione di override: k-NN ha alta confidenza su dominio tecnico diverso
+      dall'ultimo (context switch esplicito dell'utente).
+
+    Novità V6.6.0:
+    - [CHAT] chat_history: lista globale di sessione (sliding window).
+    - [CHAT] _update_history(): helper aggiornamento e troncamento.
+    - [CHAT] Comando '/reset' per svuotare history senza uscire.
+    - [CHAT] History passata a resolve(), resolve_pipeline_a(), resolve_pipeline_b().
+      NON passata a execute_critic_pass() per design.
+    - [CHAT] Solo la risposta finale del Critic Pass salvata nella history.
+
     Novità V6.5.0:
-    - [P0] GENERAL isolation: dopo la determinazione del routing (semantico o
-      keyword), se uno dei due domini della pipeline ibrida è 'general', la
-      pipeline viene degradata a mono-dominio sull'altro dominio. GENERAL non
-      partecipa mai come agente in una pipeline multi-agente perché non è
-      presente nella pipeline_order_matrix e causa archi ibridi non regolamentati
-      (semantic bleed su termini quotidiani come "sconto", "negozio", "incidente").
-    - [P4] timeout_sincronizzazione ora letto da
-      config.PIPELINE_SETTINGS['ram_sync_timeout'] invece di 20.0 hardcoded.
+    - [P0] GENERAL isolation: downgrade ibrido se un dominio è 'general'.
+    - [P4] timeout_sincronizzazione letto da config.PIPELINE_SETTINGS['ram_sync_timeout'].
 """
 
 import sys
@@ -23,13 +35,74 @@ from semantic_router import semantic_router as sem_router
 from vector_store import initialize_store
 
 _ERROR_PREFIXES = ("Errore Ollama:", "Errore Generico:", "ATTENZIONE:")
+_TECHNICAL_DOMAINS = {'coding', 'math', 'rights'}
 
 
 def print_banner():
     print("\n" + "=" * 60)
-    print("      CYA N  |  AI LOCAL DISPATCHER V6.5.0    ")
+    print("      CYA N  |  AI LOCAL DISPATCHER V6.7.0    ")
     print("      (Coding • Math • Rights • General)      ")
     print("=" * 60 + "\n")
+
+
+def _update_history(history: list, user_input: str, response: str, max_messages: int):
+    """
+    [CHAT] Aggiunge il turno corrente alla history e applica la sliding window.
+    Chiamare solo dopo aver verificato che response non sia un errore.
+    """
+    history.append({'role': 'user',      'content': user_input})
+    history.append({'role': 'assistant', 'content': response})
+    if len(history) > max_messages:
+        del history[:len(history) - max_messages]
+
+
+def _is_error(result: str) -> bool:
+    """Controlla se il risultato è un messaggio d'errore di sistema."""
+    return not result or any(result.startswith(p) for p in _ERROR_PREFIXES)
+
+
+def _should_sticky_route(
+    query: str,
+    sem_domains: list,
+    sem_confidence: float,
+    last_domain: str
+) -> tuple:
+    """
+    [STICKY] Valuta se applicare il Domain Retention verso last_domain.
+
+    Restituisce (should_stick: bool, domain: str).
+
+    Logica:
+    1. Guard: se non c'è un dominio tecnico precedente, nulla a cui agganciarsi.
+    2. Override (context switch): se il k-NN ha alta confidenza su un dominio
+       tecnico diverso dall'ultimo → l'utente ha cambiato argomento, rispetta k-NN.
+    3. Innesco sticky: query corta OPPURE k-NN atterra su 'general' con bassa
+       confidenza → aggancia al last_domain.
+    """
+    # Guard: nessun dominio tecnico precedente noto
+    if not last_domain or last_domain not in _TECHNICAL_DOMAINS:
+        return False, last_domain
+
+    short_threshold      = config.SYSTEM_SETTINGS.get('sticky_short_words', 7)
+    confidence_threshold = config.SYSTEM_SETTINGS.get('sticky_confidence_threshold', 0.65)
+
+    top_domain = sem_domains[0] if sem_domains else 'general'
+
+    # Override: k-NN sicuro su dominio tecnico diverso da last_domain → context switch
+    if (top_domain in _TECHNICAL_DOMAINS
+            and top_domain != last_domain
+            and sem_confidence >= confidence_threshold):
+        return False, last_domain
+
+    # Innesco: query corta o k-NN debole/general → sticky
+    word_count   = len(query.split())
+    is_short        = word_count < short_threshold
+    is_weak_general = (top_domain == 'general' or sem_confidence < confidence_threshold)
+
+    if is_short or is_weak_general:
+        return True, last_domain
+
+    return False, last_domain
 
 
 def main():
@@ -47,6 +120,14 @@ def main():
         'general': get_ai_model('general')
     }
 
+    # [CHAT] Stato globale di sessione
+    chat_history: list = []
+    max_history_turns   = config.SYSTEM_SETTINGS.get('max_history_turns', 3)
+    max_messages        = max_history_turns * 2  # user + assistant per turno
+
+    # [STICKY] Dominio primario dell'ultimo turno valido (solo domini tecnici)
+    last_active_domain: str = ''
+
     while True:
         try:
             try:
@@ -61,6 +142,13 @@ def main():
             if user_input.lower() in ['exit', 'esci', 'quit', 'q']:
                 print("\nChiusura sessione. A presto! 👋")
                 break
+
+            # [CHAT+STICKY] Comando reset: azzera history e stato sticky
+            if user_input.lower() in ['/reset', '/clear']:
+                chat_history.clear()
+                last_active_domain = ''
+                print("🔄 Chat history e dominio attivo azzerati.\n")
+                continue
 
             # ---------------------------------------------------------
             # FASE 0: ROUTING SEMANTICO VETTORIALE (Distance-Weighted k-NN)
@@ -82,10 +170,18 @@ def main():
                 is_hybrid, domain_a, domain_b = dispatcher_request.detect_hybrid(user_input)
                 if not is_hybrid:
                     winning_domain = dispatcher_request.classify_segment(user_input)
-                    if winning_domain in categories_segments:
-                        categories_segments[winning_domain] = [user_input]
-                    else:
-                        categories_segments['general'] = [user_input]
+                    # [STICKY] Nel fallback keyword, applica sticky se atterrato su 'general'
+                    if winning_domain == 'general':
+                        stick, sticky_domain = _should_sticky_route(
+                            user_input, ['general'], 0.0, last_active_domain
+                        )
+                        if stick:
+                            print(f"📎 [STICKY] Keyword fallback su 'general'. "
+                                  f"Domain Retention → {sticky_domain.upper()}")
+                            winning_domain = sticky_domain
+
+                    categories_segments[winning_domain if winning_domain in categories_segments
+                                        else 'general'] = [user_input]
 
             else:
                 word_count = len(user_input.split())
@@ -99,7 +195,25 @@ def main():
                 print(f"🔍 [DEBUG SEMANTICO] Domini: {sem_domains}  |  "
                       f"Confidence k-NN: {sem_confidence:.2f}")
 
-                if len(sem_domains) == 2:
+                # ---------------------------------------------------------
+                # [STICKY] Valutazione Domain Retention (prima del routing)
+                # Eseguita solo se il routing NON è già ibrido: un follow-up
+                # è per definizione mono-dominio.
+                # ---------------------------------------------------------
+                stick, sticky_domain = _should_sticky_route(
+                    user_input, sem_domains, sem_confidence, last_active_domain
+                )
+
+                if stick:
+                    print(f"📎 [STICKY] Domain Retention attivo: "
+                          f"routing forzato → {sticky_domain.upper()} "
+                          f"(last='{last_active_domain}', "
+                          f"k-NN top='{sem_domains[0]}', conf={sem_confidence:.2f})")
+                    # Sticky è sempre mono-dominio
+                    is_hybrid = False
+                    categories_segments[sticky_domain] = [user_input]
+
+                elif len(sem_domains) == 2:
                     print(f"🔍 [DEBUG SEMANTICO] Arco Ibrido confermato "
                           f"(min_score={config.SEMANTIC_SETTINGS.get('knn_min_score', 3.0):.2f}, "
                           f"min_vote_ratio={config.SEMANTIC_SETTINGS.get('knn_min_vote_ratio', 0.30)}).")
@@ -119,13 +233,11 @@ def main():
                 else:
                     target = sem_domains[0]
                     print(f"🔍 [DEBUG SEMANTICO] Dominio: {target.upper()}")
-                    if target in categories_segments:
-                        categories_segments[target] = [user_input]
-                    else:
-                        categories_segments['general'] = [user_input]
+                    categories_segments[target if target in categories_segments
+                                        else 'general'] = [user_input]
 
             # ---------------------------------------------------------
-            # [P0] GUARDIA GENERAL: se general è primario → GENERAL, se è secondario → l'altro
+            # [P0] GUARDIA GENERAL
             # ---------------------------------------------------------
             if is_hybrid and 'general' in (domain_a, domain_b):
                 target = 'general' if domain_a == 'general' else domain_a
@@ -143,16 +255,18 @@ def main():
                 print(f"│ Agente B (Merge): {agents[domain_b].model_name}")
                 print(f"╰──────────────────────────────────────────")
 
-                # FASE 1/3: Agente A
+                # FASE 1/3: Agente A — riceve history per contesto, output NON salvato
                 print(f"\n⚙️  Fase 1/3 — Elaborazione contesto [{domain_a.upper()}] in corso...")
                 try:
-                    output_a = agents[domain_a].resolve_pipeline_a(user_input, domain_b)
+                    output_a = agents[domain_a].resolve_pipeline_a(
+                        user_input, domain_b, chat_history
+                    )
                 except ResourceExhaustedError as e:
                     print(f"\n⛔ OOM — Pipeline interrotta in Fase 1/3: {e}")
                     print("\n" + "_" * 60 + "\n")
                     continue
 
-                if not output_a or any(output_a.startswith(p) for p in _ERROR_PREFIXES):
+                if _is_error(output_a):
                     print(output_a)
                     print("\n" + "_" * 60 + "\n")
                     continue
@@ -170,21 +284,23 @@ def main():
                 else:
                     print("⚠️  Timeout sincronizzazione RAM: procedo comunque.")
 
-                # FASE 2/3: Agente B (Integrazione)
+                # FASE 2/3: Agente B — riceve history, output NON salvato (bozza interna)
                 print(f"⚙️  Fase 2/3 — Integrazione dominio [{domain_b.upper()}] in corso...")
                 try:
-                    output_b = agents[domain_b].resolve_pipeline_b(user_input, output_a, domain_a)
+                    output_b = agents[domain_b].resolve_pipeline_b(
+                        user_input, output_a, domain_a, chat_history
+                    )
                 except ResourceExhaustedError as e:
                     print(f"\n⛔ OOM — Pipeline interrotta in Fase 2/3: {e}")
                     print("\n" + "_" * 60 + "\n")
                     continue
 
-                if not output_b or any(output_b.startswith(p) for p in _ERROR_PREFIXES):
+                if _is_error(output_b):
                     print(output_b)
                     print("\n" + "_" * 60 + "\n")
                     continue
 
-                # FASE 3/3: Critic Pass
+                # FASE 3/3: Critic Pass — NO history, solo bozza + query originale
                 print(f"⚙️  Fase 3/3 — Autovalutazione e sintesi [{domain_b.upper()}]...")
                 print("-" * 42)
 
@@ -195,8 +311,13 @@ def main():
                     print("\n" + "_" * 60 + "\n")
                     continue
 
-                if result and any(result.startswith(p) for p in _ERROR_PREFIXES):
+                if _is_error(result):
                     print(result)
+                else:
+                    # [CHAT] Salva solo la risposta finale validata del Critic Pass
+                    _update_history(chat_history, user_input, result, max_messages)
+                    # [STICKY] Il risolutore finale della pipeline è domain_b
+                    last_active_domain = domain_b
 
                 print("\n" + "_" * 60 + "\n")
                 continue
@@ -221,14 +342,20 @@ def main():
                 print(f"╰──────────────────────────────────────────")
 
                 try:
-                    result = ai_agent.resolve(full_query)
+                    result = ai_agent.resolve(full_query, chat_history)
                 except ResourceExhaustedError as e:
                     print(f"\n⛔ OOM — Esecuzione interrotta: {e}")
                     print("\n" + "_" * 60 + "\n")
                     continue
 
-                if result and any(result.startswith(p) for p in _ERROR_PREFIXES):
+                if _is_error(result):
                     print(result)
+                else:
+                    # [CHAT] Salva solo risposte valide
+                    _update_history(chat_history, user_input, result, max_messages)
+                    # [STICKY] Aggiorna solo per domini tecnici (non 'general')
+                    if category in _TECHNICAL_DOMAINS:
+                        last_active_domain = category
 
                 print("\n" + "_" * 60 + "\n")
 
