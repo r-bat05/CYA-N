@@ -1,24 +1,28 @@
 """
-    VECTOR STORE V1.5 — LanceDB Distance-Weighted k-NN Engine
+    VECTOR STORE V1.6 — LanceDB Distance-Weighted k-NN Engine
+
+    Novita' V1.6:
+    - [BUG1a] Top-Domain Guard bypass per query brevi: se la query ha meno
+      parole di sticky_short_words, il guardiano NON degrada a 'general'.
+      Il sistema si fida del punteggio vettoriale puro, permettendo a main.py
+      di ricevere il dominio tecnico corretto e di innescare il Context Switch.
+    - [BUG1b] _keyword_confirm ora integra la Fase 2 (Soft-Match Levenshtein):
+      se la Fase 1 (Hard-Match) non produce hit, i token vengono analizzati
+      tramite phase2_soft_match_best_domain per variazioni morfologiche
+      (es. "integrali" → "integrale", "derivata" → "derivate").
+      Questo risolve la Rigidita' del Keyword Confirm che causava degradi
+      erronei a 'general' per query con termini al plurale o in forma flessa.
+    - [BUG_B] Import di dispatcher_request spostato a livello modulo:
+      la funzione _keyword_confirm era nel hot path del routing e chiamava
+      lazy import ad ogni invocazione (overhead ripetuto inutilmente).
 
     Novita' V1.5:
-    - [P1] knn_weight_epsilon configurabile: la formula peso = 1/(dist+epsilon)
-      ora legge l'epsilon da config.SEMANTIC_SETTINGS['knn_weight_epsilon']
-      (default 0.1). L'epsilon hardcoded 0.001 causava pesi estremi (fino a 1000)
-      che collassavano il vote_ratio del secondo dominio a <2%, disabilitando
-      di fatto l'ibridazione per match esatti. Con epsilon=0.1 i pesi sono
-      nell'ordine 1–10, stabili e confrontabili.
-    - [P3] Supporto BRIDGE_SENTENCES: initialize_store() ora importa anche
-      BRIDGE_SENTENCES da db_query.py e crea record per entrambi i domini
-      di ogni coppia, embeddando ogni frase UNA SOLA VOLTA. Questo elimina
-      i cloni manuali che erano mantenuti fisicamente duplicati in INTENT_SENTENCES.
-
-    Novita' V1.4:
-    - [FEATURE] Distance-Weighted Voting con formula 1/(dist+epsilon).
-    - [UPDATE] knn_min_abs_votes rinominato in knn_min_score.
+    - [P1] knn_weight_epsilon configurabile.
+    - [P3] Supporto BRIDGE_SENTENCES.
 """
 
 import os
+import re
 import sys
 import math
 import ollama
@@ -33,6 +37,15 @@ except ImportError as e:
 
 import config
 from db_query import INTENT_SENTENCES, BRIDGE_SENTENCES
+
+# [BUG_B] Import a livello modulo (era lazy import dentro _keyword_confirm).
+# Nessun rischio di import circolare: dispatcher_request importa solo config.
+from dispatcher_request import (
+    _count_hits,
+    keyword_loader,
+    get_allowed_errors,
+    phase2_soft_match_best_domain,
+)
 
 # ---------------------------------------------------------------------------
 # COSTANTI
@@ -70,32 +83,61 @@ def _embed(text: str, model: str) -> Optional[List[float]]:
 
 
 # ---------------------------------------------------------------------------
-# INIZIALIZZAZIONE E ACCESSO AL DB
+# KEYWORD CONFIRM (Fase 1 Hard-Match + Fase 2 Soft-Match)
 # ---------------------------------------------------------------------------
+
 def _keyword_confirm(text: str, domain: str) -> bool:
-    """Keyword check puntuale su un singolo dominio."""
-    import re
-    from dispatcher_request import _count_hits, keyword_loader
-    kw_map = {
+    """
+    Verifica la presenza di keyword del dominio nel testo.
+
+    [BUG1b FIX] Due fasi:
+    1. Hard-Match O(1) tramite _count_hits.
+    2. Se Fase 1 restituisce 0 hit, Soft-Match tramite Levenshtein
+       (phase2_soft_match_best_domain) sui token rimasti orfani.
+       Questo gestisce varianti morfologiche (plurali, coniugazioni).
+
+    I simboli '+' e '#' sono inclusi nella tokenizzazione per supportare
+    keyword come 'c++', 'c#' (coerente con dispatcher_request.py).
+    """
+    kw_map: Dict[str, set] = {
         'coding': keyword_loader.CODING,
         'math':   keyword_loader.MATH,
         'rights': keyword_loader.RIGHTS,
     }
     if domain not in kw_map:
         return False
+
     s_lower = text.lower()
     tokens  = set(re.findall(r'[a-zA-Z0-9_+#]+', s_lower))
-    return _count_hits(tokens, s_lower, kw_map[domain]) > 0
 
+    # --- Fase 1: Hard-Match ---
+    if _count_hits(tokens, s_lower, kw_map[domain]) > 0:
+        return True
+
+    # --- Fase 2: Soft-Match (Levenshtein) sui token orfani ---
+    # Cerchiamo solo nel dominio target (già identificato dal k-NN).
+    target_keywords = {domain: kw_map[domain]}
+    for token in tokens:
+        allowed = get_allowed_errors(len(token))
+        if allowed == 0:
+            continue
+        best = phase2_soft_match_best_domain(token, target_keywords, allowed)
+        if best == domain:
+            return True
+
+    return False
+
+
+# ---------------------------------------------------------------------------
+# INIZIALIZZAZIONE E ACCESSO AL DB
+# ---------------------------------------------------------------------------
 
 def initialize_store() -> bool:
     """
     Inizializza il Vector Store su disco (LanceDB).
 
     [P3] Processa sia INTENT_SENTENCES (frasi mono-dominio) sia
-    BRIDGE_SENTENCES (frasi condivise tra due domini). Per le frasi bridge,
-    l'embedding viene calcolato UNA SOLA VOLTA e vengono creati due record
-    distinti (uno per ciascun dominio della coppia).
+    BRIDGE_SENTENCES (frasi condivise tra due domini).
     """
     global _table
 
@@ -111,7 +153,7 @@ def initialize_store() -> bool:
     if TABLE_NAME in db.list_tables():
         try:
             _table = db.open_table(TABLE_NAME)
-            count = _table.count_rows()
+            count  = _table.count_rows()
             print(f"   OK  VectorStore caricato da disco: {count} vettori in '{DB_PATH}'.")
             return True
         except Exception as e:
@@ -155,7 +197,7 @@ def initialize_store() -> bool:
     # --- [STEP 2] Frasi bridge (P3) ---
     bridge_totals: Dict[str, int] = {}
     for domain_pair, sentences in BRIDGE_SENTENCES.items():
-        pair_label = f"{domain_pair[0]}<->{domain_pair[1]}"
+        pair_label     = f"{domain_pair[0]}<->{domain_pair[1]}"
         embedded_count = 0
         for sentence in sentences:
             vec = _embed(sentence, model)
@@ -163,7 +205,6 @@ def initialize_store() -> bool:
                 all_ok = False
                 continue
             norm_vec = l2_normalize(vec)
-            # Un solo embedding → due record (uno per dominio)
             for domain in domain_pair:
                 records.append({
                     "vector":   norm_vec,
@@ -173,7 +214,7 @@ def initialize_store() -> bool:
             embedded_count += 1
 
         expected = len(sentences)
-        status = "OK" if embedded_count == expected else "WARN"
+        status   = "OK" if embedded_count == expected else "WARN"
         print(f"   {status}  [bridge {pair_label}] {embedded_count}/{expected} frasi embeddate "
               f"→ {embedded_count * len(domain_pair)} record creati")
         bridge_totals[pair_label] = embedded_count
@@ -217,16 +258,23 @@ def classify_knn(text: str) -> Tuple[List[str], float, bool]:
     """
     Classifica il testo tramite votazione k-NN pesata sulla distanza.
 
+    [BUG1a FIX] Top-Domain Guard: per query brevi (< sticky_short_words parole)
+    il guardiano è disabilitato. Il sistema si fida del punteggio vettoriale
+    puro, consentendo a main.py di rilevare correttamente il context switch
+    (es. "Teorema di Pitagora?" → math, anche senza keyword esatte nel testo).
+
     [P1] Formula peso: weight = 1.0 / (dist + epsilon)
-    dove epsilon = config.SEMANTIC_SETTINGS['knn_weight_epsilon'] (default 0.1).
-    Con epsilon=0.1 i pesi sono stabili nell'ordine 1–10, evitando il collasso
-    del vote_ratio che si verificava con l'epsilon hardcoded 0.001.
+    Con epsilon=0.1 i pesi sono stabili nell'ordine 1-10.
     """
     k         = config.SEMANTIC_SETTINGS.get('knn_k',              _DEFAULT_K)
     min_ratio = config.SEMANTIC_SETTINGS.get('knn_min_vote_ratio', _DEFAULT_MIN_VOTE_RATIO)
     min_score = config.SEMANTIC_SETTINGS.get('knn_min_score',      _DEFAULT_MIN_SCORE)
-    epsilon   = config.SEMANTIC_SETTINGS.get('knn_weight_epsilon', _DEFAULT_EPSILON)  # [P1]
+    epsilon   = config.SEMANTIC_SETTINGS.get('knn_weight_epsilon', _DEFAULT_EPSILON)
     model     = config.SEMANTIC_SETTINGS['embedding_model']
+
+    # [BUG1a] Soglia brevità query (letta da SYSTEM_SETTINGS per coerenza con main.py)
+    short_threshold = config.SYSTEM_SETTINGS.get('sticky_short_words', 7)
+    is_short_query  = len(text.split()) < short_threshold
 
     table = _get_table()
     if table is None:
@@ -248,7 +296,7 @@ def classify_knn(text: str) -> Tuple[List[str], float, bool]:
     if not results:
         return ['general'], 0.0, False
 
-    # --- Distance-Weighted Voting [P1] ---
+    # --- Distance-Weighted Voting ---
     vote_counts: Dict[str, float] = {}
     for row in results:
         domain_val = row['domain']
@@ -276,7 +324,7 @@ def classify_knn(text: str) -> Tuple[List[str], float, bool]:
     elif (second_domain is not None
             and second_score >= min_score
             and 0.27 <= _ratio < min_ratio):
-        # Soft zone: keyword check sul secondo dominio
+        # Soft zone: keyword check (Fase 1 + Fase 2) sul secondo dominio
         if _keyword_confirm(text, second_domain):
             domains.append(second_domain)
             if config.SEMANTIC_SETTINGS.get('debug', False):
@@ -284,12 +332,18 @@ def classify_knn(text: str) -> Tuple[List[str], float, bool]:
         elif config.SEMANTIC_SETTINGS.get('debug', False):
             print(f"   [k-NN SOFT ZONE] '{second_domain}' ratio={_ratio} in soft zone, 0 keyword hit. Mono-dominio.")
 
-    # Top-domain guard: se dominio specializzato ha 0 keyword hit → general
+    # --- Top-domain guard ---
+    # [BUG1a FIX] Bypass per query brevi: su query brevi il k-NN è il segnale
+    # più affidabile. Forzare 'general' qui causerebbe il falso positivo dello
+    # sticky routing (es. "Teorema di Pitagora?" resterebbe su coding).
     if len(domains) == 1 and top_domain != 'general':
-        if not _keyword_confirm(text, top_domain):
+        if not is_short_query and not _keyword_confirm(text, top_domain):
             if config.SEMANTIC_SETTINGS.get('debug', False):
                 print(f"   [k-NN TOP GUARD] '{top_domain}' ha 0 keyword hit. Fallback → GENERAL.")
             domains = ['general']
+        elif is_short_query and config.SEMANTIC_SETTINGS.get('debug', False):
+            print(f"   [k-NN TOP GUARD] Query breve ({len(text.split())} parole): "
+                  f"guardiano bypassato, fiducia al k-NN puro → '{top_domain}'.")
 
     if config.SEMANTIC_SETTINGS.get('debug', False):
         print(f"\n   [k-NN DEBUG] Score: { {d: f'{s:.2f}' for d, s in ranked} }")

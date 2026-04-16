@@ -1,21 +1,26 @@
 """
-    MOTORE AI IBRIDO V6.6.0 (LLM Pipeline & Critic Pass)
+    MOTORE AI IBRIDO V6.6.1
 
-    Novità V6.6.0:
+    Novita' V6.6.1:
+    - [BUG4] _GUARD calcolato su max(len(_OPEN_TAG), len(_CLOSE_TAG)) - 1.
+      Il vecchio calcolo len(_CLOSE_TAG) - 1 causava leak del tag di apertura
+      sul terminale con configurazioni asimmetriche (es. <thinking> vs </t>).
+    - [BUGA] execute_critic_pass() ora chiama _truncate_context(draft_b) prima
+      di assemblare il payload. La bozza del Phase B puo' essere molto lunga
+      (pari al pipeline_max_context_chars); senza troncamento si rischiava
+      OOM o overflow del context window su hardware limitato.
+
+    Novita' V6.6.0:
     - [CHAT] Chat History integrata in resolve(), resolve_pipeline_a(),
       resolve_pipeline_b(). Firme aggiornate con parametro opzionale
-      `history: list = None` per retrocompatibilità.
-    - [CHAT] few_shot fuso nel system prompt per tutti i metodi che usano history,
-      evitando che l'esempio virtuso appaia come ultimo messaggio utente prima
-      dei turni storici (problema di posizionamento cronologico).
-    - [CHAT] execute_critic_pass() invariato: non riceve history per design
-      (focalizzato solo su bozza + query originale).
+      `history: list = None` per retrocompatibilita'.
+    - [CHAT] few_shot fuso nel system prompt per tutti i metodi che usano history.
+    - [CHAT] execute_critic_pass() invariato nel design (no history).
 
-    Novità V6.5.0:
-    - [P2] Rimossi magic numbers da ai_engine.py.
-    - [P2] Aggiunto BaseAI._truncate_context().
+    Novita' V6.5.0:
+    - [P2] Rimossi magic numbers. Aggiunto BaseAI._truncate_context().
 
-    Novità V6.2.3:
+    Novita' V6.2.3:
     - [FIX CRITICO] generate() solleva ResourceExhaustedError invece di
       restituire stringa senza prefisso emoji.
 """
@@ -31,13 +36,16 @@ import config
 # --- Tag di ragionamento (configurabili via config.SYSTEM_SETTINGS) ---
 _OPEN_TAG  = config.SYSTEM_SETTINGS.get('think_open_tag',  '<think>')
 _CLOSE_TAG = config.SYSTEM_SETTINGS.get('think_close_tag', '</think>')
-_GUARD = len(_CLOSE_TAG) - 1
+
+# [BUG4 FIX] La guardia deve essere profonda quanto il tag PIU' LUNGO.
+# Con il vecchio len(_CLOSE_TAG) - 1, tag asimmetrici come <thinking> (9 chars)
+# vs </t> (4 chars) producevano _GUARD=3, insufficiente a trattenere il tag
+# di apertura frammentato sullo stream, causando leak sul terminale.
+_GUARD = max(len(_OPEN_TAG), len(_CLOSE_TAG)) - 1
 
 
 class ResourceExhaustedError(Exception):
-    """
-    Sollevata da generate() quando check_resources() fallisce.
-    """
+    """Sollevata da generate() quando check_resources() fallisce."""
     pass
 
 
@@ -47,12 +55,12 @@ class BaseAI(ABC):
             print(f"WARNING Categoria '{category}' non trovata in config. Uso 'general'.")
             category = 'general'
 
-        self.cfg = config.MODELS_CONFIG[category]
-        self.category = category
-        self.model_name = self.cfg['primary']
-        self.fallback_model = self.cfg['fallback']
-        self.temperature = self.cfg['temperature']
-        self.primary_ram_req = config.RAM_THRESHOLDS[self.cfg['ram_threshold']]
+        self.cfg              = config.MODELS_CONFIG[category]
+        self.category         = category
+        self.model_name       = self.cfg['primary']
+        self.fallback_model   = self.cfg['fallback']
+        self.temperature      = self.cfg['temperature']
+        self.primary_ram_req  = config.RAM_THRESHOLDS[self.cfg['ram_threshold']]
         self.fallback_ram_req = 0
         if self.cfg['fallback_ram_threshold']:
             self.fallback_ram_req = config.RAM_THRESHOLDS[self.cfg['fallback_ram_threshold']]
@@ -61,6 +69,8 @@ class BaseAI(ABC):
     def _truncate_context(self, text: str) -> str:
         """
         [P2] Tronca il contesto passato tra agenti al limite configurato.
+        Applicato sia all'output di Phase A (in resolve_pipeline_b) sia
+        alla bozza di Phase B (in execute_critic_pass) per prevenire OOM.
         """
         limit = config.PIPELINE_SETTINGS.get('pipeline_max_context_chars', 6000)
         if len(text) > limit:
@@ -116,12 +126,12 @@ class BaseAI(ABC):
             )
 
         full_response = ""
-        start_time = time.time()
-        target_model = self.fallback_model if self.is_using_fallback else self.model_name
+        start_time    = time.time()
+        target_model  = self.fallback_model if self.is_using_fallback else self.model_name
 
         options = {
             'temperature': self.temperature,
-            'num_ctx': config.SYSTEM_SETTINGS['ctx_size']
+            'num_ctx':     config.SYSTEM_SETTINGS['ctx_size']
         }
         keep_alive = 0 if force_unload else config.SYSTEM_SETTINGS['ollama_keep_alive']
 
@@ -154,7 +164,7 @@ class BaseAI(ABC):
                         close_idx = stream_buf.find(_CLOSE_TAG)
                         if close_idx != -1:
                             is_thinking = False
-                            stream_buf = stream_buf[close_idx + len(_CLOSE_TAG):]
+                            stream_buf  = stream_buf[close_idx + len(_CLOSE_TAG):]
                             if stream_output:
                                 spinner.stop()
                             keep_draining = True
@@ -164,7 +174,7 @@ class BaseAI(ABC):
                     else:
                         open_idx = stream_buf.find(_OPEN_TAG)
                         if open_idx != -1:
-                            safe = stream_buf[:open_idx]
+                            safe       = stream_buf[:open_idx]
                             stream_buf = stream_buf[open_idx + len(_OPEN_TAG):]
                             is_thinking = True
                             if safe:
@@ -177,10 +187,10 @@ class BaseAI(ABC):
                         else:
                             lt_pos = stream_buf.rfind('<')
                             if lt_pos != -1 and lt_pos >= len(stream_buf) - _GUARD:
-                                safe = stream_buf[:lt_pos]
+                                safe       = stream_buf[:lt_pos]
                                 stream_buf = stream_buf[lt_pos:]
                             else:
-                                safe = stream_buf
+                                safe       = stream_buf
                                 stream_buf = ""
 
                             if safe:
@@ -251,7 +261,7 @@ class CodeLlamaAI(BaseAI):
         history = history or []
         sys_prompt, few_shot, _ = get_prompts('coding')
         combined_sys = self._merge_few_shot(sys_prompt, few_shot)
-        directional = PIPELINE_PROMPTS['directional'].format(domain_b=domain_b.upper())
+        directional  = PIPELINE_PROMPTS['directional'].format(domain_b=domain_b.upper())
         final_prompt = f"[RICHIESTA]: {prompt}\n{directional}"
         messages = [
             {'role': 'system', 'content': combined_sys},
@@ -262,7 +272,7 @@ class CodeLlamaAI(BaseAI):
 
     def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None):
         output_a = self._truncate_context(output_a)
-        history = history or []
+        history  = history or []
         sys_prompt, _, _ = get_prompts('coding')
         handoff = PIPELINE_PROMPTS['handoff'].format(
             original_query=original_prompt,
@@ -278,9 +288,10 @@ class CodeLlamaAI(BaseAI):
         return self.generate(messages, stream_output=False, force_unload=False)
 
     def execute_critic_pass(self, draft_b: str, original_prompt: str):
-        # Nessuna history: focalizzato su bozza vs query originale.
+        # [BUGA FIX] Tronca draft_b prima dell'assemblaggio per prevenire OOM/ctx overflow.
+        draft_b    = self._truncate_context(draft_b)
         sys_prompt, _, _ = get_prompts('coding')
-        critic_template = PIPELINE_PROMPTS['critic']
+        critic_template  = PIPELINE_PROMPTS['critic']
         if "{original_query}" in critic_template:
             critic = critic_template.format(original_query=original_prompt)
         else:
@@ -319,7 +330,7 @@ class DeepSeekAI(BaseAI):
 
     def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None):
         output_a = self._truncate_context(output_a)
-        history = history or []
+        history  = history or []
         _, _, enforcement = get_prompts('math')
         handoff = PIPELINE_PROMPTS['handoff'].format(
             original_query=original_prompt,
@@ -334,7 +345,8 @@ class DeepSeekAI(BaseAI):
         return self.generate(messages, stream_output=False, force_unload=False)
 
     def execute_critic_pass(self, draft_b: str, original_prompt: str):
-        # Nessuna history: focalizzato su bozza vs query originale.
+        # [BUGA FIX] Tronca draft_b prima dell'assemblaggio.
+        draft_b         = self._truncate_context(draft_b)
         critic_template = PIPELINE_PROMPTS['critic']
         if "{original_query}" in critic_template:
             critic = critic_template.format(original_query=original_prompt)
@@ -354,7 +366,7 @@ class GptOssAI(BaseAI):
     def resolve(self, prompt: str, history: list = None):
         history = history or []
         sys_prompt, few_shot, _ = get_prompts(self.category)
-        combined_sys = self._merge_few_shot(sys_prompt, few_shot)
+        combined_sys      = self._merge_few_shot(sys_prompt, few_shot)
         full_user_content = (f"[RICHIESTA UTENTE]: {prompt}\n\n"
                              f"[IMPORTANTE]: Rispondi IN ITALIANO.")
         messages = [
@@ -367,8 +379,8 @@ class GptOssAI(BaseAI):
     def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None):
         history = history or []
         sys_prompt, few_shot, _ = get_prompts(self.category)
-        combined_sys = self._merge_few_shot(sys_prompt, few_shot)
-        directional = PIPELINE_PROMPTS['directional'].format(domain_b=domain_b.upper())
+        combined_sys      = self._merge_few_shot(sys_prompt, few_shot)
+        directional       = PIPELINE_PROMPTS['directional'].format(domain_b=domain_b.upper())
         full_user_content = f"[RICHIESTA UTENTE]: {prompt}\n{directional}"
         messages = [
             {'role': 'system', 'content': combined_sys},
@@ -379,7 +391,7 @@ class GptOssAI(BaseAI):
 
     def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None):
         output_a = self._truncate_context(output_a)
-        history = history or []
+        history  = history or []
         sys_prompt, _, _ = get_prompts(self.category)
         handoff = PIPELINE_PROMPTS['handoff'].format(
             original_query=original_prompt,
@@ -395,9 +407,10 @@ class GptOssAI(BaseAI):
         return self.generate(messages, stream_output=False, force_unload=False)
 
     def execute_critic_pass(self, draft_b: str, original_prompt: str):
-        # Nessuna history: focalizzato su bozza vs query originale.
+        # [BUGA FIX] Tronca draft_b prima dell'assemblaggio.
+        draft_b         = self._truncate_context(draft_b)
         sys_prompt, _, _ = get_prompts(self.category)
-        critic_template = PIPELINE_PROMPTS['critic']
+        critic_template  = PIPELINE_PROMPTS['critic']
         if "{original_query}" in critic_template:
             critic = critic_template.format(original_query=original_prompt)
         else:

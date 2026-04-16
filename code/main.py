@@ -1,27 +1,25 @@
 """
-    CYA N - AI LOCAL DISPATCHER V6.7.0
+    CYA N - AI LOCAL DISPATCHER V6.7.2
     Entry Point dell'applicazione.
 
-    Novità V6.7.0:
-    - [STICKY] Implementazione Domain Retention (Sticky Routing).
-      last_active_domain: str traccia il dominio primario dell'ultimo turno valido.
-      Per pipeline ibride, eredita domain_b (il risolutore finale/Critic).
-    - [STICKY] _should_sticky_route(): logica algoritmica senza magic words.
-      Condizioni di innesco: query corta (< sticky_short_words) oppure k-NN
-      atterra su 'general' con bassa confidenza (< sticky_confidence_threshold).
-      Condizione di override: k-NN ha alta confidenza su dominio tecnico diverso
-      dall'ultimo (context switch esplicito dell'utente).
+    Novita' V6.7.2:
+    - [BUG2] Rimosso Override A da _should_sticky_route(): era dead code.
+      Override B (tech_switch_min=0.45) copre matematicamente Override A
+      (sticky_confidence_threshold=0.65). Mantenere entrambi creava ambiguita'
+      logica e riferimento a un parametro config ora rimosso.
+      La funzione ora ha un'unica condizione di context switch, piu' leggibile.
 
-    Novità V6.6.0:
+    Novita' V6.7.0:
+    - [STICKY] Implementazione Domain Retention (Sticky Routing).
+
+    Novita' V6.6.0:
     - [CHAT] chat_history: lista globale di sessione (sliding window).
-    - [CHAT] _update_history(): helper aggiornamento e troncamento.
-    - [CHAT] Comando '/reset' per svuotare history senza uscire.
+    - [CHAT] Comando '/reset' per svuotare history.
     - [CHAT] History passata a resolve(), resolve_pipeline_a(), resolve_pipeline_b().
       NON passata a execute_critic_pass() per design.
-    - [CHAT] Solo la risposta finale del Critic Pass salvata nella history.
 
-    Novità V6.5.0:
-    - [P0] GENERAL isolation: downgrade ibrido se un dominio è 'general'.
+    Novita' V6.5.0:
+    - [P0] GENERAL isolation: downgrade ibrido se un dominio e' 'general'.
     - [P4] timeout_sincronizzazione letto da config.PIPELINE_SETTINGS['ram_sync_timeout'].
 """
 
@@ -34,13 +32,13 @@ from ai_engine import get_ai_model, ResourceExhaustedError
 from semantic_router import semantic_router as sem_router
 from vector_store import initialize_store
 
-_ERROR_PREFIXES = ("Errore Ollama:", "Errore Generico:", "ATTENZIONE:")
+_ERROR_PREFIXES   = ("Errore Ollama:", "Errore Generico:", "ATTENZIONE:")
 _TECHNICAL_DOMAINS = {'coding', 'math', 'rights'}
 
 
 def print_banner():
     print("\n" + "=" * 60)
-    print("      CYA N  |  AI LOCAL DISPATCHER V6.7.0    ")
+    print("      CYA N  |  AI LOCAL DISPATCHER V6.7.2    ")
     print("      (Coding • Math • Rights • General)      ")
     print("=" * 60 + "\n")
 
@@ -57,7 +55,7 @@ def _update_history(history: list, user_input: str, response: str, max_messages:
 
 
 def _is_error(result: str) -> bool:
-    """Controlla se il risultato è un messaggio d'errore di sistema."""
+    """Controlla se il risultato e' un messaggio d'errore di sistema."""
     return not result or any(result.startswith(p) for p in _ERROR_PREFIXES)
 
 
@@ -68,38 +66,35 @@ def _should_sticky_route(
     last_domain: str
 ) -> tuple:
     """
-    [STICKY] Valuta se applicare il Domain Retention verso last_domain.
+    [STICKY V3 / BUG2 FIX] Domain Retention con singolo Override.
 
-    Restituisce (should_stick: bool, domain: str).
+    Override unico: k-NN con confidenza >= tech_switch_min su dominio tecnico
+    diverso dall'ultimo attivo → context switch (sticky non applicato).
+    Questo sostituisce i due Override A+B precedenti: Override A (0.65) era
+    dead code perche' Override B (0.45) lo includeva matematicamente.
 
-    Logica:
-    1. Guard: se non c'è un dominio tecnico precedente, nulla a cui agganciarsi.
-    2. Override (context switch): se il k-NN ha alta confidenza su un dominio
-       tecnico diverso dall'ultimo → l'utente ha cambiato argomento, rispetta k-NN.
-    3. Innesco sticky: query corta OPPURE k-NN atterra su 'general' con bassa
-       confidenza → aggancia al last_domain.
+    Innesco sticky: SOLO query brevi (follow-up pattern).
+    Le query lunghe su 'general' non vengono mai forzate sul dominio precedente
+    (prevenzione del "General Debole" / Bug #2 di Gemini).
     """
-    # Guard: nessun dominio tecnico precedente noto
     if not last_domain or last_domain not in _TECHNICAL_DOMAINS:
         return False, last_domain
 
-    short_threshold      = config.SYSTEM_SETTINGS.get('sticky_short_words', 7)
-    confidence_threshold = config.SYSTEM_SETTINGS.get('sticky_confidence_threshold', 0.65)
+    tech_switch_min = config.SYSTEM_SETTINGS.get('sticky_tech_switch_min', 0.45)
+    short_threshold = config.SYSTEM_SETTINGS.get('sticky_short_words', 7)
 
     top_domain = sem_domains[0] if sem_domains else 'general'
+    is_short   = len(query.split()) < short_threshold
 
-    # Override: k-NN sicuro su dominio tecnico diverso da last_domain → context switch
+    # Override: confidenza sufficiente su un dominio tecnico diverso → context switch
     if (top_domain in _TECHNICAL_DOMAINS
             and top_domain != last_domain
-            and sem_confidence >= confidence_threshold):
+            and sem_confidence >= tech_switch_min):
         return False, last_domain
 
-    # Innesco: query corta o k-NN debole/general → sticky
-    word_count   = len(query.split())
-    is_short        = word_count < short_threshold
-    is_weak_general = (top_domain == 'general' or sem_confidence < confidence_threshold)
-
-    if is_short or is_weak_general:
+    # Innesco sticky: solo query brevi (pattern follow-up)
+    # Query lunghe su 'general' → domanda legittima, non forzarla su dominio precedente
+    if is_short:
         return True, last_domain
 
     return False, last_domain
@@ -111,7 +106,7 @@ def main():
     print("⚙️  Inizializzazione Vector Store (Distance-Weighted k-NN su LanceDB)...")
     store_ok = initialize_store()
     if not store_ok:
-        print("⚠️  VectorStore non disponibile. Il sistema userà il fallback a keyword per tutto il routing.")
+        print("⚠️  VectorStore non disponibile. Il sistema usera' il fallback a keyword per tutto il routing.")
 
     agents = {
         'coding':  get_ai_model('coding'),
@@ -122,8 +117,8 @@ def main():
 
     # [CHAT] Stato globale di sessione
     chat_history: list = []
-    max_history_turns   = config.SYSTEM_SETTINGS.get('max_history_turns', 3)
-    max_messages        = max_history_turns * 2  # user + assistant per turno
+    max_history_turns  = config.SYSTEM_SETTINGS.get('max_history_turns', 3)
+    max_messages       = max_history_turns * 2  # user + assistant per turno
 
     # [STICKY] Dominio primario dell'ultimo turno valido (solo domini tecnici)
     last_active_domain: str = ''
@@ -151,13 +146,13 @@ def main():
                 continue
 
             # ---------------------------------------------------------
-            # FASE 0: ROUTING SEMANTICO VETTORIALE (Distance-Weighted k-NN)
+            # FASE 0: ROUTING SEMANTICO VETTORIALE
             # ---------------------------------------------------------
             print("\n⚙️  Fase 0 — Valutazione Arco Semantico Vettoriale (Distance-Weighted k-NN)...")
             sem_domains, sem_confidence, sem_ok = sem_router.classify(user_input)
 
-            is_hybrid = False
-            domain_a = domain_b = ""
+            is_hybrid  = False
+            domain_a   = domain_b = ""
             categories_segments = {k: [] for k in agents.keys()}
 
             # =============================================================
@@ -170,7 +165,6 @@ def main():
                 is_hybrid, domain_a, domain_b = dispatcher_request.detect_hybrid(user_input)
                 if not is_hybrid:
                     winning_domain = dispatcher_request.classify_segment(user_input)
-                    # [STICKY] Nel fallback keyword, applica sticky se atterrato su 'general'
                     if winning_domain == 'general':
                         stick, sticky_domain = _should_sticky_route(
                             user_input, ['general'], 0.0, last_active_domain
@@ -196,20 +190,19 @@ def main():
                       f"Confidence k-NN: {sem_confidence:.2f}")
 
                 # ---------------------------------------------------------
-                # [STICKY] Valutazione Domain Retention (prima del routing)
-                # Eseguita solo se il routing NON è già ibrido: un follow-up
-                # è per definizione mono-dominio.
+                # [STICKY] Valutazione Domain Retention
                 # ---------------------------------------------------------
                 stick, sticky_domain = _should_sticky_route(
                     user_input, sem_domains, sem_confidence, last_active_domain
                 )
 
                 if stick:
+                    tech_switch_min = config.SYSTEM_SETTINGS.get('sticky_tech_switch_min', 0.45)
                     print(f"📎 [STICKY] Domain Retention attivo: "
                           f"routing forzato → {sticky_domain.upper()} "
                           f"(last='{last_active_domain}', "
-                          f"k-NN top='{sem_domains[0]}', conf={sem_confidence:.2f})")
-                    # Sticky è sempre mono-dominio
+                          f"k-NN top='{sem_domains[0]}', conf={sem_confidence:.2f}, "
+                          f"soglia_switch={tech_switch_min})")
                     is_hybrid = False
                     categories_segments[sticky_domain] = [user_input]
 
@@ -242,7 +235,7 @@ def main():
             if is_hybrid and 'general' in (domain_a, domain_b):
                 target = 'general' if domain_a == 'general' else domain_a
                 print(f"🔍 [P0 GENERAL GUARD] Downgrade ibrido: GENERAL isolato. "
-                    f"Routing mono-dominio → {target.upper()}")
+                      f"Routing mono-dominio → {target.upper()}")
                 is_hybrid = False
                 categories_segments[target] = [user_input]
 
@@ -255,7 +248,7 @@ def main():
                 print(f"│ Agente B (Merge): {agents[domain_b].model_name}")
                 print(f"╰──────────────────────────────────────────")
 
-                # FASE 1/3: Agente A — riceve history per contesto, output NON salvato
+                # FASE 1/3: Agente A
                 print(f"\n⚙️  Fase 1/3 — Elaborazione contesto [{domain_a.upper()}] in corso...")
                 try:
                     output_a = agents[domain_a].resolve_pipeline_a(
@@ -284,7 +277,7 @@ def main():
                 else:
                     print("⚠️  Timeout sincronizzazione RAM: procedo comunque.")
 
-                # FASE 2/3: Agente B — riceve history, output NON salvato (bozza interna)
+                # FASE 2/3: Agente B
                 print(f"⚙️  Fase 2/3 — Integrazione dominio [{domain_b.upper()}] in corso...")
                 try:
                     output_b = agents[domain_b].resolve_pipeline_b(
@@ -300,7 +293,7 @@ def main():
                     print("\n" + "_" * 60 + "\n")
                     continue
 
-                # FASE 3/3: Critic Pass — NO history, solo bozza + query originale
+                # FASE 3/3: Critic Pass
                 print(f"⚙️  Fase 3/3 — Autovalutazione e sintesi [{domain_b.upper()}]...")
                 print("-" * 42)
 
@@ -314,9 +307,7 @@ def main():
                 if _is_error(result):
                     print(result)
                 else:
-                    # [CHAT] Salva solo la risposta finale validata del Critic Pass
                     _update_history(chat_history, user_input, result, max_messages)
-                    # [STICKY] Il risolutore finale della pipeline è domain_b
                     last_active_domain = domain_b
 
                 print("\n" + "_" * 60 + "\n")
@@ -351,9 +342,7 @@ def main():
                 if _is_error(result):
                     print(result)
                 else:
-                    # [CHAT] Salva solo risposte valide
                     _update_history(chat_history, user_input, result, max_messages)
-                    # [STICKY] Aggiorna solo per domini tecnici (non 'general')
                     if category in _TECHNICAL_DOMAINS:
                         last_active_domain = category
 

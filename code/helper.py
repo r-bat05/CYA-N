@@ -1,8 +1,9 @@
-import re           # Modulo per le espressioni regolari
-import threading    # Per gestire lo spinner in un thread separato
-import time         # Per gestire i ritardi (sleep)
-import sys          # Per la gestione dell'output standard
-import itertools    # Per l'animazione dello spinner
+import re
+import threading
+import time
+import sys
+import itertools
+import config as _config
 
 # ---------------------------------------------------------------------------
 # Dizionario di sostituzione simboli LaTeX con simboli Unicode (ESPANSO)
@@ -10,7 +11,7 @@ import itertools    # Per l'animazione dello spinner
 latex_to_unicode = {
     # --- Casi Speciali ---
     r"\frac{d}{dx}": "d/dx", r"\,dx": " dx", r"dx": "dx",
-    
+
     # --- Lettere Greche (Minuscole) ---
     r"\alpha": "α", r"\beta": "β", r"\gamma": "γ", r"\delta": "δ", r"\epsilon": "ε",
     r"\varepsilon": "ε", r"\zeta": "ζ", r"\eta": "η", r"\theta": "θ", r"\vartheta": "ϑ",
@@ -54,10 +55,20 @@ latex_to_unicode = {
     r"\sinh": "sinh", r"\cosh": "cosh", r"\tanh": "tanh",
     r"\log": "log", r"\ln": "ln", r"\det": "det", r"\dim": "dim",
     r"\hat": "^", r"\vec": "→", r"\bar": "¯",
-    
-    # --- Pulizia Simboli LaTeX rimasti (come da tua configurazione) ---
+
+    # --- Pulizia Simboli LaTeX rimasti ---
     r"\[": "", r"\]": "", r"\(": "", r"\)": "", r"**": ""
 }
+
+# Pre-compilazione: chiavi ordinate per lunghezza decrescente (evita sostituzioni parziali)
+_SORTED_LATEX_KEYS = sorted(latex_to_unicode.keys(), key=len, reverse=True)
+
+# Regex per isolare i blocchi di codice Markdown (triple e singolo backtick).
+# Il gruppo catturante fa sì che re.split() includa i match nel risultato,
+# permettendo di ricostruire il testo originale dopo la sostituzione selettiva.
+# Ordine: prima i triple-backtick (multiline), poi il singolo (inline, no newline).
+_CODE_BLOCK_RE = re.compile(r'(```[\s\S]*?```|`[^`\n]*`)')
+
 
 class SpinnerContext:
     """
@@ -65,10 +76,10 @@ class SpinnerContext:
     Supporta sia l'uso come Context Manager (with...) sia start/stop manuale.
     """
     def __init__(self, message="Generazione risposta"):
-        self.message = message
+        self.message    = message
         self.stop_event = threading.Event()
-        self.thread = threading.Thread(target=self._spin, args=(self.stop_event,), daemon=True)
-        self._running = False
+        self.thread     = threading.Thread(target=self._spin, args=(self.stop_event,), daemon=True)
+        self._running   = False
 
     def _spin(self, stop_event):
         spinner = itertools.cycle(['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'])
@@ -76,18 +87,15 @@ class SpinnerContext:
             sys.stdout.write(f"\r{next(spinner)} {self.message}")
             sys.stdout.flush()
             time.sleep(0.1)
-        # Pulisce la riga
         sys.stdout.write("\r" + " " * (len(self.message) + 5) + "\r")
         sys.stdout.flush()
 
     def start(self):
-        """Avvia lo spinner manualmente."""
         if not self._running:
             self._running = True
             self.thread.start()
 
     def stop(self):
-        """Ferma lo spinner manualmente."""
         if self._running:
             self.stop_event.set()
             self.thread.join()
@@ -100,34 +108,59 @@ class SpinnerContext:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()
 
+
 # ---------------------------------------------------------------------------
 # Funzioni comuni per la pulizia del testo e la visualizzazione
 # ---------------------------------------------------------------------------
 
 def clean_response(text: str) -> str:
     """
-    Pulisce la risposta da tag di ragionamento, simboli LaTeX e CARATTERI ORIENTALI.
+    Pulisce la risposta da tag di ragionamento, simboli LaTeX e caratteri orientali.
+
+    [BUG6 FIX] I tag di ragionamento sono letti dinamicamente da config,
+    eliminando il rischio di mancata sanificazione al cambio di modello.
+
+    [BUG5 FIX] La sostituzione LaTeX è ora "code-block aware": agisce
+    esclusivamente sul testo discorsivo, escludendo i blocchi delimitati
+    da backtick (``` e `inline`). Questo previene la corruzione di percorsi
+    Windows (C:\\nuovo → C:\\νovo) e sequenze di escape nei snippet di codice.
     """
-    # 1. Rimuove il blocco <think>...</think> se presente (tipico di DeepSeek R1)
-    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-    
-    # 2. Rimuove caratteri CJK (Cinese, Giapponese, Coreano)
+    # 1. [BUG6] Rimozione tag di ragionamento con pattern dinamico da config
+    open_tag  = re.escape(_config.SYSTEM_SETTINGS.get('think_open_tag',  '<think>'))
+    close_tag = re.escape(_config.SYSTEM_SETTINGS.get('think_close_tag', '</think>'))
+    text = re.sub(f'{open_tag}.*?{close_tag}', '', text, flags=re.DOTALL)
+
+    # 2. Rimozione caratteri CJK (Cinese, Giapponese, Coreano)
     text = re.sub(r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]', '', text)
 
-    # 3. Gestione LaTeX (Ordiniamo per lunghezza decrescente per evitare sostituzioni parziali)
-    sorted_keys = sorted(latex_to_unicode.keys(), key=len, reverse=True)
-    for latex in sorted_keys:
-        if latex in text:
-            text = text.replace(latex, latex_to_unicode[latex]) 
-        
-    return text
+    # 3. [BUG5] Sostituzione LaTeX solo sulle parti non-codice.
+    #
+    # re.split() con gruppo catturante produce una lista dove:
+    #   - indici PARI  (0, 2, 4...) → testo discorsivo  → applicare LaTeX
+    #   - indici DISPARI (1, 3, 5...) → blocchi di codice → preservare intatti
+    #
+    # Esempio:
+    #   "testo \pi ```\pi codice``` fine \pi"
+    #   → parti: ['testo \pi ', '```\pi codice```', ' fine \pi']
+    #   → solo parti[0] e parti[2] vengono trasformate
+    parts = _CODE_BLOCK_RE.split(text)
+
+    for i in range(0, len(parts), 2):  # solo indici pari = testo discorsivo
+        segment = parts[i]
+        for latex_key in _SORTED_LATEX_KEYS:
+            if latex_key in segment:
+                segment = segment.replace(latex_key, latex_to_unicode[latex_key])
+        parts[i] = segment
+
+    return ''.join(parts)
+
 
 def print_time_elapsed(start_time: float):
     """
     Calcola e stampa il tempo trascorso formattato.
     """
     elapsed = time.time() - start_time
-    if elapsed >= 60: 
+    if elapsed >= 60:
         print(f"\n(Tempo impiegato: {elapsed:.3f}s, {elapsed / 60:.3f} min)\n")
     else:
         print(f"\n(Tempo impiegato: {elapsed:.3f}s)\n")
