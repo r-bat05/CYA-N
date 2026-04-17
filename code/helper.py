@@ -64,10 +64,10 @@ latex_to_unicode = {
 _SORTED_LATEX_KEYS = sorted(latex_to_unicode.keys(), key=len, reverse=True)
 
 # Regex per isolare i blocchi di codice Markdown (triple e singolo backtick).
-# Il gruppo catturante fa sì che re.split() includa i match nel risultato,
-# permettendo di ricostruire il testo originale dopo la sostituzione selettiva.
-# Ordine: prima i triple-backtick (multiline), poi il singolo (inline, no newline).
 _CODE_BLOCK_RE = re.compile(r'(```[\s\S]*?```|`[^`\n]*`)')
+
+# Regex CJK pre-compilata (usata solo se cjk_filter_enabled=True in config)
+_CJK_RE = re.compile(r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]')
 
 
 class SpinnerContext:
@@ -115,41 +115,45 @@ class SpinnerContext:
 
 def clean_response(text: str) -> str:
     """
-    Pulisce la risposta da tag di ragionamento, simboli LaTeX e caratteri orientali.
+    Pulisce la risposta da tag di ragionamento, simboli LaTeX e (opzionalmente)
+    caratteri orientali.
 
-    [BUG6 FIX] I tag di ragionamento sono letti dinamicamente da config,
-    eliminando il rischio di mancata sanificazione al cambio di modello.
+    [BUG6 FIX] I tag di ragionamento sono letti dinamicamente da config.
 
-    [BUG5 FIX] La sostituzione LaTeX è ora "code-block aware": agisce
-    esclusivamente sul testo discorsivo, escludendo i blocchi delimitati
-    da backtick (``` e `inline`). Questo previene la corruzione di percorsi
-    Windows (C:\\nuovo → C:\\νovo) e sequenze di escape nei snippet di codice.
+    [BUG5 FIX] La sostituzione LaTeX è "code-block aware": agisce esclusivamente
+    sul testo discorsivo, escludendo i blocchi delimitati da backtick.
+
+    [CJK FIX] Il filtro CJK è ora controllato dal flag config.SYSTEM_SETTINGS
+    'cjk_filter_enabled' (default True). Impostare a False per abilitare la
+    gestione di stringhe asiatiche nel codice generato (es. array con caratteri
+    giapponesi). Il filtro viene applicato DOPO lo split code-block per coerenza
+    con la protezione BUG5, applicandosi solo al testo discorsivo.
     """
     # 1. [BUG6] Rimozione tag di ragionamento con pattern dinamico da config
     open_tag  = re.escape(_config.SYSTEM_SETTINGS.get('think_open_tag',  '<think>'))
     close_tag = re.escape(_config.SYSTEM_SETTINGS.get('think_close_tag', '</think>'))
     text = re.sub(f'{open_tag}.*?{close_tag}', '', text, flags=re.DOTALL)
 
-    # 2. Rimozione caratteri CJK (Cinese, Giapponese, Coreano)
-    text = re.sub(r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]', '', text)
-
-    # 3. [BUG5] Sostituzione LaTeX solo sulle parti non-codice.
-    #
-    # re.split() con gruppo catturante produce una lista dove:
-    #   - indici PARI  (0, 2, 4...) → testo discorsivo  → applicare LaTeX
-    #   - indici DISPARI (1, 3, 5...) → blocchi di codice → preservare intatti
-    #
-    # Esempio:
-    #   "testo \pi ```\pi codice``` fine \pi"
-    #   → parti: ['testo \pi ', '```\pi codice```', ' fine \pi']
-    #   → solo parti[0] e parti[2] vengono trasformate
+    # 2. Split code-block aware: separa testo discorsivo da blocchi di codice.
+    #    Indici PARI  → testo discorsivo  (applicare filtri)
+    #    Indici DISPARI → blocchi codice  (preservare intatti)
     parts = _CODE_BLOCK_RE.split(text)
+
+    cjk_enabled = _config.SYSTEM_SETTINGS.get('cjk_filter_enabled', True)
 
     for i in range(0, len(parts), 2):  # solo indici pari = testo discorsivo
         segment = parts[i]
+
+        # [CJK FIX] Applicato solo sul testo discorsivo e solo se abilitato.
+        # Spostato dentro il loop per evitare di agire sui code block.
+        if cjk_enabled:
+            segment = _CJK_RE.sub('', segment)
+
+        # [BUG5] Sostituzione LaTeX solo sulle parti non-codice.
         for latex_key in _SORTED_LATEX_KEYS:
             if latex_key in segment:
                 segment = segment.replace(latex_key, latex_to_unicode[latex_key])
+
         parts[i] = segment
 
     return ''.join(parts)

@@ -1,11 +1,18 @@
 """
     CONFIGURAZIONE CENTRALE (CYA N)
 
+    Novità V6.7.3:
+    - [CJK] cjk_filter_enabled aggiunto a SYSTEM_SETTINGS. Toggle per il filtro
+      caratteri CJK in helper.py. Default True (comportamento invariato).
+      Impostare False per abilitare stringhe asiatiche nei code block.
+    - [CLEANUP] Rimosse chiavi deprecate da SEMANTIC_SETTINGS:
+      confidence_threshold, multi_domain_spread, multi_domain_min_score.
+      Non referenziate in nessun modulo attivo (sostituite dalla logica k-NN).
+
     Novità V6.7.2:
-    - [BUG2] Rimosso sticky_confidence_threshold: era dead config dopo l'introduzione
-      di sticky_tech_switch_min (Override B copre matematicamente Override A).
+    - [BUG2] Rimosso sticky_confidence_threshold: dead config.
     - [BUG4] _GUARD in ai_engine ora calcolato su max(open, close) tag length.
-    - [BUG5] clean_response ora code-block aware (no LaTeX corruption in snippets).
+    - [BUG5] clean_response ora code-block aware.
     - [BUG6] Think tag regex in helper.py ora dinamica da config.
 
     Novità V6.7.0:
@@ -89,11 +96,14 @@ SYSTEM_SETTINGS = {
     'sticky_short_words': 7,
 
     # [STICKY] Soglia di confidenza k-NN per il context switch verso un dominio
-    # tecnico diverso dall'ultimo attivo. Copre sia query brevi che lunghe.
-    # Override A (0.65) rimosso in V6.7.2: sticky_tech_switch_min lo sostituisce
-    # come unica condizione, eliminando dead code.
+    # tecnico diverso dall'ultimo attivo.
     # Range consigliato: 0.40–0.55.
     'sticky_tech_switch_min': 0.45,
+
+    # [CJK] Filtro caratteri Cinese/Giapponese/Coreano in clean_response().
+    # True  → comportamento default: rimuove CJK dal testo discorsivo.
+    # False → disabilitare se si lavora con stringhe asiatiche in code block.
+    'cjk_filter_enabled': True,
 }
 
 # --- 5. CONFIGURAZIONE DISPATCHER (SMART MATCH & LEVENSHTEIN) ---
@@ -107,13 +117,8 @@ LEV_TOLERANCE_MAP = {
 
 # --- 6. CONFIGURAZIONE SEMANTIC ROUTER ---
 SEMANTIC_SETTINGS = {
-    'enabled':                True,
-    'embedding_model':        'nomic-embed-text',
-
-    # --- Deprecati (mantenuti per riferimento storico) ---
-    'confidence_threshold':   0.06,
-    'multi_domain_spread':    0.08,
-    'multi_domain_min_score': 0.58,
+    'enabled':         True,
+    'embedding_model': 'nomic-embed-text',
 
     'debug': True,
 

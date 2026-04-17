@@ -1,13 +1,16 @@
 """
-    CYA N - AI LOCAL DISPATCHER V6.7.2
+    CYA N - AI LOCAL DISPATCHER V6.7.3
     Entry Point dell'applicazione.
+
+    Novita' V6.7.3:
+    - [BUG1] _ERROR_PREFIXES: "ATTENZIONE:" sostituito con "__SYS_WARN__:" per
+      eliminare il falso positivo che spezzava la Chat History quando i modelli
+      iniziavano legittimamente una risposta con "ATTENZIONE:".
+    - [REFACTOR] Eliminato il layer di astrazione semantic_router.py (guscio vuoto).
+      classify_knn importata direttamente da vector_store. Nessun cambio funzionale.
 
     Novita' V6.7.2:
     - [BUG2] Rimosso Override A da _should_sticky_route(): era dead code.
-      Override B (tech_switch_min=0.45) copre matematicamente Override A
-      (sticky_confidence_threshold=0.65). Mantenere entrambi creava ambiguita'
-      logica e riferimento a un parametro config ora rimosso.
-      La funzione ora ha un'unica condizione di context switch, piu' leggibile.
 
     Novita' V6.7.0:
     - [STICKY] Implementazione Domain Retention (Sticky Routing).
@@ -15,12 +18,10 @@
     Novita' V6.6.0:
     - [CHAT] chat_history: lista globale di sessione (sliding window).
     - [CHAT] Comando '/reset' per svuotare history.
-    - [CHAT] History passata a resolve(), resolve_pipeline_a(), resolve_pipeline_b().
-      NON passata a execute_critic_pass() per design.
 
     Novita' V6.5.0:
     - [P0] GENERAL isolation: downgrade ibrido se un dominio e' 'general'.
-    - [P4] timeout_sincronizzazione letto da config.PIPELINE_SETTINGS['ram_sync_timeout'].
+    - [P4] timeout_sincronizzazione letto da config.PIPELINE_SETTINGS.
 """
 
 import sys
@@ -29,16 +30,20 @@ import psutil
 import config
 import dispatcher_request
 from ai_engine import get_ai_model, ResourceExhaustedError
-from semantic_router import semantic_router as sem_router
+# [REFACTOR] Import diretto da vector_store: semantic_router.py eliminato.
+from vector_store import classify_knn
 from vector_store import initialize_store
 
-_ERROR_PREFIXES   = ("Errore Ollama:", "Errore Generico:", "ATTENZIONE:")
+# [BUG1 FIX] "__SYS_WARN__:" sostituisce "ATTENZIONE:" per evitare falsi positivi:
+# i modelli usano legittimamente "ATTENZIONE:" in risposte valide (es. avvisi di sicurezza),
+# causando il blocco silenzioso di _update_history() e la corruzione dello stato sticky.
+_ERROR_PREFIXES   = ("Errore Ollama:", "Errore Generico:", "__SYS_WARN__:")
 _TECHNICAL_DOMAINS = {'coding', 'math', 'rights'}
 
 
 def print_banner():
     print("\n" + "=" * 60)
-    print("      CYA N  |  AI LOCAL DISPATCHER V6.7.2    ")
+    print("      CYA N  |  AI LOCAL DISPATCHER V6.7.3    ")
     print("      (Coding • Math • Rights • General)      ")
     print("=" * 60 + "\n")
 
@@ -46,7 +51,6 @@ def print_banner():
 def _update_history(history: list, user_input: str, response: str, max_messages: int):
     """
     [CHAT] Aggiunge il turno corrente alla history e applica la sliding window.
-    Chiamare solo dopo aver verificato che response non sia un errore.
     """
     history.append({'role': 'user',      'content': user_input})
     history.append({'role': 'assistant', 'content': response})
@@ -70,12 +74,8 @@ def _should_sticky_route(
 
     Override unico: k-NN con confidenza >= tech_switch_min su dominio tecnico
     diverso dall'ultimo attivo → context switch (sticky non applicato).
-    Questo sostituisce i due Override A+B precedenti: Override A (0.65) era
-    dead code perche' Override B (0.45) lo includeva matematicamente.
 
     Innesco sticky: SOLO query brevi (follow-up pattern).
-    Le query lunghe su 'general' non vengono mai forzate sul dominio precedente
-    (prevenzione del "General Debole" / Bug #2 di Gemini).
     """
     if not last_domain or last_domain not in _TECHNICAL_DOMAINS:
         return False, last_domain
@@ -93,7 +93,6 @@ def _should_sticky_route(
         return False, last_domain
 
     # Innesco sticky: solo query brevi (pattern follow-up)
-    # Query lunghe su 'general' → domanda legittima, non forzarla su dominio precedente
     if is_short:
         return True, last_domain
 
@@ -118,7 +117,7 @@ def main():
     # [CHAT] Stato globale di sessione
     chat_history: list = []
     max_history_turns  = config.SYSTEM_SETTINGS.get('max_history_turns', 3)
-    max_messages       = max_history_turns * 2  # user + assistant per turno
+    max_messages       = max_history_turns * 2
 
     # [STICKY] Dominio primario dell'ultimo turno valido (solo domini tecnici)
     last_active_domain: str = ''
@@ -149,7 +148,8 @@ def main():
             # FASE 0: ROUTING SEMANTICO VETTORIALE
             # ---------------------------------------------------------
             print("\n⚙️  Fase 0 — Valutazione Arco Semantico Vettoriale (Distance-Weighted k-NN)...")
-            sem_domains, sem_confidence, sem_ok = sem_router.classify(user_input)
+            # [REFACTOR] Chiamata diretta a classify_knn (ex sem_router.classify)
+            sem_domains, sem_confidence, sem_ok = classify_knn(user_input)
 
             is_hybrid  = False
             domain_a   = domain_b = ""

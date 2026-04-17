@@ -1,20 +1,21 @@
 """
-    MOTORE AI IBRIDO V6.6.1
+    MOTORE AI IBRIDO V6.6.2
+
+    Novita' V6.6.2:
+    - [BUG1] Stringa di fallback per output vuoto modificata da "ATTENZIONE: ..."
+      a "__SYS_WARN__: ...". Il vecchio prefisso coincideva con l'output legittimo
+      dei modelli (es. "ATTENZIONE: questo codice e' pericoloso"), causando
+      un falso positivo in _is_error() di main.py che spezzava silenziosamente
+      la Chat History e lo Sticky Routing.
 
     Novita' V6.6.1:
     - [BUG4] _GUARD calcolato su max(len(_OPEN_TAG), len(_CLOSE_TAG)) - 1.
-      Il vecchio calcolo len(_CLOSE_TAG) - 1 causava leak del tag di apertura
-      sul terminale con configurazioni asimmetriche (es. <thinking> vs </t>).
-    - [BUGA] execute_critic_pass() ora chiama _truncate_context(draft_b) prima
-      di assemblare il payload. La bozza del Phase B puo' essere molto lunga
-      (pari al pipeline_max_context_chars); senza troncamento si rischiava
-      OOM o overflow del context window su hardware limitato.
+    - [BUGA] execute_critic_pass() ora chiama _truncate_context(draft_b).
 
     Novita' V6.6.0:
     - [CHAT] Chat History integrata in resolve(), resolve_pipeline_a(),
-      resolve_pipeline_b(). Firme aggiornate con parametro opzionale
-      `history: list = None` per retrocompatibilita'.
-    - [CHAT] few_shot fuso nel system prompt per tutti i metodi che usano history.
+      resolve_pipeline_b().
+    - [CHAT] few_shot fuso nel system prompt.
     - [CHAT] execute_critic_pass() invariato nel design (no history).
 
     Novita' V6.5.0:
@@ -38,9 +39,6 @@ _OPEN_TAG  = config.SYSTEM_SETTINGS.get('think_open_tag',  '<think>')
 _CLOSE_TAG = config.SYSTEM_SETTINGS.get('think_close_tag', '</think>')
 
 # [BUG4 FIX] La guardia deve essere profonda quanto il tag PIU' LUNGO.
-# Con il vecchio len(_CLOSE_TAG) - 1, tag asimmetrici come <thinking> (9 chars)
-# vs </t> (4 chars) producevano _GUARD=3, insufficiente a trattenere il tag
-# di apertura frammentato sullo stream, causando leak sul terminale.
 _GUARD = max(len(_OPEN_TAG), len(_CLOSE_TAG)) - 1
 
 
@@ -69,8 +67,6 @@ class BaseAI(ABC):
     def _truncate_context(self, text: str) -> str:
         """
         [P2] Tronca il contesto passato tra agenti al limite configurato.
-        Applicato sia all'output di Phase A (in resolve_pipeline_b) sia
-        alla bozza di Phase B (in execute_critic_pass) per prevenire OOM.
         """
         limit = config.PIPELINE_SETTINGS.get('pipeline_max_context_chars', 6000)
         if len(text) > limit:
@@ -81,8 +77,6 @@ class BaseAI(ABC):
     def _merge_few_shot(sys_prompt: str, few_shot: str) -> str:
         """
         [CHAT] Fonde il few-shot nel system prompt.
-        Evita che il few-shot venga posizionato come ultimo user message
-        prima della history, alterando la cronologia percepita dal modello.
         """
         if few_shot and few_shot.strip():
             return f"{sys_prompt}\n\n{few_shot.strip()}"
@@ -208,8 +202,11 @@ class BaseAI(ABC):
                     print(display_content, end="", flush=True)
                 full_response += stream_buf
 
+            # [BUG1 FIX] Prefisso univoco __SYS_WARN__: invece di ATTENZIONE:
+            # per evitare falsi positivi in _is_error() di main.py quando il
+            # modello inizia legittimamente una risposta con "ATTENZIONE:".
             if not full_response:
-                return "ATTENZIONE: Il modello non ha generato output."
+                return "__SYS_WARN__: Il modello non ha generato output."
 
         except ollama.ResponseError as e:
             return (f"Errore Ollama: {e}\n"
@@ -288,7 +285,6 @@ class CodeLlamaAI(BaseAI):
         return self.generate(messages, stream_output=False, force_unload=False)
 
     def execute_critic_pass(self, draft_b: str, original_prompt: str):
-        # [BUGA FIX] Tronca draft_b prima dell'assemblaggio per prevenire OOM/ctx overflow.
         draft_b    = self._truncate_context(draft_b)
         sys_prompt, _, _ = get_prompts('coding')
         critic_template  = PIPELINE_PROMPTS['critic']
@@ -309,7 +305,6 @@ class DeepSeekAI(BaseAI):
         super().__init__('math')
 
     def resolve(self, prompt: str, history: list = None):
-        # DeepSeekAI non usa system prompt per design — history preposta al messaggio user.
         history = history or []
         _, _, enforcement = get_prompts('math')
         messages = [
@@ -345,7 +340,6 @@ class DeepSeekAI(BaseAI):
         return self.generate(messages, stream_output=False, force_unload=False)
 
     def execute_critic_pass(self, draft_b: str, original_prompt: str):
-        # [BUGA FIX] Tronca draft_b prima dell'assemblaggio.
         draft_b         = self._truncate_context(draft_b)
         critic_template = PIPELINE_PROMPTS['critic']
         if "{original_query}" in critic_template:
@@ -407,7 +401,6 @@ class GptOssAI(BaseAI):
         return self.generate(messages, stream_output=False, force_unload=False)
 
     def execute_critic_pass(self, draft_b: str, original_prompt: str):
-        # [BUGA FIX] Tronca draft_b prima dell'assemblaggio.
         draft_b         = self._truncate_context(draft_b)
         sys_prompt, _, _ = get_prompts(self.category)
         critic_template  = PIPELINE_PROMPTS['critic']

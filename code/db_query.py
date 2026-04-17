@@ -106,6 +106,8 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
 
         # Fix Q18 + Q23: grafi, teoria, parsing
         "Implementa in Python un grafo orientato usando dizionari e matrici di adiacenza per mappare nodi e archi.",
+        "Spiegami l'algoritmo di bilanciamento e rotazione dei nodi in un albero AVL o in un Red-Black tree.",
+        "Implementa l'algoritmo di Prim o Kruskal in Python per trovare l'albero di copertura minimo di un grafo.",
         "Scrivi il codice Python per creare un grafo con NetworkX e trovare il percorso minimo tra due nodi.",
         "Come si visita un grafo in Python usando BFS e DFS su una lista di adiacenza?",
         "Implementa l'algoritmo di Prim o Kruskal in Python per trovare l'albero di copertura minimo di un grafo.",
@@ -387,6 +389,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         
         #AI Act, DSA, Diritto Animali
         "Cosa prevede il Regolamento Europeo sull'Intelligenza Artificiale (AI Act) per i sistemi ad alto rischio?",
+        "Cosa prevede il Regolamento MiCA (Markets in Crypto-Assets) sulla normativa europea per la gestione e l'emissione delle criptovalute?",
         "Quali obblighi impone il Digital Services Act (DSA) alle piattaforme online di grandi dimensioni?",
         "Spiega la disciplina del Cyber Resilience Act europeo e gli obblighi per i produttori di software.",
         "Cosa prevede la legislazione italiana sulla tutela del benessere animale e il maltrattamento (L. 189/2004)?",
@@ -639,6 +642,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Quali sono i migliori consigli e tecniche per gestire lo stress e l'ansia quotidiana?",
         "Dammi delle istruzioni procedurali su come cambiare la ruota forata di un'automobile.",
         "Come si coltivano le piante da appartamento e quanto spesso vanno annaffiate?",
+        "Quali sono i consigli pratici per coltivare le orchidee in casa e prevenire malattie o marciume delle radici?",
         "Qual è il metodo migliore per pulire le fughe dei pavimenti e rimuovere la muffa?",
         "Spiegami come strutturare un curriculum vitae efficace per trovare lavoro rapidamente.",
         "Quali sono le usanze e le buone maniere da rispettare durante una cena di gala formale?",
