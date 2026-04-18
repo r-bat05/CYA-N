@@ -139,6 +139,12 @@ PIPELINE_SETTINGS = {
 
     # [P4] Timeout sincronizzazione RAM tra Agente A e B.
     'ram_sync_timeout':           20.0,
+    # Novità V6.8.0:
+    # - [DIFETTO2] ram_unload_wait: attesa iniziale (secondi) dopo explicit_unload()
+    #   prima di avviare il polling psutil. Dà tempo all'OS di reclamare le pagine
+    #   mmap rilasciate da Ollama (su Linux il rilascio fisico è asincrono rispetto
+    #   alla chiusura del processo/request).
+    'ram_unload_wait':            1.5,
 
     'pipeline_order_matrix': {
         frozenset({'rights', 'coding'}): ('rights', 'coding'),

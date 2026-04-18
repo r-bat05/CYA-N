@@ -63,6 +63,7 @@ class BaseAI(ABC):
         if self.cfg['fallback_ram_threshold']:
             self.fallback_ram_req = config.RAM_THRESHOLDS[self.cfg['fallback_ram_threshold']]
         self.is_using_fallback = False
+        self._last_used_model = None   # [DIFETTO2] Traccia il modello realmente usato
 
     def _truncate_context(self, text: str) -> str:
         """
@@ -81,6 +82,26 @@ class BaseAI(ABC):
         if few_shot and few_shot.strip():
             return f"{sys_prompt}\n\n{few_shot.strip()}"
         return sys_prompt
+    
+    def explicit_unload(self):
+        """
+        [DIFETTO2 FIX] Forza lo scaricamento esplicito del modello da Ollama.
+
+        generate() invia keep_alive=0 nel body della request, ma su Linux il
+        rilascio del mmap dei tensori avviene in modo asincrono: il processo
+        Ollama può impiegare secondi prima di restituire le pagine fisiche all'OS.
+        Una seconda chiamata separata con prompt vuoto forza Ollama a processare
+        il comando di unload immediatamente, prima che main.py avvii il polling RAM.
+
+        Usa _last_used_model (tracciato in generate()) per evitare di caricare
+        accidentalmente un modello non attivo solo per scaricarlo.
+        """
+        target = self._last_used_model or self.model_name
+        try:
+            ollama.generate(model=target, prompt="", keep_alive=0)
+        except Exception:
+            pass
+        self._last_used_model = None
 
     def check_resources(self):
         try:
@@ -122,6 +143,7 @@ class BaseAI(ABC):
         full_response = ""
         start_time    = time.time()
         target_model  = self.fallback_model if self.is_using_fallback else self.model_name
+        self._last_used_model = target_model  # [DIFETTO2] Salva prima che finally resetti lo stato
 
         options = {
             'temperature': self.temperature,

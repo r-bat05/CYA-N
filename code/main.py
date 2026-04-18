@@ -264,12 +264,22 @@ def main():
                     print("\n" + "_" * 60 + "\n")
                     continue
 
-                # Sincronizzazione RAM [P4]
-                print("⚙️  Sincronizzazione — Attendendo lo scaricamento del modello precedente...")
+                # Sincronizzazione RAM [P4 + DIFETTO2 FIX]
+                # Step 1: Unload esplicito — seconda chiamata API per forzare il
+                # rilascio del mmap PRIMA di avviare il polling (vedi explicit_unload()).
+                print("⚙️  Sincronizzazione — Scaricamento esplicito modello A in corso...")
+                agents[domain_a].explicit_unload()
+
+                # Step 2: Attesa iniziale fissa — dà tempo all'OS Linux di reclamare
+                # fisicamente le pagine rilasciate prima che psutil le veda come libere.
+                unload_wait              = config.PIPELINE_SETTINGS.get('ram_unload_wait', 1.5)
                 target_ram               = agents[domain_b].primary_ram_req
                 timeout_sincronizzazione = config.PIPELINE_SETTINGS.get('ram_sync_timeout', 20.0)
                 inizio_attesa            = time.time()
+                time.sleep(unload_wait)
 
+                # Step 3: Polling attivo sul residuo (psutil.available su Linux include
+                # buffers/cache reclaimabili, è già la metrica corretta).
                 while (time.time() - inizio_attesa) < timeout_sincronizzazione:
                     if psutil.virtual_memory().available >= target_ram:
                         break
