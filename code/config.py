@@ -38,7 +38,7 @@ KEYWORDS_DIR = os.path.join(BASE_DIR, '../keywords')
 GB = 1024 * 1024 * 1024
 
 RAM_THRESHOLDS = {
-    'small':    2.0 * GB,
+    'small':    1.0 * GB,
     'medium':   5.5 * GB,
     'large':   12.0 * GB,
     'math_opt': 1.0 * GB
@@ -47,29 +47,29 @@ RAM_THRESHOLDS = {
 # --- 3. CONFIGURAZIONE MODELLI AI ---
 MODELS_CONFIG = {
     'coding': {
-        'primary':                "qwen3.5:9b",
+        'primary':                "qwen2.5-coder:1.5b", #"qwen3.5:9b",
         'fallback':               "qwen2.5-coder:1.5b",
         'temperature':            0.5,
         'ram_threshold':          'medium',
         'fallback_ram_threshold': 'small'
     },
     'math': {
-        'primary':                "deepseek-r1:7b",
+        'primary':                "qwen2.5-coder:1.5b", #"deepseek-r1:7b",
         'fallback':               None,
         'temperature':            0.2,
         'ram_threshold':          'math_opt',
         'fallback_ram_threshold': None
     },
     'rights': {
-        'primary':                "gpt-oss:20b",
-        'fallback':               "llama3.2:3b",
+        'primary':                "qwen2.5-coder:1.5b", #"gpt-oss:20b",
+        'fallback':               "qwen2.5-coder:1.5b", #"llama3.2:3b",
         'temperature':            0.4,
         'ram_threshold':          'large',
         'fallback_ram_threshold': 'small'
     },
     'general': {
-        'primary':                "gpt-oss:20b",
-        'fallback':               "llama3.2:3b",
+        'primary':                "qwen2.5-coder:1.5b", #"gpt-oss:20b",
+        'fallback':               "qwen2.5-coder:1.5b", #"llama3.2:3b",
         'temperature':            0.7,
         'ram_threshold':          'large',
         'fallback_ram_threshold': 'small'
@@ -93,7 +93,7 @@ SYSTEM_SETTINGS = {
     'max_history_turns': 3,
 
     # [STICKY] Soglia parole per query "corta" → candidata allo sticky routing.
-    'sticky_short_words': 7,
+    'sticky_short_words': 10,
 
     # [STICKY] Soglia di confidenza k-NN per il context switch verso un dominio
     # tecnico diverso dall'ultimo attivo.
@@ -132,7 +132,7 @@ SEMANTIC_SETTINGS = {
 # --- 7. CONFIGURAZIONE PIPELINE MULTI-AGENTE ---
 PIPELINE_SETTINGS = {
     'hybrid_threshold':           0.30,
-    'min_words_for_pipeline':     8,
+    'min_words_for_pipeline':     12,
 
     # [P2] Limite caratteri per il contesto passato tra agenti (A→B e critic pass).
     'pipeline_max_context_chars': 9000,

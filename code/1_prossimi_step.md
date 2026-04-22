@@ -8,7 +8,8 @@
 4. `Qual è la differenza giuridica tra dolo e colpa cosciente?` *(Context Switch: Override su Rights perché confidenza > 0.65)*
 5. `Fammi un esempio pratico di questo reato.` *(Corto: si aspetta Sticky su Rights)*
 
-#### Sessione 2: La Trappola della Brevità (Test dell'Override)
+
+🟢 #### Sessione 2: La Trappola della Brevità (Test dell'Override) 2
 
 Qui testiamo il Bug #1. L'utente fa domande brevissime ma cambia radicalmente dominio.
 6. `Spiegami il teorema di Lagrange sulle derivate.` *(Inizia Math)*
@@ -17,7 +18,7 @@ Qui testiamo il Bug #1. L'utente fa domande brevissime ma cambia radicalmente do
 9. `Sanzioni previste?` *(Corto: Sticky su Rights)*
 10. `Array in Java?` *(Context Switch estremo: 3 parole. Deve saltare a Coding)*
 
-#### Sessione 3: L'Eredità della Pipeline (Domain_B Retention)
+🟢 #### Sessione 3: L'Eredità della Pipeline (Domain_B Retention)
 
 Testiamo se la pipeline ibrida passa correttamente il testimone al dominio finale.
 11. `Quali sono le norme del GDPR sul trattamento dati e scrivi uno script Python per offuscarli nel DB.` *(Pipeline: Rights -> Coding. Il `last_active_domain` deve diventare Coding)*
@@ -26,7 +27,7 @@ Testiamo se la pipeline ibrida passa correttamente il testimone al dominio final
 14. `Ma questa procedura mi mette al riparo da sanzioni penali?` *(Context Switch: Ritorno a Rights)*
 15. `Spiega meglio il concetto giuridico.` *(Corto: Sticky su Rights)*
 
-#### Sessione 4: Il Semantic Bleed e lo Sticky
+🟢 #### Sessione 4: Il Semantic Bleed e lo Sticky
 
 Testiamo come le parole ambigue vengono gestite dalla continuità di conversazione.
 16. `Mostrami come implementare l'algoritmo di Dijkstra in Rust.` *(Inizia Coding)*
@@ -79,10 +80,14 @@ Mettiamo alla prova richieste spurie e conversioni.
 44. `Applicalo a un triangolo con lati 3 e 4.` *(Corto -> Sticky su Math).*
 45. `Come si coltivano le orchidee in casa?` *(Lunga, General. Test del Bug #2 sull'Agente Matematico).*
 
-#### Sessione 10: Stress-Test finale di Resistenza
+🟢 #### Sessione 10: Stress-Test finale di Resistenza
 
 46. `Spiegami come bilanciare un albero AVL.` *(Coding)*
 47. `E per i Red-Black tree?` *(Sticky Coding)*
 48. `Definisci l'usucapione nel diritto privato.` *(Context Switch -> Rights)*
 49. `Calcola l'integrale di x al cubo.` *(Context Switch -> Math)*
-50. `Scrivi il codice per risolverlo.` *(Context Switch -> Coding. Fine).*
+50. `Scrivi il codice per risolverlo.` *(Context Switch -> Coding. Fine)
+
+2) migliorare i prompt
+   - per i modelli piccoli di coding, deve solo scrivere codice e commentarlo, senza spiegazioni teoriche perchè altrimenti le sbaglia. Gli altri devono attenersi a dare risposte brevi, senza argomentare troppo per evitare errori o allucinazioni
+   - per i modelli grossi, usare lo stile su instagram

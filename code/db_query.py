@@ -107,6 +107,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         # Fix Q18 + Q23: grafi, teoria, parsing
         "Implementa in Python un grafo orientato usando dizionari e matrici di adiacenza per mappare nodi e archi.",
         "Spiegami l'algoritmo di bilanciamento e rotazione dei nodi in un albero AVL o in un Red-Black tree.",
+        "Spiegami come bilanciare un albero AVL",
         "Implementa l'algoritmo di Prim o Kruskal in Python per trovare l'albero di copertura minimo di un grafo.",
         "Scrivi il codice Python per creare un grafo con NetworkX e trovare il percorso minimo tra due nodi.",
         "Come si visita un grafo in Python usando BFS e DFS su una lista di adiacenza?",
