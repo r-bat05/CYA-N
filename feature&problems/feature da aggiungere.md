@@ -1,6 +1,5 @@
-
-1. integrare un modo per rendere tutte le AI consapevoli del momento storico
+1. integrazione della chat history
+2. integrare un modo per rendere tutte le AI consapevoli del momento storico
 3. implementazione di una grafica. Idea: stile prompt dei comandi user friendly con belle animazioni
    * creare delle opzioni che modificano il linguaggio: professore (modo formale) o amico (tono più amichevole)
    * creare un manuale per poter lanciare i comandi giusti ed utilizzare il prompt
-4. introdurre una rete neurale al posto del k-nn, per rendere il codice più pulito e preciso

@@ -712,6 +712,7 @@ continuità
 discontinuità
 derivata
 derivabile
+integrale
 integrabile
 primitiva
 differenziale

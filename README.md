@@ -1,6 +1,6 @@
 # 🧠 CYA N (Choose Your AI - Noob)
 
-[![Versione](https://img.shields.io/badge/Versione-6.8.0_Stabile-blue.svg)]()
+[![Versione](https://img.shields.io/badge/Versione-6.5.0_Stabile-blue.svg)]()
 [![Python](https://img.shields.io/badge/Python-3.8+-yellow.svg)]()
 [![Ollama](https://img.shields.io/badge/Backend-Ollama-black.svg)]()
 [![Database](https://img.shields.io/badge/VectorDB-LanceDB-red.svg)]()
@@ -12,18 +12,16 @@ Progettato con un focus estremo sull'ottimizzazione delle risorse, CYA N traccia
 
 ---
 
-## ✨ Funzionalità Principali e Architettura V6.8.0
+## ✨ Funzionalità Principali e Architettura V6.5.0
 
 - 🔀 **Routing Ibrido Avanzato a 3 Livelli:** 1. **Filtro di Complessità:** Le query inferiori a 8 parole vengono declassate a mono-dominio per preservare la RAM.
-  2. **Vector Store (Distance-Weighted k-NN):** Motore vettoriale basato su **LanceDB**. Usa una formula di decadimento del peso (`weight = 1.0 / (dist + epsilon)`) per garantire ibridazioni chirurgiche e gestire i domini secondari con estrema precisione. Il guardiano di Top-Domain viene bypassato per query brevi, fidandosi del k-NN puro.
-  3. **Keyword Fallback (Fase 1 e 2):** In caso di ambiguità semantica o indisponibilità del DB, interviene un matcher in due fasi: *Hard-Match* rigoroso O(1) e *Soft-Match* basato sulla Distanza di Levenshtein, con tolleranza dinamica per varianti morfologiche e plurali.
-- 📌 **Domain Retention (Sticky Routing):** Le query brevi di follow-up (es. *"E in Python?"*, *"Fammi un esempio"*) non contengono keyword sufficienti e finirebbero erroneamente in `general`. Lo *Sticky Routing* le ancora forzatamente all'ultimo dominio tecnico attivo. Il sistema esegue un *Context Switch* solo quando il k-NN rileva un drastico cambio di argomento con alta confidenza (> 0.45).
-- 💬 **Chat History (Sliding Window):** Il sistema gestisce dialoghi multi-turno tramite una finestra scorrevole salvata in RAM. L'iniezione dinamica della cronologia e la fusione automatica del *Few-Shot* nel System Prompt evitano la saturazione della *Context Window*, permettendo all'utente di fare riferimenti anaforici alle query precedenti.
+  2. **Vector Store (Distance-Weighted k-NN):** Sostituisce la vecchia similarità coseno con un motore vettoriale basato su **LanceDB**. Usa una formula di decadimento del peso (`weight = 1.0 / (dist + epsilon)`) per garantire ibridazioni chirurgiche e gestire i domini secondari con estrema precisione.
+  3. **Keyword Fallback (Fase 1 e 2):** In caso di ambiguità semantica o indisponibilità del DB, interviene un matcher basato sulla Distanza di Levenshtein, con tolleranza dinamica degli errori di battitura.
 - 🛡️ **GENERAL Isolation (P0 Guard):** Un sofisticato sistema di sicurezza che impedisce al dominio generalista di inquinare le pipeline tecniche (Semantic Bleed). Se `GENERAL` viene estratto in una query ibrida, la pipeline viene abortita e degradata al dominio tecnico dominante.
 - 🧠 **Pipeline Multi-Agente (Draft & Merge):** Se la query richiede due domini (es. Coding + Rights), CYA N esegue i modelli in sequenza. L'Agente A genera una bozza tecnica, dopodiché l'Agente B (definito tramite una `pipeline_order_matrix` autoritativa) integra la bozza con la sua specializzazione.
-- 🔎 **Critic Pass (Auto-Revisione):** Per prevenire allucinazioni ("Fiducia Cieca"), l'Agente B esegue un passaggio finale in cui critica e corregge la propria sintesi confrontandola con la query originale dell'utente. *La Chat History è intenzionalmente esclusa in questa fase per garantire oggettività.*
-- ⏱️ **Guardia Dinamica ed Explicit Unload (RAM):** Prima di caricare un modello, il sistema interroga l'hardware (`psutil`) per un eventuale **downgrade preventivo**. Durante le pipeline, per evitare il crash, viene inviata una chiamata API di **Explicit Unload** al termine dell'Agente A. Il sistema attende che il Kernel Linux rilasci fisicamente le pagine di memoria (mmap) prima di avviare il polling di sincronizzazione per il secondo Agente.
-- 🧹 **Sanificazione Code-Block Aware:** Troncamento automatico degli output intermedi per non saturare i token (es. 9000 char). Il parsing finale intercetta i tag di ragionamento (letti dinamicamente dal config), esegue la traduzione matematica (LaTeX -> Unicode) e applica i filtri CJK **esclusivamente sul testo discorsivo**, proteggendo i blocchi di codice Markdown e la loro sintassi.
+- 🔎 **Critic Pass (Auto-Revisione):** Per prevenire allucinazioni ("Fiducia Cieca"), l'Agente B esegue un passaggio finale in cui critica e corregge la propria sintesi confrontandola con la query originale dell'utente.
+- ⏱️ **Guardia Dinamica e Sincronizzazione RAM:** Prima di caricare un modello, il sistema interroga l'hardware (`psutil`). Se la memoria è insufficiente, esegue un **downgrade preventivo** a un modello più leggero. Durante la pipeline, un ciclo di polling con *timeout configurabile* mette in pausa l'esecuzione finché la VRAM del primo agente non viene completamente rilasciata (`keep_alive=0`).
+- 🧹 **Difesa del Contesto Dinamica:** Troncamento automatico degli output intermedi basato su parametri configurabili (es. 9000 caratteri) per evitare la saturazione dei token. Sanificazione dinamica dai tag di reasoning (es. `<think>`, `<|thought|>`), caratteri asiatici anomali e macro LaTeX.
 
 ---
 
@@ -37,9 +35,6 @@ graph TD
     B -->|Bassa Confidenza / Offline| C(Keyword Matcher Levenshtein)
     B -->|Alta Confidenza| D{Smistamento Domini}
     C --> D
-    
-    D -->|Query Breve di Follow-Up| S[Sticky Routing / Domain Retention]
-    S --> D
     
     D -->|P0 Guard Intercept| L[Isolamento GENERAL]
     L --> D
