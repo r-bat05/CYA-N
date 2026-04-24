@@ -27,6 +27,7 @@ from typing import Dict, List, Tuple
 INTENT_SENTENCES: Dict[str, List[str]] = {
     'coding': [
         # --- Basi di Programmazione e Scripting ---
+        "Converti il codice in linguaggio c++",
         "Scrivi il codice sorgente per eseguire questa operazione.",
         "Fammi un programma in Python che automatizza questo processo.",
         "Come si scrive questa funzione in JavaScript o TypeScript?",
@@ -281,6 +282,8 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Dimostra che il prodotto di due matrici ortogonali è ancora una matrice ortogonale.",
 
         # --- Geometria ---
+        "Dimostra il teorema di Pitagora, evidenziando tutti i passaggi", 
+        "Scrivi i teoremi di geometria più importanti", 
         "Trova l'equazione del piano passante per tre punti non allineati nello spazio cartesiano.",
         "Determina le coordinate del fuoco, la direttrice e l'eccentricità di questa parabola.",
         "Trasforma questa equazione cartesiana nelle equivalenti coordinate polari.",

@@ -48,7 +48,7 @@ RAM_THRESHOLDS = {
     'small':    1.0 * GB,
     'medium':   5.5 * GB,
     'large':   12.0 * GB,
-    'math_opt': 2.5 * GB
+    'math_opt': 1 * GB #2.5
 }
 
 # --- 3. CONFIGURAZIONE MODELLI AI ---
@@ -105,6 +105,11 @@ SYSTEM_SETTINGS = {
     # (es. "Teorema di Pitagora" classificato ['rights','math']) ora innescano
     # correttamente l'override di context switch invece di restare sticky.
     'sticky_tech_switch_min': 0.38,
+    
+    # Soglia confidenza per l'override su query corte (< sticky_short_words).
+    # Più alta di sticky_tech_switch_min: su query corte il follow-up è più probabile
+    # del context switch, quindi serve un segnale k-NN più forte per forzare lo switch.
+    'sticky_short_override_min': 0.65,
 
     # [STICKY_FIX] Soglia confidenza per il Weak-General Trigger.
     # Se k-NN classifica 'general' con confidenza < questa soglia durante una

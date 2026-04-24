@@ -8,7 +8,6 @@
 4. `Qual è la differenza giuridica tra dolo e colpa cosciente?` *(Context Switch: Override su Rights perché confidenza > 0.65)*
 5. `Fammi un esempio pratico di questo reato.` *(Corto: si aspetta Sticky su Rights)*
 
-
 🟢 #### Sessione 2: La Trappola della Brevità (Test dell'Override) 2
 
 Qui testiamo il Bug #1. L'utente fa domande brevissime ma cambia radicalmente dominio.
@@ -36,7 +35,7 @@ Testiamo come le parole ambigue vengono gestite dalla continuità di conversazio
 19. `Risolvi l'equazione differenziale lineare associata a questo problema.` *(Context Switch netto su Math)*
 20. `Disegnami la parabola.` *(Corto. "Parabola" è ambiguo. Sticky lo forza su Math. Corretto).*
 
-#### Sessione 5: Il "General" Debole (Test del Bug #2)
+🟢 #### Sessione 5: Il "General" Debole (Test del Bug #2)
 
 Mettiamo alla prova l'innesco `is_weak_general` con query lunghe ma di cultura generale.
 21. `Spiegami i requisiti per il divorzio consensuale in Italia.` *(Inizia Rights)*
@@ -63,7 +62,7 @@ Saturiamo la cronologia (`max_history_turns = 3`) per vedere come reagisce il mo
 34. `k-nn autovalori autovettori xkwq` *(Fallback Keyword su Math. Spezza lo sticky).*
 35. `matrice inversa` *(Sticky su Math).*
 
-#### Sessione 8: Inneschi Multipli e Traduzioni
+🟢 #### Sessione 8: Inneschi Multipli e Traduzioni
 
 Mettiamo alla prova richieste spurie e conversioni.
 36. `Scrivi uno smart contract in Solidity per un'asta.` *(Inizia Coding)*
@@ -72,7 +71,7 @@ Mettiamo alla prova richieste spurie e conversioni.
 39. `Qual è la normativa europea sulle criptovalute (MiCA)?` *(Context Switch -> Rights)*
 40. `Riassumila in 3 punti.` *(Corto. Sticky su Rights)*
 
-#### Sessione 9: Ambivalenza P0 Guard e Sticky
+🟢 #### Sessione 9: Ambivalenza P0 Guard e Sticky
 
 41. `Scrivi un codice Python per gestire i permessi degli utenti e fai un parallelo con la storia di Roma.` *(P0 Guard interviene e isola General. Rimane Coding).*
 42. `Approfondisci la parte storica.` *(Essendo corta e `last_domain` = Coding, lo sticky forzerà l'Agente Programmatore a spiegare la storia di Roma).*
@@ -88,7 +87,36 @@ Mettiamo alla prova richieste spurie e conversioni.
 49. `Calcola l'integrale di x al cubo.` *(Context Switch -> Math)*
 50. `Scrivi il codice per risolverlo.` *(Context Switch -> Coding. Fine)
 
+
+#### Sessione 11: L'Escalation Ibrida (Transizione Mono **$\rightarrow$** Multi-Dominio)
+
+*Obiettivo: Verificare se il sistema riesce a "spegnere" lo Sticky Routing quando l'utente, partendo da un dominio tecnico, formula una richiesta complessa che innesca una cooperazione tra agenti.*
+
+51. `Calcola il limite per x che tende a infinito di questa funzione razionale.` *(Inizia in Math. `last_active_domain` = 'math').*
+52. `Ora scrivi uno script in Python che utilizza il metodo di Newton-Raphson per trovare le radici di questo polinomio calcolandone le derivate.` *(Query di 22 parole. Supera `min_words_for_pipeline`. Il k-NN rileverà un ibrido `math` + `coding`. Lo Sticky Routing DEVE disattivarsi perché la query non è corta, non ha marker e l'override consentirà il passaggio alla pipeline ibrida).*
+53. `Aggiungi i commenti al codice generato.` *(Corto: 5 parole. Il sistema deve attivare lo Sticky Routing su `coding`, poiché al termine della pipeline l'Agente B (Merge) è quello che detta il nuovo `last_active_domain`).*
+
+#### Sessione 12: La Trappola del Trigger Lessicale Assoluto
+
+*Obiettivo: Testare una vulnerabilità logica in `main.py`. Il "Trigger 3" (Pattern espliciti) viene valutato **prima** dell'Override di Context Switch. Cosa succede se un utente usa un marker di follow-up ma cambia completamente argomento?*
+
+54. `Mostrami come implementare una hashmap o un dizionario in codice.` *(Inizia in Coding).*
+55. `Non mi è chiaro, ma quindi quali sono i diritti del lavoratore dipendente e i limiti legali sul controllo a distanza?` *(Query lunga: 20 parole. Dominio k-NN: `rights` ad alta confidenza.  **CRITICITÀ** : Poiché inizia con "non mi è chiaro" (presente in `sticky_followup_triggers`), l'algoritmo restituirà `True` forzando `coding` prima ancora di valutare il cambio di dominio. L'agente programmatore dovrà rispondere a una domanda di diritto).*
+
+#### Sessione 13: Il Filtro CJK e il confine del Code-Block
+
+*Obiettivo: Testare la regex in `helper.py` che applica il filtro asiatico solo al testo discorsivo preservando i blocchi di codice.*
+
+56. `Scrivi una funzione Python che stampa 'こんにちは' e spiegami in italiano cosa significa quel saluto giapponese.` *(Inizia in Coding. Ci si aspetta che il blocco di codice contenga i caratteri giapponesi intatti, ma che la spiegazione discorsiva generata dal LLM venga brutalmente epurata dai caratteri CJK, risultando in una frase del tipo: "La parola significa ciao", perdendo i logogrammi).*
+
+#### Sessione 14: Lo Scontro tra P0 Guard e Ibrido "Falso Corto"
+
+*Obiettivo: Testare il comportamento del declassamento per brevità (soglia 12 parole) quando si interseca con un ibrido di altissima qualità.*
+
+57. `Quali sono gli obblighi legali e le sanzioni del GDPR per la conservazione in un database?` *(Query di 16 parole. Il k-NN troverà `rights` e `coding` come bridge. Essendo >= 12 parole, partirà la Pipeline Ibrida `rights -> coding`).*
+58. `Spiega la responsabilità legale del DPO nell'architettura software.` *(Query di 8 parole. Il k-NN troverà l'ibrido `rights` e `coding`.  **CRITICITÀ** : Essendo < 12 parole, l'arco ibrido verrà declassato a mono-dominio. L'utente si aspetta una risposta completa, ma riceverà solo il parere giuridico senza l'implementazione software).*
+59. `Riassumi in un elenco puntato.` *(Corto: Sticky su `rights`).*
+
 2) migliorare i prompt
    - per i modelli piccoli di coding, deve solo scrivere codice e commentarlo, senza spiegazioni teoriche perchè altrimenti le sbaglia. Gli altri devono attenersi a dare risposte brevi, senza argomentare troppo per evitare errori o allucinazioni
    - per i modelli grossi, usare lo stile su instagram
-

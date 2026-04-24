@@ -104,84 +104,65 @@ def _has_domain_keywords(query: str, domain: str) -> bool:
 
 def _should_sticky_route(
     query: str,
-    sem_domains: list,       # Domini ORIGINALI pre-declassificazione
+    sem_domains: list,
     sem_confidence: float,
     last_domain: str
 ) -> tuple:
     """
-    [STICKY V5 / V6.8.0] Domain Retention con 3 trigger indipendenti.
+    Domain Retention V6.9 — ordine di valutazione:
+      1. Pattern espliciti (priorità assoluta, sempre sticky)
+      2. Override (context switch) — soglia differenziata per lunghezza query
+      3. Trigger query corta (sticky)
+      4. Trigger weak-general (sticky)
 
-    sem_domains deve essere la lista ORIGINALE prima della declassificazione.
-    Questo permette all'override di rilevare context switch anche su query brevi
-    ibride (es. ['rights','math'] declassificata a ['rights']: 'math' rimane
-    visibile nell'override e può innescare il context switch corretto).
-
-    Trigger 1 — Query corta: follow-up pattern classico (< sticky_short_words).
-                Eccezione: top='general' + bassa conf + 0 keyword last_domain
-                → topic change genuino, non follow-up.
-    Trigger 2 — Weak-General: k-NN → 'general' con bassa confidenza su sessione
-                tecnica E presenza di keyword del last_domain nella query.
-    Trigger 3 — Pattern espliciti: substring italiane di follow-up presenti nella
-                query → sticky forzato indipendentemente da lunghezza e confidenza.
-
-    Override: se qualsiasi dominio tecnico != last_domain è presente in sem_domains
-    con confidenza >= tech_switch_min → context switch (sticky non applicato).
-    override_target = top domain della lista originale se candidato, altrimenti
-    il primo dominio switching trovato.
-
-    Returns:
-        (should_stick: bool, sticky_domain: str, reason: str, override_target: str|None)
-        override_target: dominio verso cui instradare in caso di context switch.
+    Returns: (should_stick, sticky_domain, reason, override_target)
     """
     if not last_domain or last_domain not in _TECHNICAL_DOMAINS:
         return False, last_domain, '', None
 
-    tech_switch_min   = config.SYSTEM_SETTINGS.get('sticky_tech_switch_min',   0.45)
-    short_threshold   = config.SYSTEM_SETTINGS.get('sticky_short_words',        7)
-    weak_gen_conf     = config.SYSTEM_SETTINGS.get('sticky_weak_general_conf',  0.65)
-    followup_triggers = config.SYSTEM_SETTINGS.get('sticky_followup_triggers',  [])
+    tech_switch_min    = config.SYSTEM_SETTINGS.get('sticky_tech_switch_min',    0.38)
+    short_override_min = config.SYSTEM_SETTINGS.get('sticky_short_override_min', 0.65)
+    short_threshold    = config.SYSTEM_SETTINGS.get('sticky_short_words',         7)
+    weak_gen_conf      = config.SYSTEM_SETTINGS.get('sticky_weak_general_conf',   0.65)
+    followup_triggers  = config.SYSTEM_SETTINGS.get('sticky_followup_triggers',   [])
 
-    top_domain = sem_domains[0] if sem_domains else 'general'
-    is_short   = len(query.split()) < short_threshold
+    top_domain  = sem_domains[0] if sem_domains else 'general'
+    is_short    = len(query.split()) < short_threshold
+    query_lower = query.lower()
+
+    # --- Trigger 3: Pattern espliciti (massima priorità, precede l'override) ---
+    for trigger in followup_triggers:
+        if trigger in query_lower:
+            return True, last_domain, f'pattern_match("{trigger}")', None
 
     # --- Override: context switch verso dominio tecnico diverso ---
-    # [V6.8.0] Usa la lista ORIGINALE pre-declassificazione: anche il secondo dominio
-    # di un ibrido declassificato è visibile e può innescare il context switch.
-    switching_domains = [
+    # Per query corte la soglia è più alta: su poche parole il k-NN è meno affidabile
+    # e il follow-up è statisticamente più probabile del cambio dominio.
+    override_threshold = short_override_min if is_short else tech_switch_min
+    switching_domains  = [
         d for d in sem_domains
         if d in _TECHNICAL_DOMAINS and d != last_domain
     ]
-    if switching_domains and sem_confidence >= tech_switch_min:
-        # Preferisce il top k-NN se è candidato al switch, altrimenti il primo trovato
+    if switching_domains and sem_confidence >= override_threshold:
         override_target = top_domain if top_domain in switching_domains else switching_domains[0]
         return False, last_domain, '', override_target
 
     # --- Trigger 1: query corta ---
     if is_short:
-        # [V6.8.0] Eccezione: k-NN → general con bassa confidenza + 0 keyword last_domain
-        # → cambio argomento reale (es. "orchidee in casa" dopo sessione coding)
+        # Eccezione: topic change genuino (general a bassa conf, 0 keyword last_domain)
         if (top_domain == 'general'
                 and sem_confidence < weak_gen_conf
                 and not _has_domain_keywords(query, last_domain)):
             return False, last_domain, 'short_no_kw_general', None
         return True, last_domain, 'query_corta', None
 
-    # --- Trigger 2: Weak-General (confidenza bassa su general) ---
+    # --- Trigger 2: weak-general (confidenza bassa su general) ---
     if top_domain == 'general' and sem_confidence < weak_gen_conf:
-        # [V6.8.0] Gate: se nessuna keyword del last_domain è presente nella query,
-        # si tratta di un cambio topic genuino, non di un follow-up discorsivo.
         if _has_domain_keywords(query, last_domain):
             return True, last_domain, f'weak_general(conf={sem_confidence:.2f}<{weak_gen_conf})', None
         return False, last_domain, '', None
 
-    # --- Trigger 3: Pattern espliciti di follow-up ---
-    query_lower = query.lower()
-    for trigger in followup_triggers:
-        if trigger in query_lower:
-            return True, last_domain, f'pattern_match("{trigger}")', None
-
     return False, last_domain, '', None
-
 
 def main():
     print_banner()
