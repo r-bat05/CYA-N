@@ -1,13 +1,20 @@
 """
     CONFIGURAZIONE CENTRALE (CYA N)
 
+    Novità V6.8.0:
+    - [STICKY_FIX2] sticky_tech_switch_min abbassato da 0.45 a 0.38.
+      Con 0.45, query ibride brevi con confidenza k-NN 0.40 (es. "Teorema di Pitagora"
+      classificato ['rights','math'] con conf=0.40) non innescaravano l'override di
+      context switch. Il valore 0.38 cattura questi casi mantenendo la protezione
+      da false positives (confidenze < 0.38 sono troppo incerte per un switch forzato).
+
+    Novità V6.7.4:
+    - [STICKY_FIX] sticky_weak_general_conf aggiunto a SYSTEM_SETTINGS.
+    - [STICKY_FIX] sticky_followup_triggers aggiunto a SYSTEM_SETTINGS.
+
     Novità V6.7.3:
-    - [CJK] cjk_filter_enabled aggiunto a SYSTEM_SETTINGS. Toggle per il filtro
-      caratteri CJK in helper.py. Default True (comportamento invariato).
-      Impostare False per abilitare stringhe asiatiche nei code block.
-    - [CLEANUP] Rimosse chiavi deprecate da SEMANTIC_SETTINGS:
-      confidence_threshold, multi_domain_spread, multi_domain_min_score.
-      Non referenziate in nessun modulo attivo (sostituite dalla logica k-NN).
+    - [CJK] cjk_filter_enabled aggiunto a SYSTEM_SETTINGS.
+    - [CLEANUP] Rimosse chiavi deprecate da SEMANTIC_SETTINGS.
 
     Novità V6.7.2:
     - [BUG2] Rimosso sticky_confidence_threshold: dead config.
@@ -41,35 +48,35 @@ RAM_THRESHOLDS = {
     'small':    1.0 * GB,
     'medium':   5.5 * GB,
     'large':   12.0 * GB,
-    'math_opt': 1.0 * GB
+    'math_opt': 2.5 * GB
 }
 
 # --- 3. CONFIGURAZIONE MODELLI AI ---
 MODELS_CONFIG = {
     'coding': {
-        'primary':                "qwen2.5-coder:1.5b", #"qwen3.5:9b",
+        'primary':                "qwen2.5-coder:1.5b", #qwen 9b
         'fallback':               "qwen2.5-coder:1.5b",
         'temperature':            0.5,
         'ram_threshold':          'medium',
         'fallback_ram_threshold': 'small'
     },
     'math': {
-        'primary':                "qwen2.5-coder:1.5b", #"deepseek-r1:7b",
+        'primary':                "qwen2.5-coder:1.5b", #deepseek
         'fallback':               None,
         'temperature':            0.2,
         'ram_threshold':          'math_opt',
         'fallback_ram_threshold': None
     },
     'rights': {
-        'primary':                "qwen2.5-coder:1.5b", #"gpt-oss:20b",
-        'fallback':               "qwen2.5-coder:1.5b", #"llama3.2:3b",
+        'primary':                "qwen2.5-coder:1.5b", #gpt-oss
+        'fallback':               "qwen2.5-coder:1.5b",
         'temperature':            0.4,
         'ram_threshold':          'large',
         'fallback_ram_threshold': 'small'
     },
     'general': {
-        'primary':                "qwen2.5-coder:1.5b", #"gpt-oss:20b",
-        'fallback':               "qwen2.5-coder:1.5b", #"llama3.2:3b",
+        'primary':                "qwen2.5-coder:1.5b", #gpt-oss
+        'fallback':               "qwen2.5-coder:1.5b",
         'temperature':            0.7,
         'ram_threshold':          'large',
         'fallback_ram_threshold': 'small'
@@ -83,26 +90,61 @@ SYSTEM_SETTINGS = {
     'ctx_size':          4096,
 
     # [P2] Tag di ragionamento del modello.
-    # Modificare qui per supportare modelli con tag diversi (es. <thinking></thinking>).
     'think_open_tag':  '<think>',
     'think_close_tag': '</think>',
 
     # [CHAT] Profondità sliding window della chat history.
-    # Valore = numero di scambi completi (user+assistant).
-    # 3 turni = 6 messaggi totali. Abbassare a 2 su hardware molto limitato.
     'max_history_turns': 3,
 
-    # [STICKY] Soglia parole per query "corta" → candidata allo sticky routing.
+    # [STICKY] Soglia parole per query "corta" -> candidata allo sticky routing.
     'sticky_short_words': 10,
 
     # [STICKY] Soglia di confidenza k-NN per il context switch verso un dominio
     # tecnico diverso dall'ultimo attivo.
-    # Range consigliato: 0.40–0.55.
-    'sticky_tech_switch_min': 0.45,
+    # [V6.8.0] Abbassato da 0.45 a 0.38: query ibride brevi con conf~0.40
+    # (es. "Teorema di Pitagora" classificato ['rights','math']) ora innescano
+    # correttamente l'override di context switch invece di restare sticky.
+    'sticky_tech_switch_min': 0.38,
+
+    # [STICKY_FIX] Soglia confidenza per il Weak-General Trigger.
+    # Se k-NN classifica 'general' con confidenza < questa soglia durante una
+    # sessione tecnica attiva, la query è trattata come follow-up discorsivo
+    # e il Domain Retention viene mantenuto (solo se keyword del dominio presenti).
+    # Range consigliato: 0.60-0.70. Abbassare se troppi false-sticky.
+    'sticky_weak_general_conf': 0.65,
+
+    # [STICKY_FIX] Trigger espliciti di follow-up conversazionale in italiano.
+    # Se una di queste substring è presente nella query (case-insensitive),
+    # il Domain Retention è forzato indipendentemente dalla lunghezza della query.
+    # Aggiungere nuove frasi senza modificare il codice.
+    'sticky_followup_triggers': [
+        'non ho capito',
+        'non capisco',
+        'cosa intendi',
+        'cosa significa',
+        'come mai hai',
+        'perché hai',
+        'hai scritto',
+        "nell'esempio",
+        'nel codice',
+        'mi spieghi',
+        'spiegami meglio',
+        'puoi spiegare',
+        'dimmi di più',
+        'in che senso',
+        'cosa vuol dire',
+        'approfondisci',
+        'vuoi dire che',
+        'intendi dire',
+        'ma quindi',
+        'non mi è chiaro',
+        'non è chiaro',
+        'ripeti',
+        'rispiega',
+        'chiariscimi',
+    ],
 
     # [CJK] Filtro caratteri Cinese/Giapponese/Coreano in clean_response().
-    # True  → comportamento default: rimuove CJK dal testo discorsivo.
-    # False → disabilitare se si lavora con stringhe asiatiche in code block.
     'cjk_filter_enabled': True,
 }
 
@@ -134,16 +176,11 @@ PIPELINE_SETTINGS = {
     'hybrid_threshold':           0.30,
     'min_words_for_pipeline':     12,
 
-    # [P2] Limite caratteri per il contesto passato tra agenti (A→B e critic pass).
+    # [P2] Limite caratteri per il contesto passato tra agenti (A->B e critic pass).
     'pipeline_max_context_chars': 9000,
 
     # [P4] Timeout sincronizzazione RAM tra Agente A e B.
     'ram_sync_timeout':           20.0,
-    # Novità V6.8.0:
-    # - [DIFETTO2] ram_unload_wait: attesa iniziale (secondi) dopo explicit_unload()
-    #   prima di avviare il polling psutil. Dà tempo all'OS di reclamare le pagine
-    #   mmap rilasciate da Ollama (su Linux il rilascio fisico è asincrono rispetto
-    #   alla chiusura del processo/request).
     'ram_unload_wait':            1.5,
 
     'pipeline_order_matrix': {
