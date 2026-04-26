@@ -88,7 +88,7 @@ Mettiamo alla prova richieste spurie e conversioni.
 50. `Scrivi il codice per risolverlo.` *(Context Switch -> Coding. Fine)
 
 
-#### Sessione 11: L'Escalation Ibrida (Transizione Mono **$\rightarrow$** Multi-Dominio)
+🟢 #### Sessione 11: L'Escalation Ibrida (Transizione Mono **$\rightarrow$** Multi-Dominio)
 
 *Obiettivo: Verificare se il sistema riesce a "spegnere" lo Sticky Routing quando l'utente, partendo da un dominio tecnico, formula una richiesta complessa che innesca una cooperazione tra agenti.*
 
@@ -96,7 +96,7 @@ Mettiamo alla prova richieste spurie e conversioni.
 52. `Ora scrivi uno script in Python che utilizza il metodo di Newton-Raphson per trovare le radici di questo polinomio calcolandone le derivate.` *(Query di 22 parole. Supera `min_words_for_pipeline`. Il k-NN rileverà un ibrido `math` + `coding`. Lo Sticky Routing DEVE disattivarsi perché la query non è corta, non ha marker e l'override consentirà il passaggio alla pipeline ibrida).*
 53. `Aggiungi i commenti al codice generato.` *(Corto: 5 parole. Il sistema deve attivare lo Sticky Routing su `coding`, poiché al termine della pipeline l'Agente B (Merge) è quello che detta il nuovo `last_active_domain`).*
 
-#### Sessione 12: La Trappola del Trigger Lessicale Assoluto
+🟢 #### Sessione 12: La Trappola del Trigger Lessicale Assoluto
 
 *Obiettivo: Testare una vulnerabilità logica in `main.py`. Il "Trigger 3" (Pattern espliciti) viene valutato **prima** dell'Override di Context Switch. Cosa succede se un utente usa un marker di follow-up ma cambia completamente argomento?*
 

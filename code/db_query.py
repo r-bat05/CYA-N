@@ -195,6 +195,8 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Sviluppa un gestore di memoria custom per allocare blocchi di dati a dimensione fissa.",
 
         # --- Debugging, Errori e Testing ---
+        "Scrivi una funzione Python ottimizzata per trovare tutti i numeri primi fino a N usando il Crivello di Eratostene.",
+        "Implementa un algoritmo efficiente per verificare se un numero intero è primo controllando la divisibilità fino alla radice quadrata.",
         "Correggi questo bug nel codice sorgente e rimuovi gli errori di compilazione.",
         "Come faccio il debug di questa eccezione o runtime error nel mio programma?",
         "Scrivi uno unit test in Python utilizzando la libreria pytest o unittest.",

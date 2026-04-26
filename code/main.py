@@ -109,11 +109,14 @@ def _should_sticky_route(
     last_domain: str
 ) -> tuple:
     """
-    Domain Retention V6.9 — ordine di valutazione:
-      1. Pattern espliciti (priorità assoluta, sempre sticky)
-      2. Override (context switch) — soglia differenziata per lunghezza query
-      3. Trigger query corta (sticky)
-      4. Trigger weak-general (sticky)
+    Domain Retention V7.0 — ordine di valutazione:
+      1. Override (context switch) — soglia differenziata per lunghezza query.
+         Valutato PRIMA dei pattern: alta confidenza su dominio diverso batte
+         qualsiasi marker di follow-up (es. "Non mi è chiaro, ma quali sono
+         i diritti del lavoratore?" → switch a RIGHTS anche con trigger).
+      2. Pattern espliciti — solo se nessun override ha scattato.
+      3. Trigger query corta — con eccezione solo per query non cortissime.
+      4. Trigger weak-general.
 
     Returns: (should_stick, sticky_domain, reason, override_target)
     """
@@ -122,22 +125,19 @@ def _should_sticky_route(
 
     tech_switch_min    = config.SYSTEM_SETTINGS.get('sticky_tech_switch_min',    0.38)
     short_override_min = config.SYSTEM_SETTINGS.get('sticky_short_override_min', 0.65)
-    short_threshold    = config.SYSTEM_SETTINGS.get('sticky_short_words',         7)
-    weak_gen_conf      = config.SYSTEM_SETTINGS.get('sticky_weak_general_conf',   0.65)
-    followup_triggers  = config.SYSTEM_SETTINGS.get('sticky_followup_triggers',   [])
+    short_threshold    = config.SYSTEM_SETTINGS.get('sticky_short_words',        10)
+    weak_gen_conf      = config.SYSTEM_SETTINGS.get('sticky_weak_general_conf',  0.65)
+    followup_triggers  = config.SYSTEM_SETTINGS.get('sticky_followup_triggers',  [])
 
+    word_count  = len(query.split())
     top_domain  = sem_domains[0] if sem_domains else 'general'
-    is_short    = len(query.split()) < short_threshold
+    is_short    = word_count < short_threshold
     query_lower = query.lower()
 
-    # --- Trigger 3: Pattern espliciti (massima priorità, precede l'override) ---
-    for trigger in followup_triggers:
-        if trigger in query_lower:
-            return True, last_domain, f'pattern_match("{trigger}")', None
-
-    # --- Override: context switch verso dominio tecnico diverso ---
-    # Per query corte la soglia è più alta: su poche parole il k-NN è meno affidabile
-    # e il follow-up è statisticamente più probabile del cambio dominio.
+    # --- 1. Override: context switch verso dominio tecnico diverso ---
+    # Priorità assoluta: se confidenza >= soglia per il nuovo dominio, switcha
+    # indipendentemente da marker conversazionali nella query.
+    # Soglia differenziata: query corte richiedono confidenza più alta.
     override_threshold = short_override_min if is_short else tech_switch_min
     switching_domains  = [
         d for d in sem_domains
@@ -147,16 +147,26 @@ def _should_sticky_route(
         override_target = top_domain if top_domain in switching_domains else switching_domains[0]
         return False, last_domain, '', override_target
 
-    # --- Trigger 1: query corta ---
+    # --- 2. Pattern espliciti (dopo override) ---
+    # Scatta solo se il segnale k-NN non è abbastanza forte per uno switch.
+    for trigger in followup_triggers:
+        if trigger in query_lower:
+            return True, last_domain, f'pattern_match("{trigger}")', None
+
+    # --- 3. Trigger query corta ---
     if is_short:
-        # Eccezione: topic change genuino (general a bassa conf, 0 keyword last_domain)
-        if (top_domain == 'general'
+        # Eccezione: topic change genuino.
+        # Condizioni: top=general, bassa conf, no keyword last_domain.
+        # NON applicata a query cortissime (< 6 parole): quasi certamente follow-up.
+        very_short = word_count < 6
+        if (not very_short
+                and top_domain == 'general'
                 and sem_confidence < weak_gen_conf
                 and not _has_domain_keywords(query, last_domain)):
             return False, last_domain, 'short_no_kw_general', None
         return True, last_domain, 'query_corta', None
 
-    # --- Trigger 2: weak-general (confidenza bassa su general) ---
+    # --- 4. Trigger weak-general ---
     if top_domain == 'general' and sem_confidence < weak_gen_conf:
         if _has_domain_keywords(query, last_domain):
             return True, last_domain, f'weak_general(conf={sem_confidence:.2f}<{weak_gen_conf})', None
@@ -445,7 +455,6 @@ def main():
         except Exception as e:
             print(f"\n❌ ERRORE IMPREVISTO: {e}")
             print("Consiglio: Verifica che l'arco di comunicazione con Ollama sia attivo.")
-
 
 if __name__ == "__main__":
     main()

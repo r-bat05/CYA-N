@@ -105,7 +105,7 @@ SYSTEM_SETTINGS = {
     # (es. "Teorema di Pitagora" classificato ['rights','math']) ora innescano
     # correttamente l'override di context switch invece di restare sticky.
     'sticky_tech_switch_min': 0.38,
-    
+
     # Soglia confidenza per l'override su query corte (< sticky_short_words).
     # Più alta di sticky_tech_switch_min: su query corte il follow-up è più probabile
     # del context switch, quindi serve un segnale k-NN più forte per forzare lo switch.
