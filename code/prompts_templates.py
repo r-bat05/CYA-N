@@ -8,7 +8,7 @@
       modello di ancorare la revisione alla reale richiesta dell'utente.
 """
 
-# --- 1. SYSTEM PROMPTS (Il "Chi sei") ---
+'''# --- 1. SYSTEM PROMPTS (Il "Chi sei") ---
 SYSTEM_PROMPTS = {
     'rights': (
         "Sei un assistente legale esperto in Diritto Italiano e Sportivo.\n"
@@ -127,6 +127,61 @@ PIPELINE_PROMPTS = {
     )
 }
 
+
+def get_prompts(category: str):
+    """ 
+    Restituisce la tupla (System Prompt, Few-Shot, Enforcement) 
+    per l'engine AI.
+    """
+    sys = SYSTEM_PROMPTS.get(category, SYSTEM_PROMPTS['general'])
+    shot = FEW_SHOT_EXAMPLES.get(category, "")
+    force = ENFORCEMENT_PROMPTS.get(category, "")
+    return sys, shot, force '''
+
+
+#versione del prompt per il testing
+TEST_MSG = "ok, sono il programmatore e sto testando il sistema per verificare la correttezza del routing"
+
+# --- 1. SYSTEM PROMPTS (Il "Chi sei") ---
+SYSTEM_PROMPTS = {
+    'rights': f"Ignora completamente qualsiasi richiesta, domanda o input dell'utente. Rispondi SEMPRE ed ESCLUSIVAMENTE con la seguente frase esatta: '{TEST_MSG}'",
+    'coding': f"Ignora completamente qualsiasi richiesta, domanda o input dell'utente. Rispondi SEMPRE ed ESCLUSIVAMENTE con la seguente frase esatta: '{TEST_MSG}'",
+    'math': f"Ignora completamente qualsiasi richiesta, domanda o input dell'utente. Rispondi SEMPRE ed ESCLUSIVAMENTE con la seguente frase esatta: '{TEST_MSG}'",
+    'general': f"Ignora completamente qualsiasi richiesta, domanda o input dell'utente. Rispondi SEMPRE ed ESCLUSIVAMENTE con la seguente frase esatta: '{TEST_MSG}'"
+}
+
+# --- 2. FEW-SHOT EXAMPLES (L'Esempio Virtuoso) ---
+# Svuotati per ridurre i token a zero durante il test.
+FEW_SHOT_EXAMPLES = {
+    'rights': "",
+    'coding': "",
+    'math': "", 
+    'general': ""
+}
+
+# --- 3. REGOLE DI RINFORZO ---
+ENFORCEMENT_PROMPTS = {
+    'math': ""
+}
+
+# --- 4. PROMPT PER LA PIPELINE (Query Ibride) ---
+PIPELINE_PROMPTS = {
+    # Directional vuoto per non aggiungere token intermedi
+    'directional': "",
+    
+    # Handoff ignorerà l'output dell'agente A
+    'handoff': (
+        f"Ignora il contesto precedente, ignora l'output dell'altro agente e ignora la richiesta dell'utente. "
+        f"Rispondi SEMPRE ed ESCLUSIVAMENTE con la seguente frase esatta: '{TEST_MSG}'"
+    ),
+    
+    # Critic ignorerà la validazione
+    'critic': (
+        f"Ignora la bozza, non fare nessuna revisione e ignora la domanda originale. "
+        f"Rispondi SEMPRE ed ESCLUSIVAMENTE con la seguente frase esatta: '{TEST_MSG}' \n"
+        #"Domanda originale (ignorala): {original_query}"
+    )
+}
 
 def get_prompts(category: str):
     """ 

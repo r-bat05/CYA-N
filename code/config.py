@@ -94,7 +94,7 @@ SYSTEM_SETTINGS = {
     'think_close_tag': '</think>',
 
     # [CHAT] Profondità sliding window della chat history.
-    'max_history_turns': 3,
+    'max_history_turns': 5,
 
     # [STICKY] Soglia parole per query "corta" -> candidata allo sticky routing.
     'sticky_short_words': 10,

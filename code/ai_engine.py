@@ -328,8 +328,10 @@ class DeepSeekAI(BaseAI):
 
     def resolve(self, prompt: str, history: list = None):
         history = history or []
-        _, _, enforcement = get_prompts('math')
+        sys_prompt, few_shot, enforcement = get_prompts('math')
+        combined_sys = self._merge_few_shot(sys_prompt, few_shot)
         messages = [
+            {'role': 'system', 'content': combined_sys},
             *history,
             {'role': 'user', 'content': f"{prompt}{enforcement}"}
         ]
@@ -337,9 +339,11 @@ class DeepSeekAI(BaseAI):
 
     def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None):
         history = history or []
-        _, _, enforcement = get_prompts('math')
+        sys_prompt, few_shot, enforcement = get_prompts('math')
+        combined_sys = self._merge_few_shot(sys_prompt, few_shot)
         directional = PIPELINE_PROMPTS['directional'].format(domain_b=domain_b.upper())
         messages = [
+            {'role': 'system', 'content': combined_sys},
             *history,
             {'role': 'user', 'content': f"{prompt}{enforcement}{directional}"}
         ]
@@ -348,7 +352,7 @@ class DeepSeekAI(BaseAI):
     def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None):
         output_a = self._truncate_context(output_a)
         history  = history or []
-        _, _, enforcement = get_prompts('math')
+        sys_prompt, _, enforcement = get_prompts('math')
         handoff = PIPELINE_PROMPTS['handoff'].format(
             original_query=original_prompt,
             domain_a=domain_a.upper(),
@@ -356,24 +360,26 @@ class DeepSeekAI(BaseAI):
             domain_b=self.category.upper()
         )
         messages = [
+            {'role': 'system', 'content': sys_prompt},
             *history,
             {'role': 'user', 'content': f"{handoff}{enforcement}"}
         ]
         return self.generate(messages, stream_output=False, force_unload=False)
 
     def execute_critic_pass(self, draft_b: str, original_prompt: str):
-        draft_b         = self._truncate_context(draft_b)
+        draft_b = self._truncate_context(draft_b)
+        sys_prompt, _, _ = get_prompts('math')
         critic_template = PIPELINE_PROMPTS['critic']
         if "{original_query}" in critic_template:
             critic = critic_template.format(original_query=original_prompt)
         else:
             critic = f"{critic_template}\n\n[DOMANDA ORIGINALE DELL'UTENTE]:\n\"{original_prompt}\""
         messages = [
+            {'role': 'system', 'content': sys_prompt},
             {'role': 'assistant', 'content': draft_b},
-            {'role': 'user',      'content': critic}
+            {'role': 'user', 'content': critic}
         ]
         return self.generate(messages, stream_output=True, force_unload=False)
-
 
 class GptOssAI(BaseAI):
     def __init__(self, category='general'):
