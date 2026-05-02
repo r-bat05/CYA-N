@@ -101,7 +101,7 @@ che calcola il patrimonio netto. Fallo e dammi anche un esempio pratico in cui √
 
 
 
-2) costruire una rete neurale per riconoscere ed instradare le richieste (vedi report Claude)
+2) costruire una rete neurale per riconoscere ed instradare le richieste (vedi report Claude). Verifica i file necessari
 
 3) migliorare i prompt
    - per i modelli piccoli di coding, deve solo scrivere codice e commentarlo, senza spiegazioni teoriche perch√® altrimenti le sbaglia. Gli altri devono attenersi a dare risposte brevi, senza argomentare troppo per evitare errori o allucinazioni
