@@ -48,7 +48,7 @@ RAM_THRESHOLDS = {
     'small':    1.0 * GB,
     'medium':   5.5 * GB,
     'large':   12.0 * GB,
-    'math_opt': 1 * GB #2.5
+    'math_opt': 2.5 * GB 
 }
 
 # --- 3. CONFIGURAZIONE MODELLI AI ---
@@ -123,14 +123,14 @@ SYSTEM_SETTINGS = {
     # il Domain Retention è forzato indipendentemente dalla lunghezza della query.
     # Aggiungere nuove frasi senza modificare il codice.
     'sticky_followup_triggers': [
-        'non ho capito',
+        'rispiega',
         'non capisco',
         'cosa intendi',
         'cosa significa',
         'come mai hai',
         'perché hai',
         'hai scritto',
-        "nell'esempio",
+        "nel tuo esempio",
         'nel codice',
         'mi spieghi',
         'spiegami meglio',
@@ -186,7 +186,7 @@ PIPELINE_SETTINGS = {
 
     # [P4] Timeout sincronizzazione RAM tra Agente A e B.
     'ram_sync_timeout':           20.0,
-    'ram_unload_wait':            1.5,
+    'ram_unload_wait':            3,
 
     'pipeline_order_matrix': {
         frozenset({'rights', 'coding'}): ('rights', 'coding'),

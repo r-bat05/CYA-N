@@ -615,6 +615,13 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
     ],
 
     'general': [
+        #Domande generali, molto umane
+        "ciao, come stai?", 
+        "come ti senti oggi",
+        "hai qualcosa di cui vuoi parlarmi",
+        "vuoi confidarti con me",
+        "posso raccontarti un segreto", 
+
         # Fix Q4: "parabola" in contesto fisico quotidiano (non matematico)
         "Mio figlio ha rotto qualcosa in casa per un lancio sbagliato, chi è responsabile dei danni verso il vicino?",
         "Come ci si comporta quando si rompe accidentalmente qualcosa di proprietà altrui durante un'attività sportiva?",
