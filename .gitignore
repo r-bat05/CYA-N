@@ -6,6 +6,11 @@ venv/
 env/
 .env
 
+# Dataset e classificatore rete neurale
+*.pkl 
+*.pt
+classifier_config.json
+
 # LaTeX
 *.aux
 *.log

@@ -1,53 +1,17 @@
 """
-    CYA N - AI LOCAL DISPATCHER V6.8.0
+    CYA N - AI LOCAL DISPATCHER V7.0.0
     Entry Point dell'applicazione.
 
-    Novità V6.8.0:
-    - [STICKY_FIX2] _should_sticky_route() riceve original_sem_domains (pre-declassificazione).
-      L'override controlla tutti i domini della lista originale, non solo il top finale.
-      Questo sblocca il context switch per query brevi ibride (es. Q43 "Teorema di Pitagora"
-      classificato ['rights','math'] declassificato a ['rights']: ora l'override vede 'math'
-      e scatta correttamente verso di esso).
-    - [STICKY_FIX2] _should_sticky_route() restituisce 4-tuple:
-      (should_stick, sticky_domain, reason, override_target).
-      override_target è il dominio tecnico target del context switch (None se sticky attivo).
-    - [STICKY_FIX2] Trigger 1 (is_short): aggiunta eccezione per query corte su dominio
-      'general' con bassa confidenza e 0 keyword del last_domain → topic change genuino,
-      non follow-up. Risolve Q45 "orchidee in casa" che restava sticky su 'coding'.
-    - [STICKY_FIX2] Trigger 2 (weak_general): aggiunto gate su keyword: se nessuna keyword
-      del last_domain è presente nella query, non è un follow-up → sticky non si attiva.
-    - [STICKY_FIX2] Aggiunta _has_domain_keywords() per verificare presenza keyword di dominio.
-    - [STICKY_FIX2] Routing: aggiunto branch elif override_target per instradare il context
-      switch verso il dominio corretto senza passare per la pipeline ibrida.
-    - Tutti i call site di _should_sticky_route aggiornati al 4-tuple.
-
-    Novità V6.7.4:
-    - [STICKY_FIX] _should_sticky_route() estesa con 2 nuovi trigger:
-      * Weak-General Trigger: k-NN → 'general' con confidenza < sticky_weak_general_conf
-        durante sessione tecnica attiva → Domain Retention forzato.
-      * Pattern Trigger: substring italiane di follow-up esplicite (config:
-        sticky_followup_triggers) attivano sticky indipendentemente dalla lunghezza.
-      Risolve il "Conversational Boundary Problem" segnalato da Gemini.
-    - [STICKY_FIX] Aggiunto campo 'reason' al return di _should_sticky_route()
-      per debug log granulare. Tutti i call site aggiornati di conseguenza.
-
-    Novità V6.7.3:
-    - [BUG1] _ERROR_PREFIXES: "ATTENZIONE:" sostituito con "__SYS_WARN__:".
-    - [REFACTOR] Eliminato il layer di astrazione semantic_router.py.
-
-    Novità V6.7.2:
-    - [BUG2] Rimosso Override A da _should_sticky_route(): era dead code.
-
-    Novità V6.7.0:
-    - [STICKY] Implementazione Domain Retention (Sticky Routing).
-
-    Novità V6.6.0:
-    - [CHAT] chat_history: lista globale di sessione (sliding window).
-    - [CHAT] Comando '/reset' per svuotare history.
-
-    Novità V6.5.0:
-    - [P0] GENERAL isolation: downgrade ibrido se un dominio è 'general'.
-    - [P4] timeout_sincronizzazione letto da config.PIPELINE_SETTINGS.
+    Novità V7.0.0:
+    - [NEURAL] Sostituito routing k-NN (vector_store.py / LanceDB) con
+      neural_classifier.py: MLP 7 classi su embedding nomic-embed-text frozen.
+    - [NEURAL] Pipeline detection integrata nel class_id del classifier:
+      classi 4-6 → pipeline diretta, elimina frozenset e pipeline_order_matrix.
+    - [NEURAL] is_pipeline_candidate=True bypassa _should_sticky_route:
+      conf >= threshold_pipeline è il segnale autoritativo per la pipeline.
+    - [NEURAL] Pipeline declassata (query troppo corta) torna al path sticky
+      con original_sem_domains=[domain_a, domain_b] per override detection.
+    - [CLEANUP] Rimossi classify_knn, initialize_store, pipeline_order_matrix.
 """
 
 import re as _re
@@ -57,17 +21,18 @@ import psutil
 import config
 import dispatcher_request
 from ai_engine import get_ai_model, ResourceExhaustedError
-from vector_store import classify_knn
-from vector_store import initialize_store
+from neural_classifier import predict as neural_predict, PIPELINE_CLASSES, DOMAIN_NAMES
 from dispatcher_request import keyword_loader, _count_hits
 
 _ERROR_PREFIXES    = ("Errore Ollama:", "Errore Generico:", "__SYS_WARN__:")
 _TECHNICAL_DOMAINS = {'coding', 'math', 'rights'}
+# Mapping class_id mono-domain → stringa dominio
+_CLASS_TO_DOMAIN   = {0: 'coding', 1: 'math', 2: 'rights', 3: 'general'}
 
 
 def print_banner():
     print("\n" + "=" * 60)
-    print("      CYA N  |  AI LOCAL DISPATCHER V6.8.0    ")
+    print("      CYA N  |  AI LOCAL DISPATCHER V7.0.0    ")
     print("      (Coding • Math • Rights • General)      ")
     print("=" * 60 + "\n")
 
@@ -87,8 +52,7 @@ def _is_error(result: str) -> bool:
 
 def _has_domain_keywords(query: str, domain: str) -> bool:
     """
-    [V6.8.0] Restituisce True se la query contiene almeno una keyword del dominio dato.
-    Usato come gate per i trigger sticky che potrebbero sparare su topic change genuini.
+    Restituisce True se la query contiene almeno una keyword del dominio dato.
     """
     kw_map = {
         'coding': keyword_loader.CODING,
@@ -111,14 +75,15 @@ def _should_sticky_route(
     """
     Domain Retention V7.0 — ordine di valutazione:
       1. Override (context switch) — soglia differenziata per lunghezza query.
-         Valutato PRIMA dei pattern: alta confidenza su dominio diverso batte
-         qualsiasi marker di follow-up (es. "Non mi è chiaro, ma quali sono
-         i diritti del lavoratore?" → switch a RIGHTS anche con trigger).
       2. Pattern espliciti — solo se nessun override ha scattato.
       3. Trigger query corta — con eccezione solo per query non cortissime.
       4. Trigger weak-general.
 
     Returns: (should_stick, sticky_domain, reason, override_target)
+
+    NOTA: questa funzione NON viene chiamata per pipeline candidate confermate
+    (is_pipeline_candidate=True). Il neural classifier con conf >= threshold_pipeline
+    è il segnale autoritativo; la pipeline viene eseguita direttamente.
     """
     if not last_domain or last_domain not in _TECHNICAL_DOMAINS:
         return False, last_domain, '', None
@@ -135,9 +100,6 @@ def _should_sticky_route(
     query_lower = query.lower()
 
     # --- 1. Override: context switch verso dominio tecnico diverso ---
-    # Priorità assoluta: se confidenza >= soglia per il nuovo dominio, switcha
-    # indipendentemente da marker conversazionali nella query.
-    # Soglia differenziata: query corte richiedono confidenza più alta.
     override_threshold = short_override_min if is_short else tech_switch_min
     switching_domains  = [
         d for d in sem_domains
@@ -147,17 +109,13 @@ def _should_sticky_route(
         override_target = top_domain if top_domain in switching_domains else switching_domains[0]
         return False, last_domain, '', override_target
 
-    # --- 2. Pattern espliciti (dopo override) ---
-    # Scatta solo se il segnale k-NN non è abbastanza forte per uno switch.
+    # --- 2. Pattern espliciti ---
     for trigger in followup_triggers:
         if trigger in query_lower:
             return True, last_domain, f'pattern_match("{trigger}")', None
 
     # --- 3. Trigger query corta ---
     if is_short:
-        # Eccezione: topic change genuino.
-        # Condizioni: top=general, bassa conf, no keyword last_domain.
-        # NON applicata a query cortissime (< 6 parole): quasi certamente follow-up.
         very_short = word_count < 6
         if (not very_short
                 and top_domain == 'general'
@@ -174,13 +132,9 @@ def _should_sticky_route(
 
     return False, last_domain, '', None
 
+
 def main():
     print_banner()
-
-    print("⚙️  Inizializzazione Vector Store (Distance-Weighted k-NN su LanceDB)...")
-    store_ok = initialize_store()
-    if not store_ok:
-        print("⚠️  VectorStore non disponibile. Il sistema userà il fallback a keyword per tutto il routing.")
 
     agents = {
         'coding':  get_ai_model('coding'),
@@ -220,29 +174,30 @@ def main():
                 continue
 
             # ---------------------------------------------------------
-            # FASE 0: ROUTING SEMANTICO VETTORIALE
+            # FASE 0: ROUTING NEURALE
             # ---------------------------------------------------------
-            print("\n⚙️  Fase 0 — Valutazione Arco Semantico Vettoriale (Distance-Weighted k-NN)...")
-            sem_domains, sem_confidence, sem_ok = classify_knn(user_input)
+            print("\n⚙️  Fase 0 — Classificazione Neurale (MLP su embedding frozen)...")
+            class_id, confidence = neural_predict(user_input)
 
             is_hybrid  = False
             domain_a   = domain_b = ""
             categories_segments = {k: [] for k in agents.keys()}
 
             # =============================================================
-            # CASO FALLBACK: servizio embedding non disponibile
+            # CASO FALLBACK: classifier non disponibile (model.pt assente
+            # o embedding Ollama irraggiungibile)
             # =============================================================
-            if not sem_ok:
-                print("⚠️  [FALLBACK] Servizio embedding non disponibile.")
+            if class_id == -1:
+                print("⚠️  [FALLBACK] Neural classifier non disponibile.")
                 print("🔄 [FALLBACK] Attivazione instradamento a Keyword come emergenza...")
 
                 is_hybrid, domain_a, domain_b = dispatcher_request.detect_hybrid(user_input)
                 if not is_hybrid:
                     winning_domain = dispatcher_request.classify_segment(user_input)
                     if winning_domain == 'general':
-                        # Nel fallback sem_ok=False, passiamo confidenza 1.0 per disabilitare
-                        # il Weak-General Trigger (senza embedding non conosciamo la confidenza
-                        # reale). Lo sticky si affida solo al pattern trigger e alla lunghezza.
+                        # Nel fallback non conosciamo la confidenza reale:
+                        # passiamo 1.0 per disabilitare il weak-general trigger.
+                        # Lo sticky si affida solo a pattern trigger e lunghezza.
                         stick, sticky_domain, reason, override_target = _should_sticky_route(
                             user_input, ['general'], 1.0, last_active_domain
                         )
@@ -256,76 +211,93 @@ def main():
                     categories_segments[winning_domain if winning_domain in categories_segments
                                         else 'general'] = [user_input]
 
+            # =============================================================
+            # ROUTING NEURALE VALIDO
+            # =============================================================
             else:
                 word_count = len(user_input.split())
-                min_words  = config.PIPELINE_SETTINGS.get('min_words_for_pipeline', 8)
+                min_words  = config.PIPELINE_SETTINGS.get('min_words_for_pipeline', 12)
 
-                # [V6.8.0] Salva i domini ORIGINALI prima della declassificazione.
-                # _should_sticky_route li usa per rilevare switch anche su ibridi
-                # declassificati (es. ['rights','math'] → ['rights']: 'math' rimane visibile).
-                original_sem_domains = list(sem_domains)
+                # ----------------------------------------------------------
+                # Determina domini e candidatura pipeline dalla classe predetta.
+                #
+                # original_sem_domains è passato a _should_sticky_route e serve
+                # per l'override detection anche quando la pipeline è declassata:
+                #   - class pipeline   → [domain_a, domain_b]  (entrambi visibili)
+                #   - class mono       → [top_domain]
+                # ----------------------------------------------------------
+                if class_id in PIPELINE_CLASSES:
+                    domain_a, domain_b = PIPELINE_CLASSES[class_id]
+                    original_sem_domains  = [domain_a, domain_b]
+                    is_pipeline_candidate = True
+                else:
+                    top_domain = _CLASS_TO_DOMAIN[class_id]
+                    original_sem_domains  = [top_domain]
+                    is_pipeline_candidate = False
 
-                if len(sem_domains) == 2 and word_count < min_words:
-                    print(f"🔍 [DEBUG SEMANTICO] Arco Ibrido declassato: "
+                # Declassifica pipeline se query troppo corta
+                if is_pipeline_candidate and word_count < min_words:
+                    print(f"🔍 [DEBUG NEURAL] Classe pipeline declassata: "
                           f"query troppo corta ({word_count} < {min_words} parole).")
-                    sem_domains = [sem_domains[0]]
+                    is_pipeline_candidate = False
+                    # original_sem_domains resta [domain_a, domain_b] per override
 
-                print(f"🔍 [DEBUG SEMANTICO] Domini: {sem_domains}  |  "
-                      f"Confidence k-NN: {sem_confidence:.2f}")
+                print(f"🔍 [DEBUG NEURAL] Classe={DOMAIN_NAMES[class_id]} | "
+                      f"Confidence={confidence:.2f} | "
+                      f"Pipeline={'CONFERMATA' if is_pipeline_candidate else 'NO'}")
 
-                # ---------------------------------------------------------
-                # [STICKY] Valutazione Domain Retention
-                # Usa original_sem_domains per l'override (lista completa pre-declassificazione)
-                # ---------------------------------------------------------
-                stick, sticky_domain, reason, override_target = _should_sticky_route(
-                    user_input, original_sem_domains, sem_confidence, last_active_domain
-                )
-
-                if stick:
-                    print(f"📎 [STICKY] Domain Retention attivo: "
-                          f"routing forzato → {sticky_domain.upper()} "
-                          f"(last='{last_active_domain}', "
-                          f"k-NN top='{sem_domains[0]}', conf={sem_confidence:.2f}, "
-                          f"trigger='{reason}')")
-                    is_hybrid = False
-                    categories_segments[sticky_domain] = [user_input]
-
-                elif override_target:
-                    # [V6.8.0] Context switch esplicito verso dominio tecnico rilevato
-                    # dall'override (anche da domini ibridi pre-declassificazione).
-                    print(f"🔀 [SWITCH] Context switch rilevato: "
-                          f"{last_active_domain.upper() if last_active_domain else 'NONE'} → "
-                          f"{override_target.upper()} "
-                          f"(conf={sem_confidence:.2f})")
-                    is_hybrid = False
-                    categories_segments[override_target if override_target in categories_segments
-                                        else 'general'] = [user_input]
-
-                elif len(sem_domains) == 2:
-                    print(f"🔍 [DEBUG SEMANTICO] Arco Ibrido confermato "
-                          f"(min_score={config.SEMANTIC_SETTINGS.get('knn_min_score', 3.0):.2f}, "
-                          f"min_vote_ratio={config.SEMANTIC_SETTINGS.get('knn_min_vote_ratio', 0.30)}).")
+                # ----------------------------------------------------------
+                # [NEURAL PIPELINE] Pipeline confermata dal classifier:
+                # la confidenza >= threshold_pipeline è il segnale autoritativo.
+                # Si bypassa _should_sticky_route per evitare che l'override
+                # degradi erroneamente la pipeline a mono-domain (es. il caso
+                # "scrivi codice Python per Pitagora" con last_domain='math'
+                # che nel k-NN veniva dirottato a CODING anziché MATH→CODING).
+                # ----------------------------------------------------------
+                if is_pipeline_candidate:
+                    print(f"🔍 [DEBUG NEURAL] Pipeline diretta: "
+                          f"{domain_a.upper()} → {domain_b.upper()} "
+                          f"(sticky routing bypassato)")
                     is_hybrid = True
 
-                    pair   = frozenset(sem_domains)
-                    matrix = config.PIPELINE_SETTINGS['pipeline_order_matrix']
-                    if pair in matrix:
-                        domain_a, domain_b = matrix[pair]
-                        print(f"🔍 [DEBUG SEMANTICO] Ordine da pipeline_order_matrix: "
-                              f"{domain_a.upper()} → {domain_b.upper()}")
-                    else:
-                        domain_a, domain_b = sem_domains[0], sem_domains[1]
-                        print(f"🔍 [DEBUG SEMANTICO] Coppia non in matrice. "
-                              f"Ordine da score k-NN: {domain_a.upper()} → {domain_b.upper()}")
-
+                # ----------------------------------------------------------
+                # [STICKY] Valutazione Domain Retention
+                # Applicata solo per mono-domain e pipeline declassate.
+                # ----------------------------------------------------------
                 else:
-                    target = sem_domains[0]
-                    print(f"🔍 [DEBUG SEMANTICO] Dominio: {target.upper()}")
-                    categories_segments[target if target in categories_segments
-                                        else 'general'] = [user_input]
+                    stick, sticky_domain, reason, override_target = _should_sticky_route(
+                        user_input, original_sem_domains, confidence, last_active_domain
+                    )
+
+                    if stick:
+                        print(f"📎 [STICKY] Domain Retention attivo: "
+                              f"routing forzato → {sticky_domain.upper()} "
+                              f"(last='{last_active_domain}', "
+                              f"neural top='{original_sem_domains[0]}', conf={confidence:.2f}, "
+                              f"trigger='{reason}')")
+                        is_hybrid = False
+                        categories_segments[sticky_domain] = [user_input]
+
+                    elif override_target:
+                        # Context switch esplicito verso dominio tecnico rilevato
+                        print(f"🔀 [SWITCH] Context switch rilevato: "
+                              f"{last_active_domain.upper() if last_active_domain else 'NONE'} → "
+                              f"{override_target.upper()} "
+                              f"(conf={confidence:.2f})")
+                        is_hybrid = False
+                        categories_segments[override_target if override_target in categories_segments
+                                            else 'general'] = [user_input]
+
+                    else:
+                        target = original_sem_domains[0]
+                        print(f"🔍 [DEBUG NEURAL] Dominio: {target.upper()}")
+                        categories_segments[target if target in categories_segments
+                                            else 'general'] = [user_input]
 
             # ---------------------------------------------------------
             # [P0] GUARDIA GENERAL
+            # Rilevante principalmente per il path di fallback keyword,
+            # dove detect_hybrid() può restituire 'general' come dominio.
             # ---------------------------------------------------------
             if is_hybrid and 'general' in (domain_a, domain_b):
                 target = 'general' if domain_a == 'general' else domain_a
@@ -336,6 +308,8 @@ def main():
 
             # ---------------------------------------------------------
             # ESECUZIONE PIPELINE IBRIDA
+            # domain_a e domain_b sono già settati da PIPELINE_CLASSES[class_id]
+            # (routing neurale) o da detect_hybrid() (fallback keyword).
             # ---------------------------------------------------------
             if is_hybrid:
                 print(f"\n╭── 🧠 PIPELINE IBRIDA [{domain_a.upper()} → {domain_b.upper()}] in azione...")
@@ -359,7 +333,7 @@ def main():
                     print("\n" + "_" * 60 + "\n")
                     continue
 
-                # Sincronizzazione RAM [P4 + DIFETTO2 FIX]
+                # Sincronizzazione RAM
                 print("⚙️  Sincronizzazione — Scaricamento esplicito modello A in corso...")
                 agents[domain_a].explicit_unload()
 
@@ -455,6 +429,7 @@ def main():
         except Exception as e:
             print(f"\n❌ ERRORE IMPREVISTO: {e}")
             print("Consiglio: Verifica che l'arco di comunicazione con Ollama sia attivo.")
+
 
 if __name__ == "__main__":
     main()

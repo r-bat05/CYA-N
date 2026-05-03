@@ -162,35 +162,17 @@ LEV_TOLERANCE_MAP = {
     float('inf'): 3
 }
 
-# --- 6. CONFIGURAZIONE SEMANTIC ROUTER ---
-SEMANTIC_SETTINGS = {
-    'enabled':         True,
-    'embedding_model': 'nomic-embed-text',
-
-    'debug': True,
-
-    # --- Parametri k-NN attivi ---
-    'knn_k':              10,
-    'knn_weight_epsilon': 0.1,
-    'knn_min_vote_ratio': 0.30,
-    'knn_min_score':      3.0,
+# --- 6. CONFIGURAZIONE NEURAL CLASSIFIER ---
+NEURAL_CLASSIFIER_SETTINGS = {
+    'threshold_mono':     0.45,
+    'threshold_pipeline': 0.60,
 }
 
 # --- 7. CONFIGURAZIONE PIPELINE MULTI-AGENTE ---
 PIPELINE_SETTINGS = {
     'hybrid_threshold':           0.30,
     'min_words_for_pipeline':     12,
-
-    # [P2] Limite caratteri per il contesto passato tra agenti (A->B e critic pass).
     'pipeline_max_context_chars': 9000,
-
-    # [P4] Timeout sincronizzazione RAM tra Agente A e B.
     'ram_sync_timeout':           20.0,
     'ram_unload_wait':            3,
-
-    'pipeline_order_matrix': {
-        frozenset({'rights', 'coding'}): ('rights', 'coding'),
-        frozenset({'math',   'coding'}): ('math',   'coding'),
-        frozenset({'rights', 'math'}):   ('rights', 'math'),
-    }
 }
