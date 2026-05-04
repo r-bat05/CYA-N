@@ -195,6 +195,10 @@ SYSTEM_SETTINGS = {
         'lo stesso per',
     ],
 
+    # [ROUTER] Micro-LLM per routing semantico (sostituisce MLP frozen)
+    'router_model':      'qwen2.5:0.5b',
+    'router_keep_alive': '10m',
+
     # [CJK] Filtro caratteri Cinese/Giapponese/Coreano in clean_response().
     'cjk_filter_enabled': True,
 }

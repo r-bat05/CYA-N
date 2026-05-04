@@ -10,17 +10,17 @@
 <!-- domanda specifica con istruzioni -->
 
 - scrivi un codice in un linguaggio a tua scelta per risolvere un sistema non lineare. Usa il metodo che vuoi tu, sei libero. Il codice che scrivi dovrà essere completo e corretto, non scrivere commenti ma spiegami le istruzioni che hai scritto
-  --> **coding/math->coding, accettabili entrambi**  🔴(general, confidence = 0.34)
+  --> **coding/math->coding, accettabili entrambi**  
 
 <!-- domanda che va a completamento di quella precedente -->
 
-- aggiungi dei commenti ad ogni istruzione --> **coding + sticky routing** 🔴(general, confidence = 0.56)
-- rispiegalo meglio --> **coding + sticky routing** 🔴(math, confidence = 0.82)
-- grazie della risposta --> **va bene o coding o general** 🔴(math, confidence = 0.49)
+- aggiungi dei commenti ad ogni istruzione --> **coding + sticky routing** 
+- rispiegalo meglio --> **coding + sticky routing** 
+- grazie della risposta --> **va bene o coding o general** 
 
 <!-- domanda personali riguardo cose non tecniche -->
 
-- stavo pensando di prenotare una vacanza alle Maldive, secondo te qual è il periodo migliore? Dammi un planning completo riguardo ciò che potrei fare in una vacanza di o 5 o 7 giorni. Sii completo e non essere superficiale, affidiamo il compito a te --> **general** 🔴(math, confidence = 0.47)
+- stavo pensando di prenotare una vacanza alle Maldive, secondo te qual è il periodo migliore? Dammi un planning completo riguardo ciò che potrei fare in una vacanza di o 5 o 7 giorni. Sii completo e non essere superficiale, affidiamo il compito a te --> **general** 
 - rieffettua l'analisi, deve essere ancora più dettagliata --> **general + sticky routing**
 - risolvi il seguente integrale definito da -pigreco a 2 di arctan(sinx): spiega il procedimento della risoluzione passo passo, non perdere nessun passaggio e non sbagliare nel procedimento --> **math**
 - sto facendo una tesi di ricerca per la mia laurea triennale riguardo il GDPR che regola le normative in merito alla privacy. Come posso strutturarla? Quali sono le informazioni più importanti che devo aggiungere? Prova a darmi una bozza tu riguardo questo argomento. Dovrà essere schematica, deve contenere solo le cose più importanti --> **rights**

@@ -20,8 +20,8 @@ import time
 import psutil
 import config
 import dispatcher_request
-from ai_engine import get_ai_model, ResourceExhaustedError
-from neural_classifier import predict as neural_predict, PIPELINE_CLASSES, DOMAIN_NAMES
+from ai_engine import get_ai_model, ResourceExhaustedError 
+from llm_router import predict as router_predict, PIPELINE_CLASSES, DOMAIN_NAMES, unload_router
 from dispatcher_request import keyword_loader, _count_hits
 
 _ERROR_PREFIXES    = ("Errore Ollama:", "Errore Generico:", "__SYS_WARN__:")
@@ -212,7 +212,7 @@ def main():
             # FASE 0: ROUTING NEURALE
             # ---------------------------------------------------------
             print("\n⚙️  Fase 0 — Classificazione Neurale (MLP su embedding frozen)...")
-            class_id, confidence = neural_predict(user_input, last_active_domain)
+            class_id, confidence = router_predict(user_input, last_active_domain, chat_history)
 
             is_hybrid  = False
             domain_a   = domain_b = ""
@@ -316,6 +316,9 @@ def main():
                       f"Routing mono-dominio → {target.upper()}")
                 is_hybrid = False
                 categories_segments[target] = [user_input]
+
+            # Scarica il router prima di caricare i modelli generativi
+            unload_router()
 
             # ---------------------------------------------------------
             # ESECUZIONE PIPELINE IBRIDA
