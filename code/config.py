@@ -48,7 +48,7 @@ RAM_THRESHOLDS = {
     'small':    1.0 * GB,
     'medium':   5.5 * GB,
     'large':   12.0 * GB,
-    'math_opt': 2.5 * GB 
+    'math_opt': 1 * GB #2.5
 }
 
 # --- 3. CONFIGURAZIONE MODELLI AI ---
@@ -164,7 +164,7 @@ LEV_TOLERANCE_MAP = {
 
 # --- 6. CONFIGURAZIONE NEURAL CLASSIFIER ---
 NEURAL_CLASSIFIER_SETTINGS = {
-    'threshold_mono':     0.45,
+    'threshold_mono':     0.35,   # [P2] abbassato da 0.45: riduce false-general su query brevi
     'threshold_pipeline': 0.60,
 }
 

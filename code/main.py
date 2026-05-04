@@ -177,7 +177,7 @@ def main():
             # FASE 0: ROUTING NEURALE
             # ---------------------------------------------------------
             print("\n⚙️  Fase 0 — Classificazione Neurale (MLP su embedding frozen)...")
-            class_id, confidence = neural_predict(user_input)
+            class_id, confidence = neural_predict(user_input, last_active_domain)
 
             is_hybrid  = False
             domain_a   = domain_b = ""
