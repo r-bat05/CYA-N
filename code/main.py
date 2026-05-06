@@ -260,6 +260,12 @@ def main():
                     original_sem_domains  = [top_domain]
                     is_pipeline_candidate = False
 
+                    # [V3 FIX] HYBRID OVERRIDE rimosso: il keyword detector causava
+                    # falsi positivi su query mono-dominio con termini tecnici misti
+                    # (es. "codice sulle leggi di Newton" → pipeline rights->math errata).
+                    # Il router LLM è il classificatore autoritativo per le pipeline.
+                    # Se manca un caso, migliorare i few-shot del system prompt, non reintrodurre keyword.
+
                 # Declassifica pipeline se query troppo corta
                 if is_pipeline_candidate and word_count < min_words:
                     print(f"🔍 [DEBUG NEURAL] Classe pipeline declassata: "

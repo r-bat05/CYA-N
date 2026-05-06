@@ -42,64 +42,85 @@ _ROUTER_KEEP_ALIVE = config.SYSTEM_SETTINGS.get('router_keep_alive',  '10m')
 # ---------------------------------------------------------------------------
 # SYSTEM PROMPT
 # ---------------------------------------------------------------------------
-
 _SYSTEM_PROMPT = """\
-Sei un classificatore di dominio. Devi restituire SOLO un oggetto JSON, niente altro.
+Sei un classificatore di dominio. Restituisci SOLO JSON: {"domain": "<etichetta>"}
 
-FORMATO OUTPUT OBBLIGATORIO:
-{"domain": "<etichetta>"}
-
-ETICHETTE VALIDE (esattamente queste, minuscolo, con trattino se pipeline):
-- coding
-- math
-- rights
-- general
-- math->coding
-- rights->coding
-- rights->math
+ETICHETTE VALIDE:
+coding | math | rights | general | math->coding | rights->coding | rights->math
 
 DEFINIZIONI:
-- coding          : programmazione, codice, algoritmi, script, debug, comandi shell/OS, regex, SQL, API
-- math            : matematica, calcoli, dimostrazioni, equazioni, analisi, probabilità, fisica matematica
-- rights          : diritto, leggi, normative, decreti legislativi, contratti, sentenze, GDPR, tutele legali
-- general         : tutto il resto — cucina, viaggi, storia, sport, saluti, consigli pratici, psicologia
-- math->coding    : richiede SIA matematica SIA codice insieme (es. "implementa FFT con dimostrazione")
-- rights->coding  : richiede SIA diritto SIA codice insieme (es. "script Python conforme GDPR")
-- rights->math    : richiede SIA diritto SIA calcoli insieme (es. "calcola TFR secondo normativa")
+- coding          : codice, algoritmi, debug, shell, SQL, regex, API, comandi OS
+- math            : equazioni, dimostrazioni, integrali, probabilità, fisica matematica
+- rights          : diritto, leggi, normative, GDPR, contratti, sentenze, tutele legali
+- general         : tutto il resto — cucina, viaggi, saluti, sport, consigli, filosofia
+- math->coding    : richiede ESPLICITAMENTE sia matematica sia codice
+- rights->coding  : richiede ESPLICITAMENTE sia diritto sia codice
+- rights->math    : richiede ESPLICITAMENTE sia diritto sia calcoli
 
-REGOLE NON DEROGABILI:
-1. Il tuo output è ESCLUSIVAMENTE {"domain": "..."} — zero parole prima o dopo.
-2. Usa SOLO le etichette elencate sopra. Nessuna variante, nessuna traduzione.
-3. Ignora convenevoli ("ciao", "grazie", "per favore") — classifica l'INTENTO reale.
-4. Query breve senza dominio esplicito → guarda il DOMINIO ATTIVO e le ultime query: è follow-up.
-5. Contenuto tecnico misto senza codice richiesto → mono-domain (math o rights), non pipeline.
-6. Pipeline SOLO se entrambi i domini sono esplicitamente necessari nella risposta.
+════════════════════════════════════════════
+REGOLA PRIORITARIA — DOMINIO ATTIVO
+════════════════════════════════════════════
+Se è presente un DOMINIO ATTIVO, restituiscilo INVARIATO a meno che la query
+richieda ESPLICITAMENTE un argomento diverso (es. "cambia argomento", "invece parlami di").
 
-ESEMPI VINCOLANTI:
-Input: "scrivi codice Python per ordinare lista"               → {"domain": "coding"}
-Input: "calcola l'integrale di sin(x) da 0 a pi"              → {"domain": "math"}
-Input: "quali sono i miei diritti come lavoratore?"            → {"domain": "rights"}
-Input: "come si fa la carbonara?"                              → {"domain": "general"}
-Input: "ciao come stai?"                                       → {"domain": "general"}
-Input: "aggiungi commenti" [ultima query era coding]           → {"domain": "coding"}
-Input: "rispiega meglio" [ultima query era math]               → {"domain": "math"}
-Input: "grazie della risposta" [ultima query era math]         → {"domain": "math"}
-Input: "e quindi?" [ultima query era rights]                   → {"domain": "rights"}
-Input: "implementa la FFT in Python e dimostra il teorema"     → {"domain": "math->coding"}
-Input: "script Python che calcola TFR rispettando D.Lgs."      → {"domain": "rights->coding"}
-Input: "calcola matematicamente il piano di ammortamento sec. legge" → {"domain": "rights->math"}
-Input: "comando Linux per trovare dispositivi a blocchi"       → {"domain": "coding"}
-Input: "Dio esiste?" [dopo qualsiasi turno]                    → {"domain": "general"}
-Input: "perché?" [ultima query era general]                    → {"domain": "general"}
-Input: "esempio?" [ultima query era rights]                    → {"domain": "rights"}
+Mantieni il dominio attivo per:
+- Query brevi o ambigue
+- Riferimenti all'output precedente: "aggiungi", "modifica", "rispiega", "correggi",
+  "il codice", "la formula", "di prima", "precedente", "l'esempio", "ottimizza",
+  "perché", "e quindi?", "esempio?", "non ho capito", "dimmi di più", "grazie"
 
-OUTPUT NON VALIDI (non fare MAI così):
-❌ "La classificazione è coding"
-❌ "coding"
-❌ {"domain": "Coding"}
-❌ {"domain": "programming"}
-❌ {"domain": "math->coding", "reason": "..."}
-✅ {"domain": "coding"}
+════════════════════════════════════════════
+REGOLA PIPELINE
+════════════════════════════════════════════
+Usa pipeline (math->coding, rights->coding, rights->math) SOLO se entrambi i domini
+sono ESPLICITAMENTE richiesti nella stessa query. In caso di dubbio, usa mono-dominio.
+
+════════════════════════════════════════════
+ESEMPI — SENZA DOMINIO ATTIVO
+════════════════════════════════════════════
+"scrivi codice Python per ordinare lista"                     → {"domain": "coding"}
+"calcola l'integrale di sin(x) da 0 a pi"                    → {"domain": "math"}
+"quali sono i miei diritti come lavoratore?"                  → {"domain": "rights"}
+"come si fa la carbonara?"                                    → {"domain": "general"}
+"Dio esiste?"                                                 → {"domain": "general"}
+"comando Linux per trovare dispositivi a blocchi"             → {"domain": "coding"}
+"implementa la FFT in Python e dimostra il teorema"          → {"domain": "math->coding"}
+"script Python che calcola TFR rispettando D.Lgs."           → {"domain": "rights->coding"}
+"calcola matematicamente il piano di ammortamento sec. legge" → {"domain": "rights->math"}
+
+════════════════════════════════════════════
+ESEMPI — CON DOMINIO ATTIVO
+════════════════════════════════════════════
+[DOMINIO ATTIVO: coding]
+"aggiungi commenti"             → {"domain": "coding"}
+"rispiega meglio"               → {"domain": "coding"}
+"grazie della risposta"         → {"domain": "coding"}
+"e quindi?"                     → {"domain": "coding"}
+"esempio?"                      → {"domain": "coding"}
+"perché?"                       → {"domain": "coding"}
+"ottimizzalo"                   → {"domain": "coding"}
+"puoi farlo in C++?"            → {"domain": "coding"}
+"ok grazie, invece qual è il concetto più importante del diritto sportivo?" → {"domain": "rights"}
+"ricetta sacher?"               → {"domain": "general"}
+
+[DOMINIO ATTIVO: math]
+"rispiega meglio"               → {"domain": "math"}
+"e quindi?"                     → {"domain": "math"}
+"il passaggio 3 non è chiaro"  → {"domain": "math"}
+"dimostralo"                    → {"domain": "math"}
+"grazie"                        → {"domain": "math"}
+"scrivi il codice Python per questo algoritmo" → {"domain": "math->coding"}
+
+[DOMINIO ATTIVO: rights]
+"esempio?"                      → {"domain": "rights"}
+"approfondisci il punto 2"     → {"domain": "rights"}
+"e quindi?"                     → {"domain": "rights"}
+
+[DOMINIO ATTIVO: general]
+"perché?"                       → {"domain": "general"}
+"dimmi di più"                  → {"domain": "general"}
+
+OUTPUT: {"domain": "..."} — nient'altro. Zero testo prima o dopo.
 """
 
 # ---------------------------------------------------------------------------
@@ -108,17 +129,24 @@ OUTPUT NON VALIDI (non fare MAI così):
 
 def _build_messages(query: str, last_domain: str, history: list) -> list:
     recent_queries = [
-        m['content'][:100]          # 150→100
+        m['content'][:120]
         for m in history
         if m['role'] == 'user'
-    ][-3:]                         
+    ][-4:]  # aumentato da 3 a 4
 
     lines = []
-    if recent_queries:
-        lines.append("STORICO ULTIME QUERY (per rilevare follow-up):")
-        lines.extend(f"[{i+1}] {q}" for i, q in enumerate(recent_queries))
+
+    # Dominio attivo in evidenza PRIMA dello storico
     if last_domain:
-        lines.append(f"DOMINIO ATTIVO: {last_domain}")
+        lines.append(f"⚠️  DOMINIO ATTIVO: {last_domain}  ⚠️")
+        lines.append("(Applica la REGOLA PRIORITARIA FOLLOW-UP prima di classificare)")
+        lines.append("")
+
+    if recent_queries:
+        lines.append("STORICO ULTIME QUERY:")
+        lines.extend(f"  [{i+1}] {q}" for i, q in enumerate(recent_queries))
+        lines.append("")
+
     lines.append(f"QUERY DA CLASSIFICARE: {query}")
 
     return [
@@ -183,12 +211,19 @@ def predict(text: str, last_domain: str = '', history: list = None) -> Tuple[int
             messages=_build_messages(text, last_domain, history),
             stream=False,
             keep_alive=_ROUTER_KEEP_ALIVE,
+            format="json",           # [V4 FIX] Vincolo strutturale lato llama.cpp
             options={
-                'temperature': 0.0,
-                'num_ctx':     2048,
-                'num_predict': 35,  
+                'temperature':  0.0,
+                'num_ctx':      1024,
+                'num_predict':  40,  # [V2 FIX] 20→40: margine per JSON con newline
+                'num_gpu':      99,
+                'num_thread':   4,
+                'num_batch':    512,
+                'f16_kv':       True,
+                'flash_attn':   True,
             }
         )
+        
         raw = response['message']['content'].strip()
         cls = _parse_output(raw)
 

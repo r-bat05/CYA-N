@@ -196,7 +196,7 @@ SYSTEM_SETTINGS = {
     ],
 
     # [ROUTER] Micro-LLM per routing semantico (sostituisce MLP frozen)
-    'router_model':      'qwen2.5:0.5b',
+    'router_model':      'qwen2.5:1.5b',
     'router_keep_alive': '10m',
 
     # [CJK] Filtro caratteri Cinese/Giapponese/Coreano in clean_response().
@@ -225,4 +225,10 @@ PIPELINE_SETTINGS = {
     'pipeline_max_context_chars': 9000,
     'ram_sync_timeout':           20.0,
     'ram_unload_wait':            3,
+    # ORDINE PIPELINE
+    'pipeline_order_matrix': {
+        frozenset({'math',   'coding'}): ('math',   'coding'),
+        frozenset({'rights', 'coding'}): ('rights', 'coding'),
+        frozenset({'rights', 'math'}):   ('rights', 'math'),
+    }
 }

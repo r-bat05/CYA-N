@@ -9,8 +9,8 @@
 
 <!-- domanda specifica con istruzioni -->
 
-- scrivi un codice in un linguaggio a tua scelta per risolvere un sistema non lineare. Usa il metodo che vuoi tu, sei libero. Il codice che scrivi dovrà essere completo e corretto, non scrivere commenti ma spiegami le istruzioni che hai scritto
-  --> **coding/math->coding, accettabili entrambi**  
+- scrivi un codice in un linguaggio a tua scelta per risolvere un sistema non lineare. Usa il metodo che vuoi tu, sei libero. Il codice che scrivi dovrà essere completo e corretto, non scrivere commenti ma spiegami le istruzioni che hai scritto 
+  --> **coding/math->coding, accettabili entrambi**  🟢
 
 <!-- domanda che va a completamento di quella precedente -->
 
