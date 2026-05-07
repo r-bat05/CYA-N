@@ -1,3 +1,7 @@
+# SCEGLIERE MODELLO GIUSTO QWEN --> VEDI SU OLLAMA LE VERSIONI
+
+
+
 1. testare chat history con una sessione che copra tutti i casi
 
 #### SESSIONE LUNGA (domanda --> modulo che dovrebbe attivarsi)

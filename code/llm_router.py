@@ -36,7 +36,7 @@ _VALID_SORTED       = sorted(DOMAIN_NAMES, key=len, reverse=True)  # pipeline pr
 # CONFIGURAZIONE
 # ---------------------------------------------------------------------------
 
-_ROUTER_MODEL      = config.SYSTEM_SETTINGS.get('router_model',      'qwen2.5:0.5b')
+_ROUTER_MODEL      = config.SYSTEM_SETTINGS.get('router_model',      'qwen2.5:3b')
 _ROUTER_KEEP_ALIVE = config.SYSTEM_SETTINGS.get('router_keep_alive',  '10m')
 
 # ---------------------------------------------------------------------------
@@ -49,9 +49,9 @@ ETICHETTE VALIDE:
 coding | math | rights | general | math->coding | rights->coding | rights->math
 
 DEFINIZIONI:
-- coding          : codice, algoritmi, debug, shell, SQL, regex, API, comandi OS
-- math            : equazioni, dimostrazioni, integrali, probabilità, fisica matematica
-- rights          : diritto, leggi, normative, GDPR, contratti, sentenze, tutele legali
+- coding          : codice, algoritmi, debug, shell, SQL, regex, API, comandi OS, machine learning e deep learning, giochi, AI, sistemi e reti, cybersecurity
+- math            : equazioni, dimostrazioni, integrali, probabilità, fisica matematica, calcolo numerico, albegra lineare, analisi matematica
+- rights          : diritto, leggi, normative, GDPR, contratti, sentenze, tutele legali, tutte le tipologie di diritto (privato, sportivo, etc...)
 - general         : tutto il resto — cucina, viaggi, saluti, sport, consigli, filosofia
 - math->coding    : richiede ESPLICITAMENTE sia matematica sia codice
 - rights->coding  : richiede ESPLICITAMENTE sia diritto sia codice
@@ -65,15 +65,17 @@ richieda ESPLICITAMENTE un argomento diverso (es. "cambia argomento", "invece pa
 
 Mantieni il dominio attivo per:
 - Query brevi o ambigue
-- Riferimenti all'output precedente: "aggiungi", "modifica", "rispiega", "correggi",
-  "il codice", "la formula", "di prima", "precedente", "l'esempio", "ottimizza",
-  "perché", "e quindi?", "esempio?", "non ho capito", "dimmi di più", "grazie"
+- Riferimenti all'output precedente, che quindi va a completamento della risposta precedente per correzioni,
+spiegazioni o chiarimenti
 
 ════════════════════════════════════════════
 REGOLA PIPELINE
 ════════════════════════════════════════════
 Usa pipeline (math->coding, rights->coding, rights->math) SOLO se entrambi i domini
 sono ESPLICITAMENTE richiesti nella stessa query. In caso di dubbio, usa mono-dominio.
+
+Se nella richiesta ci potrebbero essere più di 2 domini, scegli i due più dominanti, quelli su cui
+si basa la struttura della domanda e la conseguente risposta. 
 
 ════════════════════════════════════════════
 ESEMPI — SENZA DOMINIO ATTIVO
@@ -223,7 +225,7 @@ def predict(text: str, last_domain: str = '', history: list = None) -> Tuple[int
                 'flash_attn':   True,
             }
         )
-        
+
         raw = response['message']['content'].strip()
         cls = _parse_output(raw)
 
