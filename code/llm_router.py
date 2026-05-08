@@ -1,13 +1,19 @@
 """
-LLM ROUTER V1.1
-Micro-LLM (qwen2.5:0.5b) come router semantico.
+LLM ROUTER V1.2
+Micro-LLM (qwen2.5:3b) come router semantico.
 Drop-in replacement di neural_classifier.py — stessa interfaccia pubblica.
 
+Fix V1.2:
+- [F1] Output JSON esteso: domain + scores + difficulty + is_followup
+- [F2] predict() restituisce Tuple[int, float, dict, int, bool]
+- [F3] System prompt arricchito con esempi negativi per DOMINIO ATTIVO per ridurre falsi sticky
+- [F4] num_predict 40→100, num_ctx 1024→2048 per nuovo formato JSON
+
 Fix V1.1:
-- [B1] num_ctx 1024→2048: evita troncamento system prompt
-- [B2] num_predict 12→20: margine per output JSON
-- [B3] confidence=0.7 su 'general': mantiene sticky routing safety nets
-- [B4] last_domain iniettato come hint nel contesto
+- [B1] num_ctx 1024→2048
+- [B2] num_predict 12→20
+- [B3] confidence=0.7 su 'general'
+- [B4] last_domain iniettato come hint
 - [B5] Output JSON obbligatorio + doppio fallback parsing
 """
 
@@ -43,86 +49,97 @@ _ROUTER_KEEP_ALIVE = config.SYSTEM_SETTINGS.get('router_keep_alive',  '10m')
 # SYSTEM PROMPT
 # ---------------------------------------------------------------------------
 _SYSTEM_PROMPT = """\
-Sei un classificatore di dominio. Restituisci SOLO JSON: {"domain": "<etichetta>"}
+Sei un classificatore di dominio. Restituisci SOLO questo JSON (nessun testo prima o dopo):
+{"domain": "<etichetta>", "scores": {"coding": 0.0, "math": 0.0, "rights": 0.0, "general": 0.0}, "difficulty": 1, "is_followup": false}
+
+CAMPI:
+- domain    : etichetta più probabile (vedi lista sotto)
+- scores    : probabilità per i 4 domini base (somma ≈ 1.0)
+- difficulty: 1=semplice (saluti, calcoli banali), 2=media, 3=complessa (dimostrazioni, pipeline multi-step)
+- is_followup: true SOLO se la query si riferisce direttamente all'output precedente (chiarimento, modifica, continuazione)
 
 ETICHETTE VALIDE:
 coding | math | rights | general | math->coding | rights->coding | rights->math
 
 DEFINIZIONI:
-- coding          : codice, algoritmi, debug, shell, SQL, regex, API, comandi OS, machine learning e deep learning, giochi, AI, sistemi e reti, cybersecurity
-- math            : equazioni, dimostrazioni, integrali, probabilità, fisica matematica, calcolo numerico, albegra lineare, analisi matematica
-- rights          : diritto, leggi, normative, GDPR, contratti, sentenze, tutele legali, tutte le tipologie di diritto (privato, sportivo, etc...)
-- general         : tutto il resto — cucina, viaggi, saluti, sport, consigli, filosofia
+- coding     : codice, algoritmi, debug, shell, SQL, regex, API, comandi OS, ML/DL, reti, cybersecurity
+- math       : equazioni, dimostrazioni, integrali, probabilità, fisica matematica, calcolo numerico, algebra lineare
+- rights     : diritto, leggi, normative, GDPR, contratti, sentenze, tutele legali
+- general    : tutto il resto — cucina, viaggi, saluti, sport, filosofia, shopping, opinioni, domande esistenziali
 - math->coding    : richiede ESPLICITAMENTE sia matematica sia codice
 - rights->coding  : richiede ESPLICITAMENTE sia diritto sia codice
 - rights->math    : richiede ESPLICITAMENTE sia diritto sia calcoli
 
 ════════════════════════════════════════════
-REGOLA PRIORITARIA — DOMINIO ATTIVO
+REGOLA DOMINIO ATTIVO
 ════════════════════════════════════════════
-Se è presente un DOMINIO ATTIVO, restituiscilo INVARIATO a meno che la query
-richieda ESPLICITAMENTE un argomento diverso (es. "cambia argomento", "invece parlami di").
+Se è presente un DOMINIO ATTIVO, impostare is_followup=true e mantenere il dominio SOLO se
+la query è un follow-up diretto (chiarimento su output precedente, modifica, continuazione).
+Per qualsiasi argomento NUOVO o NON CORRELATO: classifica liberamente e imposta is_followup=false.
 
-Mantieni il dominio attivo per:
-- Query brevi o ambigue
-- Riferimenti all'output precedente, che quindi va a completamento della risposta precedente per correzioni,
-spiegazioni o chiarimenti
+CRITERI PER is_followup=true:
+- La query fa riferimento esplicito all'output precedente ("rispiega", "ottimizza", "il codice sopra")
+- La query è ambigua/breve e continua naturalmente il topic attivo ("e quindi?", "esempio?", "perché?")
+- La query chiede di modificare qualcosa appena prodotto
+
+CRITERI PER is_followup=false (anche con DOMINIO ATTIVO):
+- La query introduce un argomento completamente diverso dal dominio attivo
+- La query è una domanda generale su un topic non correlato
+- La query inizia con frasi tipo "invece", "a proposito di", "ti chiedo un'altra cosa"
 
 ════════════════════════════════════════════
-REGOLA PIPELINE
+ESEMPI — CON DOMINIO ATTIVO: coding
 ════════════════════════════════════════════
-Usa pipeline (math->coding, rights->coding, rights->math) SOLO se entrambi i domini
-sono ESPLICITAMENTE richiesti nella stessa query. In caso di dubbio, usa mono-dominio.
+"aggiungi commenti"          → {"domain":"coding",  "scores":{"coding":0.95,"math":0.02,"rights":0.01,"general":0.02}, "difficulty":1, "is_followup":true}
+"rispiega meglio"            → {"domain":"coding",  "scores":{"coding":0.90,"math":0.05,"rights":0.01,"general":0.04}, "difficulty":1, "is_followup":true}
+"ottimizzalo"                → {"domain":"coding",  "scores":{"coding":0.95,"math":0.02,"rights":0.01,"general":0.02}, "difficulty":2, "is_followup":true}
+"puoi farlo in C++?"         → {"domain":"coding",  "scores":{"coding":0.95,"math":0.02,"rights":0.01,"general":0.02}, "difficulty":2, "is_followup":true}
+"e quindi?"                  → {"domain":"coding",  "scores":{"coding":0.80,"math":0.10,"rights":0.05,"general":0.05}, "difficulty":1, "is_followup":true}
+"Dio esiste?"                → {"domain":"general", "scores":{"coding":0.02,"math":0.03,"rights":0.05,"general":0.90}, "difficulty":1, "is_followup":false}
+"rispondi sì o no: Dio esiste?" → {"domain":"general","scores":{"coding":0.02,"math":0.02,"rights":0.04,"general":0.92},"difficulty":1,"is_followup":false}
+"consiglio scarpe uomo"      → {"domain":"general", "scores":{"coding":0.01,"math":0.01,"rights":0.02,"general":0.96}, "difficulty":1, "is_followup":false}
+"ricetta sacher?"            → {"domain":"general", "scores":{"coding":0.01,"math":0.01,"rights":0.01,"general":0.97}, "difficulty":1, "is_followup":false}
+"dammi una risposta integrale sul tema a tua scelta" → {"domain":"general","scores":{"coding":0.05,"math":0.10,"rights":0.05,"general":0.80},"difficulty":2,"is_followup":false}
+"ok grazie, invece qual è il concetto più importante del diritto sportivo?" → {"domain":"rights","scores":{"coding":0.02,"math":0.03,"rights":0.90,"general":0.05},"difficulty":2,"is_followup":false}
 
-Se nella richiesta ci potrebbero essere più di 2 domini, scegli i due più dominanti, quelli su cui
-si basa la struttura della domanda e la conseguente risposta. 
+════════════════════════════════════════════
+ESEMPI — CON DOMINIO ATTIVO: math
+════════════════════════════════════════════
+"rispiega meglio"                   → {"domain":"math",        "scores":{"coding":0.05,"math":0.85,"rights":0.02,"general":0.08}, "difficulty":1, "is_followup":true}
+"il passaggio 3 non è chiaro"      → {"domain":"math",        "scores":{"coding":0.05,"math":0.88,"rights":0.02,"general":0.05}, "difficulty":1, "is_followup":true}
+"dimostralo"                        → {"domain":"math",        "scores":{"coding":0.05,"math":0.88,"rights":0.02,"general":0.05}, "difficulty":3, "is_followup":true}
+"scrivi il codice Python per questo algoritmo" → {"domain":"math->coding","scores":{"coding":0.45,"math":0.45,"rights":0.05,"general":0.05},"difficulty":2,"is_followup":true}
+
+════════════════════════════════════════════
+ESEMPI — CON DOMINIO ATTIVO: rights
+════════════════════════════════════════════
+"esempio?"                   → {"domain":"rights", "scores":{"coding":0.02,"math":0.02,"rights":0.90,"general":0.06}, "difficulty":1, "is_followup":true}
+"approfondisci il punto 2"  → {"domain":"rights", "scores":{"coding":0.02,"math":0.03,"rights":0.90,"general":0.05}, "difficulty":2, "is_followup":true}
 
 ════════════════════════════════════════════
 ESEMPI — SENZA DOMINIO ATTIVO
 ════════════════════════════════════════════
-"scrivi codice Python per ordinare lista"                     → {"domain": "coding"}
-"calcola l'integrale di sin(x) da 0 a pi"                    → {"domain": "math"}
-"quali sono i miei diritti come lavoratore?"                  → {"domain": "rights"}
-"come si fa la carbonara?"                                    → {"domain": "general"}
-"Dio esiste?"                                                 → {"domain": "general"}
-"comando Linux per trovare dispositivi a blocchi"             → {"domain": "coding"}
-"implementa la FFT in Python e dimostra il teorema"          → {"domain": "math->coding"}
-"script Python che calcola TFR rispettando D.Lgs."           → {"domain": "rights->coding"}
-"calcola matematicamente il piano di ammortamento sec. legge" → {"domain": "rights->math"}
+"scrivi codice Python per ordinare una lista"           → {"domain":"coding",        "scores":{"coding":0.90,"math":0.05,"rights":0.02,"general":0.03}, "difficulty":1, "is_followup":false}
+"calcola l'integrale di sin(x) da 0 a pi"              → {"domain":"math",          "scores":{"coding":0.05,"math":0.88,"rights":0.02,"general":0.05}, "difficulty":2, "is_followup":false}
+"quali sono i miei diritti come lavoratore?"            → {"domain":"rights",        "scores":{"coding":0.02,"math":0.03,"rights":0.88,"general":0.07}, "difficulty":2, "is_followup":false}
+"come si fa la carbonara?"                              → {"domain":"general",       "scores":{"coding":0.01,"math":0.01,"rights":0.01,"general":0.97}, "difficulty":1, "is_followup":false}
+"comando Linux per trovare dispositivi a blocchi"       → {"domain":"coding",        "scores":{"coding":0.90,"math":0.03,"rights":0.02,"general":0.05}, "difficulty":1, "is_followup":false}
+"implementa FFT in Python e dimostra il teorema"        → {"domain":"math->coding",  "scores":{"coding":0.45,"math":0.45,"rights":0.02,"general":0.08}, "difficulty":3, "is_followup":false}
+"script Python che calcola TFR rispettando D.Lgs."     → {"domain":"rights->coding","scores":{"coding":0.40,"math":0.10,"rights":0.40,"general":0.10}, "difficulty":3, "is_followup":false}
+"calcola matematicamente piano ammortamento sec. legge" → {"domain":"rights->math",  "scores":{"coding":0.05,"math":0.45,"rights":0.45,"general":0.05}, "difficulty":3, "is_followup":false}
+"2+2"                                                   → {"domain":"general",       "scores":{"coding":0.02,"math":0.15,"rights":0.01,"general":0.82}, "difficulty":1, "is_followup":false}
+"cosa prevede il codice in merito al furto?"            → {"domain":"rights",        "scores":{"coding":0.05,"math":0.02,"rights":0.88,"general":0.05}, "difficulty":2, "is_followup":false}
+"Non ho capito il concetto di OOP"                     → {"domain":"coding",        "scores":{"coding":0.88,"math":0.05,"rights":0.02,"general":0.05}, "difficulty":1, "is_followup":false}
+"consiglio scarpe uomo"                                → {"domain":"general",       "scores":{"coding":0.01,"math":0.01,"rights":0.02,"general":0.96}, "difficulty":1, "is_followup":false}
+"Esiste un regolamento europeo che tuteli i lavoratori?" → {"domain":"rights",      "scores":{"coding":0.02,"math":0.02,"rights":0.90,"general":0.06}, "difficulty":2, "is_followup":false}
 
 ════════════════════════════════════════════
-ESEMPI — CON DOMINIO ATTIVO
+REGOLA PIPELINE
 ════════════════════════════════════════════
-[DOMINIO ATTIVO: coding]
-"aggiungi commenti"             → {"domain": "coding"}
-"rispiega meglio"               → {"domain": "coding"}
-"grazie della risposta"         → {"domain": "coding"}
-"e quindi?"                     → {"domain": "coding"}
-"esempio?"                      → {"domain": "coding"}
-"perché?"                       → {"domain": "coding"}
-"ottimizzalo"                   → {"domain": "coding"}
-"puoi farlo in C++?"            → {"domain": "coding"}
-"ok grazie, invece qual è il concetto più importante del diritto sportivo?" → {"domain": "rights"}
-"ricetta sacher?"               → {"domain": "general"}
+Usa pipeline (math->coding, rights->coding, rights->math) SOLO se ENTRAMBI i domini
+sono ESPLICITAMENTE richiesti nella stessa query. In caso di dubbio → mono-dominio.
 
-[DOMINIO ATTIVO: math]
-"rispiega meglio"               → {"domain": "math"}
-"e quindi?"                     → {"domain": "math"}
-"il passaggio 3 non è chiaro"  → {"domain": "math"}
-"dimostralo"                    → {"domain": "math"}
-"grazie"                        → {"domain": "math"}
-"scrivi il codice Python per questo algoritmo" → {"domain": "math->coding"}
-
-[DOMINIO ATTIVO: rights]
-"esempio?"                      → {"domain": "rights"}
-"approfondisci il punto 2"     → {"domain": "rights"}
-"e quindi?"                     → {"domain": "rights"}
-
-[DOMINIO ATTIVO: general]
-"perché?"                       → {"domain": "general"}
-"dimmi di più"                  → {"domain": "general"}
-
-OUTPUT: {"domain": "..."} — nient'altro. Zero testo prima o dopo.
+OUTPUT: SOLO il JSON. Zero testo prima o dopo.
 """
 
 # ---------------------------------------------------------------------------
@@ -134,14 +151,13 @@ def _build_messages(query: str, last_domain: str, history: list) -> list:
         m['content'][:120]
         for m in history
         if m['role'] == 'user'
-    ][-4:]  # aumentato da 3 a 4
+    ][-4:]
 
     lines = []
 
-    # Dominio attivo in evidenza PRIMA dello storico
     if last_domain:
         lines.append(f"⚠️  DOMINIO ATTIVO: {last_domain}  ⚠️")
-        lines.append("(Applica la REGOLA PRIORITARIA FOLLOW-UP prima di classificare)")
+        lines.append("(Applica la REGOLA DOMINIO ATTIVO: mantieni SOLO se follow-up diretto)")
         lines.append("")
 
     if recent_queries:
@@ -157,53 +173,79 @@ def _build_messages(query: str, last_domain: str, history: list) -> list:
     ]
 
 # ---------------------------------------------------------------------------
-# PARSING ROBUSTO (JSON primario + substring fallback)
+# PARSING ROBUSTO
 # ---------------------------------------------------------------------------
 
-def _parse_output(raw: str) -> str:
+def _parse_output(raw: str) -> dict:
     """
-    Tenta parsing JSON; se fallisce, cerca la prima etichetta valida nel testo.
-    Ritorna la classe trovata o '' se nessuna.
+    Parsa l'output JSON esteso del router.
+    Ritorna dict con: domain, scores, difficulty, is_followup.
     """
-    # Tentativo 1: JSON
+    result = {
+        'domain':      '',
+        'scores':      {},
+        'difficulty':  2,
+        'is_followup': False,
+    }
+
     try:
-        # estrai il primo {...} trovato (il modello potrebbe aggiungere testo attorno)
         start = raw.find('{')
         end   = raw.rfind('}')
         if start != -1 and end != -1:
             data = json.loads(raw[start:end+1])
+
             candidate = str(data.get('domain', '')).lower().strip()
             if candidate in _CLASS_TO_ID:
-                return candidate
-    except (json.JSONDecodeError, AttributeError, TypeError):
+                result['domain'] = candidate
+
+            raw_scores = data.get('scores', {})
+            if isinstance(raw_scores, dict):
+                result['scores'] = {
+                    k: float(v)
+                    for k, v in raw_scores.items()
+                    if k in ('coding', 'math', 'rights', 'general')
+                }
+
+            diff = data.get('difficulty', 2)
+            if isinstance(diff, (int, float)) and 1 <= int(diff) <= 3:
+                result['difficulty'] = int(diff)
+
+            result['is_followup'] = bool(data.get('is_followup', False))
+
+            if result['domain']:
+                return result
+
+    except (json.JSONDecodeError, AttributeError, TypeError, ValueError):
         pass
 
-    # Tentativo 2: substring (pipeline prima per evitare match parziale)
+    # Fallback substring (solo domain)
     raw_lower = raw.lower()
     for cls in _VALID_SORTED:
         if cls in raw_lower:
-            return cls
+            result['domain'] = cls
+            return result
 
-    return ''
+    return result
 
 # ---------------------------------------------------------------------------
 # PREDICT (interfaccia pubblica)
 # ---------------------------------------------------------------------------
 
-def predict(text: str, last_domain: str = '', history: list = None) -> Tuple[int, float]:
+def predict(text: str, last_domain: str = '', history: list = None) -> Tuple[int, float, dict, int, bool]:
     """
     Classifica la query con il micro-LLM router.
 
     Returns:
-        (class_id, confidence)
-        -1       → router non disponibile, main.py attiva fallback keyword
-        0-3      → mono-domain
-        4-6      → pipeline (vedi PIPELINE_CLASSES)
+        (class_id, confidence, domain_scores, difficulty, is_followup)
+        class_id=-1 → router non disponibile, main.py attiva fallback keyword
+        class_id 0-3 → mono-domain
+        class_id 4-6 → pipeline (vedi PIPELINE_CLASSES)
 
-    Note confidence:
-        general  → 0.7  (permette ai safety net di _should_sticky_route di attivarsi)
-        pipeline → 1.0
-        altri    → 1.0
+    Note:
+        confidence: general=0.7, altri=1.0 (per safety net sticky)
+        domain_scores: dict {coding, math, rights, general} con probabilità
+        difficulty: 1=semplice, 2=media, 3=complessa
+        is_followup: True se il LLM ritiene la query un follow-up
     """
     history = history or []
 
@@ -213,35 +255,42 @@ def predict(text: str, last_domain: str = '', history: list = None) -> Tuple[int
             messages=_build_messages(text, last_domain, history),
             stream=False,
             keep_alive=_ROUTER_KEEP_ALIVE,
-            format="json",           # [V4 FIX] Vincolo strutturale lato llama.cpp
+            format="json",
             options={
-                'temperature':  0.0,
-                'num_ctx':      1024,
-                'num_predict':  40,  # [V2 FIX] 20→40: margine per JSON con newline
-                'num_gpu':      99,
-                'num_thread':   4,
-                'num_batch':    512,
-                'f16_kv':       True,
-                'flash_attn':   True,
+                'temperature': 0.0,
+                'num_ctx':     2048,   # [V1.2] 1024→2048: system prompt più lungo
+                'num_predict': 100,    # [V1.2] 40→100: nuovo JSON più lungo
+                'num_gpu':     99,
+                'num_thread':  4,
+                'num_batch':   512,
+                'f16_kv':      True,
+                'flash_attn':  True,
             }
         )
 
-        raw = response['message']['content'].strip()
-        cls = _parse_output(raw)
+        raw    = response['message']['content'].strip()
+        parsed = _parse_output(raw)
+        cls    = parsed['domain']
 
         if cls:
-            class_id   = _CLASS_TO_ID[cls]
-            confidence = 0.7 if cls == 'general' else 1.0
-            print(f"[ROUTER] raw='{raw}' → {cls.upper()} (id={class_id}, conf={confidence})")
-            return class_id, confidence
+            class_id    = _CLASS_TO_ID[cls]
+            confidence  = 0.7 if cls == 'general' else 1.0
+            scores      = parsed['scores']
+            difficulty  = parsed['difficulty']
+            is_followup = parsed['is_followup']
+
+            scores_str = ', '.join(f"{k}:{v:.2f}" for k, v in scores.items()) if scores else 'n/a'
+            print(f"[ROUTER] {cls.upper()} | conf={confidence} | diff={difficulty} | "
+                  f"followup={is_followup} | scores=[{scores_str}]")
+            return class_id, confidence, scores, difficulty, is_followup
 
         print(f"[ROUTER] Nessuna etichetta valida in: '{raw}' → fallback keyword")
-        return -1, 0.0
+        return -1, 0.0, {}, 2, False
 
     except Exception as e:
         print(f"[ROUTER] Errore ({e}) → fallback keyword")
-        return -1, 0.0
-    
+        return -1, 0.0, {}, 2, False
+
 
 def unload_router():
     """Scarica esplicitamente il router prima del caricamento dei modelli generativi."""

@@ -45,10 +45,10 @@ KEYWORDS_DIR = os.path.join(BASE_DIR, '../keywords')
 GB = 1024 * 1024 * 1024
 
 RAM_THRESHOLDS = {
-    'small':    1.0 * GB,
+    'small':    0.5 * GB,
     'medium':   5.5 * GB,
     'large':   12.0 * GB,
-    'math_opt': 1 * GB #2.5
+    'math_opt': 0.5 * GB #2.5
 }
 
 # --- 3. CONFIGURAZIONE MODELLI AI ---
