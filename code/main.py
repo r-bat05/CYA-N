@@ -406,9 +406,8 @@ def main():
                     print(result)
                 else:
                     _update_history(chat_history, user_input, result, max_messages)
-                    if category in _TECHNICAL_DOMAINS:
-                        last_active_domain    = category
-                        last_pipeline_domains = ('', '')
+                    last_active_domain    = category          # aggiorna sempre, anche su 'general'
+                    last_pipeline_domains = ('', '')          # reset sempre su mono-domain
 
                 print("\n" + "_" * 60 + "\n")
 

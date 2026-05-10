@@ -42,7 +42,7 @@ _VALID_SORTED       = sorted(DOMAIN_NAMES, key=len, reverse=True)  # pipeline pr
 # CONFIGURAZIONE
 # ---------------------------------------------------------------------------
 
-_ROUTER_MODEL      = config.SYSTEM_SETTINGS.get('router_model',      'qwen2.5:3b')
+_ROUTER_MODEL      = config.SYSTEM_SETTINGS.get('router_model',      'qwen2.5:1.5b')
 _ROUTER_KEEP_ALIVE = config.SYSTEM_SETTINGS.get('router_keep_alive',  '10m')
 
 # ---------------------------------------------------------------------------
@@ -54,7 +54,7 @@ Sei un classificatore di dominio. Restituisci SOLO questo JSON (nessun testo pri
 
 CAMPI:
 - domain    : etichetta più probabile (vedi lista sotto)
-- scores    : probabilità per i 4 domini base (somma ≈ 1.0)
+- scores    : probabilità per i 4 domini base (somma = 1.0)
 - difficulty: 1=semplice (saluti, calcoli banali), 2=media, 3=complessa (dimostrazioni, pipeline multi-step)
 - is_followup: true SOLO se la query si riferisce direttamente all'output precedente (chiarimento, modifica, continuazione)
 
@@ -62,8 +62,8 @@ ETICHETTE VALIDE:
 coding | math | rights | general | math->coding | rights->coding | rights->math
 
 DEFINIZIONI:
-- coding     : codice, algoritmi, debug, shell, SQL, regex, API, comandi OS, ML/DL, reti, cybersecurity
-- math       : equazioni, dimostrazioni, integrali, probabilità, fisica matematica, calcolo numerico, algebra lineare
+- coding     : riguarda tutta la parte relativa all'informatica, alle reti, AI. Tutto ciò che si interfaccia con il tech
+- math       : modulo relativo a coprire ogni aspetto della matematica applicata
 - rights     : diritto, leggi, normative, GDPR, contratti, sentenze, tutele legali
 - general    : tutto il resto — cucina, viaggi, saluti, sport, filosofia, shopping, opinioni, domande esistenziali
 - math->coding    : richiede ESPLICITAMENTE sia matematica sia codice
@@ -137,7 +137,8 @@ ESEMPI — SENZA DOMINIO ATTIVO
 REGOLA PIPELINE
 ════════════════════════════════════════════
 Usa pipeline (math->coding, rights->coding, rights->math) SOLO se ENTRAMBI i domini
-sono ESPLICITAMENTE richiesti nella stessa query. In caso di dubbio → mono-dominio.
+sono ESPLICITAMENTE richiesti nella stessa query, quindi ci sono dei riferimenti
+diretti a concetti di moduli diversi. In caso di dubbio attiva il mono-dominio
 
 OUTPUT: SOLO il JSON. Zero testo prima o dopo.
 """
@@ -258,8 +259,8 @@ def predict(text: str, last_domain: str = '', history: list = None) -> Tuple[int
             format="json",
             options={
                 'temperature': 0.0,
-                'num_ctx':     2048,   # [V1.2] 1024→2048: system prompt più lungo
-                'num_predict': 100,    # [V1.2] 40→100: nuovo JSON più lungo
+                'num_ctx':     4096,   # era 2048: necessario per prompt lungo su 1.5b
+                'num_predict': 100,
                 'num_gpu':     99,
                 'num_thread':  4,
                 'num_batch':   512,

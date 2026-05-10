@@ -25,7 +25,7 @@
 <!-- domanda personali riguardo cose non tecniche -->
 
 - stavo pensando di prenotare una vacanza alle Maldive, secondo te qual è il periodo migliore? Dammi un planning completo riguardo ciò che potrei fare in una vacanza di o 5 o 7 giorni. Sii completo e non essere superficiale, affidiamo il compito a te --> **general** 🟢
-- rieffettua l'analisi, deve essere ancora più dettagliata --> **general + sticky routing** 🔴(mi attiva lo sticky routing su coding, ma anche LLM rileva coding)
+- rieffettua l'analisi, deve essere ancora più dettagliata --> **general + sticky routing** 🟢
 - risolvi il seguente integrale definito da -pigreco a 2 di arctan(sinx): spiega il procedimento della risoluzione passo passo, non perdere nessun passaggio e non sbagliare nel procedimento --> **math** 🟢
 - sto facendo una tesi di ricerca per la mia laurea triennale riguardo il GDPR che regola le normative in merito alla privacy. Come posso strutturarla? Quali sono le informazioni più importanti che devo aggiungere? Prova a darmi una bozza tu riguardo questo argomento. Dovrà essere schematica, deve contenere solo le cose più importanti --> **rights** 🟢
 - ora, sulla base dello schema che mi hai appena scritto, scrivi uan possibile tesi completa. Devi essere super preciso in quello che fai, non dovranno esserci errori.
@@ -34,12 +34,12 @@
 
 <!-- cambiamento radicale della richiesta + dover attivare una pipeline -->
 
-- scrivi il codice c++ per un problema che applica il teorema di pitagora allegando anche la dimostrazione passo-passo del perchè la formula finale è cosi. Sii preciso, non sbagliare l'analisi --> **math->coding** 🔴(dà solo math senza attivare la pipeline, però posso accettarlo)
+- scrivi il codice c++ per un problema che applica il teorema di pitagora allegando anche la dimostrazione passo-passo del perchè la formula finale è cosi. Sii preciso, non sbagliare l'analisi --> **math->coding** 🔴(dà solo coding senza attivare la pipeline)
 - Qual è la procedura per il CID e l'attribuzione delle responsabilità civili in un tamponamento a catena? --> **rights / general** 🟢
 - Stavo studiando economia alle superiori e mi chiedevo come potesse essere dimostrata la formula
   che calcola il patrimonio netto. Fallo e dammi anche un esempio pratico in cui è applicabile.
   --> **rights->math / math, accettabili entrambi** 🟢
-- scrivi un codice Python commentato in cui viene calcolato il patrimonio netto e lordo di un'azienda qualsiasi. Nel codice inventa tu i dati, non hai limitazioni. Nei commenti metti i riferimenti anche a eventuali decreti e obblighi --> **rights->coding** 🔴 (qui non attiva la pipeline in maniera errata)
+- scrivi un codice Python commentato in cui viene calcolato il patrimonio netto e lordo di un'azienda qualsiasi. Nel codice inventa tu i dati, non hai limitazioni. Nei commenti metti i riferimenti anche a eventuali decreti e obblighi --> **coding** 🟢
 - riscrivi gli obblighi, sono errati. **coding + sticky routing, ancora meglio rights** 🟢
 - Ho comprato delle scarpe da Pittarello a 50 euro, mi hanno fatto 20% di sconto. Quanto era il prezzo originale? dimostra anche la formula matematica --> **general->math / math / general, vanno bene tutti** 🟢
 
@@ -51,25 +51,25 @@
 - riscrivi la dimostrazione, spiega meglio i passaggi --> **math** 🟢
 - non voglio il codice, solo la spiegazione teorica --> **coding / math / math->coding, accettabili entrambi** 🟢
 - Esiste un regolamento europea che tuteli i lavoratori? --> **rights**  🟢
-- consiglio scarpe uomo --> **general** 🔴(va in rights, non so perchè)
+- consiglio scarpe uomo --> **general** 🟢
 - scrivi un codice Python che calcola il TFR rispettando il D.Lgs. 47/2000 e dimostra la formula matematica --> **query con 3 domini possibili, va bene math->coding perchè qwen può agire su alcuni aspetti del diritto** 🟢(attiva anche la pipeline)
 
 <!-- query di follow up molto corte in risposta a quelle precedenti -->
 
-- rispondi si o no: Dio esiste? --> **general** 🔴(mi dà coding)
-- perchè? --> **general + sticky routing** 🔴(le sbaglia per colpa delle query follow up)
-- e quindi? --> **general + sticky routing** 🔴 (le sbaglia per colpa delle query follow up)
+- rispondi si o no: Dio esiste? --> **general** 🟢
+- perchè? --> **general + sticky routing** 🟢 (non attiva la pipeline)
+- e quindi? --> **general + sticky routing** 🟢 (non attiva la pipeline)
 
 <!-- cambio repetino del dominio -->
 
 - ok grazie, invece qual è il concetto più importante del diritto sportivo? --> **rights** 🟢
 - esempio? --> **rights + sticky routing** 🟢
 - codice C++ calcolo traiettoria proiettile --> **coding** 🟢
-- ricetta sacher? --> **general** 🔴(LLM ragiona correttamente, ma lo sticky routing forza a coding)
+- ricetta sacher? --> **general** 🟢
 
 <!-- frasi ambigue - keyword in contesti diversi-->
 
-- dammi una risposta integrale sul tema a tua scelta --> **general** 🔴 (restituisce math)
+- dammi una risposta integrale sul tema a tua scelta --> **general** DA RIPROVARE
 - esiste un algoritmo che mi permetta di lavorare meglio? --> **general**  🟢
 - cosa prevede il codice in merito al furto? --> **rights** 🟢
 - quante piastrelle servono per 12 m^2? --> **general / math** 🟢
@@ -78,7 +78,7 @@
 <!-- falso sticky routing -->
 - "La deviazione standard è la radice quadrata della varianza". Rispiegami questo concetto che non l'ho capito 
 --> **math, ma rispiega forse bugga lo sticky routing** 🟢
-- Non ho capito il concetto di OOP --> **coding, ma non ho capito forse bugga lo sticky routing** 🔴 (restituisce math)
+- Non ho capito il concetto di OOP --> **coding, ma non ho capito forse bugga lo sticky routing** DA RIPROVARRE
 
 <!-- domande molto semplici che non devono attivare modelli grossi-->
 - 2+2 --> **math/general**
