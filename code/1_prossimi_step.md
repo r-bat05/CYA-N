@@ -57,8 +57,8 @@
 <!-- query di follow up molto corte in risposta a quelle precedenti -->
 
 - rispondi si o no: Dio esiste? --> **general** 🟢
-- perchè? --> **general + sticky routing** 🟢 (non attiva la pipeline)
-- e quindi? --> **general + sticky routing** 🟢 (non attiva la pipeline)
+- come mai questo pensiero? --> **general + sticky routing** 🟢
+- e quindi? --> **general + sticky routing** 🔴 (non attiva la pipeline)
 
 <!-- cambio repetino del dominio -->
 
@@ -100,7 +100,7 @@
   // Il metodo continua a chiamare se stesso all'infinito.
   metodoRicorsivo(contatore + 1);
   }
-  }" --> **coding** 
+  }" --> **coding**  🔴 (attiva general, forse perchè non c'è una spiegazione)
 - qual è il risultato? --> **coding + sticky routing**
 - COMANDO /reset
 - è possibile ottimizzare il codice di prima? --> **coding + sticky routing, ma avendo pulito la history bisogna vedere il comportamento**

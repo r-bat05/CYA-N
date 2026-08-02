@@ -230,5 +230,7 @@ PIPELINE_SETTINGS = {
         frozenset({'math',   'coding'}): ('math',   'coding'),
         frozenset({'rights', 'coding'}): ('rights', 'coding'),
         frozenset({'rights', 'math'}):   ('rights', 'math'),
-    }
+    },
+
+    'pipeline_score_min': 0.15   # [SCORE PIPELINE] soglia score secondario per promozione
 }

@@ -126,7 +126,6 @@ def _should_sticky_route(
 
     return False, last_domain, '', None
 
-
 def main():
     print_banner()
 
@@ -220,6 +219,9 @@ def main():
                     scores_str = ' | '.join(f"{k}:{v:.2f}" for k, v in domain_scores.items())
                     print(f"🔍 [DEBUG NEURAL] Scores: [{scores_str}] | Difficulty: {difficulty}")
 
+                # [SCORE PIPELINE] top_domain inizializzato qui per visibilità fuori dall'else
+                top_domain = ''
+
                 if class_id in PIPELINE_CLASSES:
                     domain_a, domain_b = PIPELINE_CLASSES[class_id]
                     original_sem_domains  = [domain_a, domain_b]
@@ -234,6 +236,29 @@ def main():
                     print(f"🔍 [DEBUG NEURAL] Classe pipeline declassata: "
                           f"query troppo corta ({word_count} < {min_words} parole).")
                     is_pipeline_candidate = False
+
+                # [SCORE PIPELINE] Safety net LLM-based: promuove a pipeline se il LLM
+                # ha classificato mono-domain ma i suoi stessi score indicano dual-domain.
+                # NON usa keyword — dipende esclusivamente dagli score restituiti dal router.
+                # Condizioni: mono-domain originale | query >= min_words | dominio tecnico
+                #             | score secondario tecnico >= soglia | difficoltà >= 2
+                if (not is_pipeline_candidate
+                        and top_domain in _TECHNICAL_DOMAINS
+                        and word_count >= min_words
+                        and difficulty >= 2
+                        and domain_scores):
+                    pipeline_score_min = config.PIPELINE_SETTINGS.get('pipeline_score_min', 0.15)
+                    sec = {d: domain_scores.get(d, 0.0) for d in _TECHNICAL_DOMAINS if d != top_domain}
+                    best_sec, best_sec_score = max(sec.items(), key=lambda x: x[1])
+                    if best_sec_score >= pipeline_score_min:
+                        pair = frozenset({top_domain, best_sec})
+                        domain_a, domain_b = config.PIPELINE_SETTINGS['pipeline_order_matrix'].get(
+                            pair, (top_domain, best_sec)
+                        )
+                        is_pipeline_candidate = True
+                        print(f"🔀 [SCORE PIPELINE] Promozione score-based: "
+                              f"{domain_a.upper()}→{domain_b.upper()} "
+                              f"(secondary={best_sec_score:.2f}, diff={difficulty})")
 
                 print(f"🔍 [DEBUG NEURAL] Classe={DOMAIN_NAMES[class_id]} | "
                       f"Confidence={confidence:.2f} | "

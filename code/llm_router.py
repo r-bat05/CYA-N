@@ -117,6 +117,17 @@ ESEMPI — CON DOMINIO ATTIVO: rights
 "approfondisci il punto 2"  → {"domain":"rights", "scores":{"coding":0.02,"math":0.03,"rights":0.90,"general":0.05}, "difficulty":2, "is_followup":true}
 
 ════════════════════════════════════════════
+ESEMPI — CON DOMINIO ATTIVO: general
+════════════════════════════════════════════
+"perché?"                            → {"domain":"general", "scores":{"coding":0.04,"math":0.04,"rights":0.05,"general":0.87}, "difficulty":1, "is_followup":true}
+"rispiega"                           → {"domain":"general", "scores":{"coding":0.04,"math":0.04,"rights":0.05,"general":0.87}, "difficulty":1, "is_followup":true}
+"approfondisci"                      → {"domain":"general", "scores":{"coding":0.02,"math":0.02,"rights":0.05,"general":0.91}, "difficulty":1, "is_followup":true}
+"rieffettua l'analisi"               → {"domain":"general", "scores":{"coding":0.02,"math":0.02,"rights":0.04,"general":0.92}, "difficulty":2, "is_followup":true}
+"deve essere ancora più dettagliata" → {"domain":"general", "scores":{"coding":0.02,"math":0.02,"rights":0.04,"general":0.92}, "difficulty":2, "is_followup":true}
+"Dio esiste?"                        → {"domain":"general", "scores":{"coding":0.01,"math":0.01,"rights":0.03,"general":0.95}, "difficulty":1, "is_followup":false}
+"consiglio scarpe uomo"              → {"domain":"general", "scores":{"coding":0.01,"math":0.01,"rights":0.02,"general":0.96}, "difficulty":1, "is_followup":false}
+
+════════════════════════════════════════════
 ESEMPI — SENZA DOMINIO ATTIVO
 ════════════════════════════════════════════
 "scrivi codice Python per ordinare una lista"           → {"domain":"coding",        "scores":{"coding":0.90,"math":0.05,"rights":0.02,"general":0.03}, "difficulty":1, "is_followup":false}
@@ -138,7 +149,14 @@ REGOLA PIPELINE
 ════════════════════════════════════════════
 Usa pipeline (math->coding, rights->coding, rights->math) SOLO se ENTRAMBI i domini
 sono ESPLICITAMENTE richiesti nella stessa query, quindi ci sono dei riferimenti
-diretti a concetti di moduli diversi. In caso di dubbio attiva il mono-dominio
+diretti a concetti di moduli diversi. In caso di dubbio attiva il mono-dominio.
+
+SEGNALI math ESPLICITI (valgono anche se la query chiede codice):
+"dimostra", "dimostrazione", "prova matematica", "passo-passo della formula", "teorema".
+Se la query chiede CODICE + uno di questi segnali → math->coding.
+
+"scrivi codice C++ per teorema di Pitagora con dimostrazione passo-passo" → {"domain":"math->coding","scores":{"coding":0.45,"math":0.45,"rights":0.02,"general":0.08},"difficulty":3,"is_followup":false}
+"implementa algoritmo in Python e dimostra la formula matematica"         → {"domain":"math->coding","scores":{"coding":0.45,"math":0.45,"rights":0.02,"general":0.08},"difficulty":2,"is_followup":false}
 
 OUTPUT: SOLO il JSON. Zero testo prima o dopo.
 """
