@@ -1,7 +1,5 @@
 # SCEGLIERE MODELLO GIUSTO QWEN --> VEDI SU OLLAMA LE VERSIONI
 
-
-
 1. testare chat history con una sessione che copra tutti i casi
 
 #### SESSIONE LUNGA (domanda --> modulo che dovrebbe attivarsi)
@@ -13,7 +11,7 @@
 
 <!-- domanda specifica con istruzioni -->
 
-- scrivi un codice in un linguaggio a tua scelta per risolvere un sistema non lineare. Usa il metodo che vuoi tu, sei libero. Il codice che scrivi dovrà essere completo e corretto, non scrivere commenti ma spiegami le istruzioni che hai scritto 
+- scrivi un codice in un linguaggio a tua scelta per risolvere un sistema non lineare. Usa il metodo che vuoi tu, sei libero. Il codice che scrivi dovrà essere completo e corretto, non scrivere commenti ma spiegami le istruzioni che hai scritto
   --> **coding/math->coding, accettabili entrambi**  🟢
 
 <!-- domanda che va a completamento di quella precedente -->
@@ -76,13 +74,14 @@
 - il mio padrone di casa non mi ridà il deposito, come fare --> **rights** 🟢
 
 <!-- falso sticky routing -->
-- "La deviazione standard è la radice quadrata della varianza". Rispiegami questo concetto che non l'ho capito 
---> **math, ma rispiega forse bugga lo sticky routing** 🟢
+
+- "La deviazione standard è la radice quadrata della varianza". Rispiegami questo concetto che non l'ho capito
+  --> **math, ma rispiega forse bugga lo sticky routing** 🟢
 - Non ho capito il concetto di OOP --> **coding, ma non ho capito forse bugga lo sticky routing** DA RIPROVARRE
 
 <!-- domande molto semplici che non devono attivare modelli grossi-->
-- 2+2 --> **math/general**
 
+- 2+2 --> **math/general**
 
 <!-- domande senza richiesta-->
 
@@ -112,14 +111,13 @@
 - dimmi su che siti posso andare --> **general + sticky routing**
 - ma cosa cazzo dici --> **general**
 
-
-
-2) migliorare i prompt
+2) costruire una rete neurale propria per la classificazione
+3) rivedere i criteri di attivazione della pipeline --> solo per compiti complessi e da rivedere quali criteri devono essere soddisfatti
+4) migliorare i prompt
 
    - per i modelli piccoli di coding, deve solo scrivere codice e commentarlo, senza spiegazioni teoriche perchè altrimenti le sbaglia. Gli altri devono attenersi a dare risposte brevi, senza argomentare troppo per evitare errori o allucinazioni
    - per i modelli grossi, bisogna assecondare le richieste dell'utente. Se non ci sono informazioni riguardante lo stile, imposterò come prompt di default quello di instagram
 
 In generale, se un modello non ha dati sufficienti per rispondere (es: si è pulita la chat history ma domandiamo una query follow up rispetto ad una risposta precedente di cui però il sistema non ha più traccia) deve dire che informazioni mancano.
 
-
-3) introdurre una "soglia di difficoltà" della domanda; se una domanda è semplice non ha senso attivare un modello con tanti parametri
+4) introdurre una "soglia di difficoltà" della domanda; se una domanda è semplice non ha senso attivare un modello con tanti parametri
