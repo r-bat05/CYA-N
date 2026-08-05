@@ -36,12 +36,12 @@ from sklearn.metrics import f1_score
 PKL_PATH         = Path('code/classifier/embeddings_v2.pkl')
 WEIGHTS_PATH     = Path('code/classifier/nn_weights.pt')
 
-LR               = 1e-3        # Adam LR iniziale
-WEIGHT_DECAY     = 1e-4        # L2 regularization
+LR               = 1e-3        # Lr iniziale (serve per l'ottimizzatore dei pesi Adam)
+WEIGHT_DECAY     = 1e-4        # regolarizzazione L2. Non ci saranno pesi troppo grandi
 EPOCHS           = 200         # epoche massime
-BATCH_SIZE       = 64
-PATIENCE         = 25          # early stopping: epoche senza miglioramento su val F1
-SCHED_PATIENCE   = 10          # ReduceLROnPlateau: epoche senza miglioramento prima di halvare LR
+BATCH_SIZE       = 64          # utile per fare il batch stochastic gradient descent
+PATIENCE         = 25          # numero di epoche per cui se non c'è miglioramento viene interrotto il training --> DA TOGLIERE
+SCHED_PATIENCE   = 10          # ReduceLROnPlateau: abbassa il lr quando una metrica smette di migliorare
 
 LOSS_W_DOMAIN    = 0.70
 LOSS_W_DIFF      = 0.30
@@ -61,16 +61,22 @@ class MultiTaskMLP(nn.Module):
     def __init__(self):
         super().__init__()
 
-        # Backbone condiviso
+        # Backbone condiviso --> prima parte della rete neurale
         self.backbone = nn.Sequential(
+            #strato di input: 384 input (dovuti dall'embedding)
+            #1° strato hidden
             nn.Linear(384, 256),
-            nn.LayerNorm(256),
+            #standardizzo gli input dei neuroni in modo che assumnano valori bassi
+            nn.LayerNorm(256), 
             nn.ReLU(),
+            #disattivo il 30% dei neuroni dello strato hidden ad ogni input DURANTE IL TRAINING
+            #utile per prevenire overfitting nel training
             nn.Dropout(0.3),
+            #2° strato hidden
             nn.Linear(256, 128),
             nn.LayerNorm(128),
             nn.ReLU(),
-            nn.Dropout(0.2),
+            nn.Dropout(0.2), #come sopra
         )
 
         # Domain head: 128 → 64 → 4  (multi-label, BCEWithLogitsLoss)
@@ -122,6 +128,7 @@ def compute_pos_weight_scalar(labels: torch.Tensor) -> torch.Tensor:
     return (neg / pos).unsqueeze(0)
 
 
+#calcola la metrica f1 per ogni dominio
 def f1_domain_macro(logits: torch.Tensor, labels: torch.Tensor) -> float:
     """F1-macro su 4 classi domain (multi-label). Input: logit grezzi."""
     preds = (torch.sigmoid(logits) >= DOMAIN_THRESHOLD).int().cpu().numpy()
@@ -146,7 +153,7 @@ def train():
     print(f"[1/4] Caricamento: {PKL_PATH}")
     data = load_pkl(PKL_PATH)
 
-    emb    = data['embeddings']           # [N, 384]  float32
+    emb    = data['embeddings']          # [N, 384]  float32
     d_lbl  = data['domain_labels']       # [N, 4]    float32  multi-label
     df_lbl = data['difficulty_labels']   # [N]       int64    (0/1/2)
     fu_lbl = data['is_followup_labels']  # [N]       float32  (0/1)
@@ -213,21 +220,29 @@ def train():
         total_loss = 0.0
         for X_b, y_dom_b, y_dif_b, y_fu_b in train_dl:
             optimizer.zero_grad()
+
+            #FORWARD PASS: calcolo output modello per un input + build del grafo computazionale
             logits_dom, logits_dif, logits_fu = model(X_b)
 
+            #calcolo quanto vale la loss
             l_dom = loss_domain(logits_dom, y_dom_b)
             l_dif = loss_diff(logits_dif, y_dif_b)
             l_fu  = loss_followup(logits_fu, y_fu_b)
             loss  = LOSS_W_DOMAIN * l_dom + LOSS_W_DIFF * l_dif + LOSS_W_FOLLOWUP * l_fu
 
+            #BACKWARD PASS: calcolo delle derivate parziali della loss rispetto ai pesi 
+            #pesi salvati in model.parameters come tensori
             loss.backward()
+
+            #UPDATE PESI: calcolato il gradiente della loss rispetto ai pesi si aggiornano 
+            #i parametri
             optimizer.step()
             total_loss += loss.item() * len(X_b)
 
         avg_loss = total_loss / len(idx_tr)
 
-        # VAL
-        model.eval()
+        # VAL: valuto il modello dopo aver aggiornato i parametri per ogni input 
+        model.eval() #non aggiorno più niente (eval + no_grad())
         with torch.no_grad():
             logits_dom_v, logits_dif_v, logits_fu_v = model(X_val)
 
@@ -239,8 +254,8 @@ def train():
               + LOSS_W_FOLLOWUP * loss_followup(logits_fu_v, y_fu_val.unsqueeze(1))
             ).item()
 
-        scheduler.step(val_f1)
-        current_lr = optimizer.param_groups[0]['lr']
+        scheduler.step(val_f1) #valuto se conviene cambiare il lr (se f1 non è migliorato)
+        current_lr = optimizer.param_groups[0]['lr'] #prendo il lr modificato
 
         # Early stopping check
         if val_f1 > best_f1:
@@ -248,7 +263,7 @@ def train():
             best_state = {k: v.clone() for k, v in model.state_dict().items()}
             no_improve = 0
             marker = " ★"
-        else:
+        else: #se f1 non è migliorato...
             no_improve += 1
             marker = ""
 
@@ -257,6 +272,7 @@ def train():
                   f"vl_f1={val_f1:.4f} | best={best_f1:.4f} | "
                   f"no_impr={no_improve}/{PATIENCE} | lr={current_lr:.2e}")#{marker}
 
+        #se ho avuto 0 migliorati nelle ultime PATIENCE iterazioni...
         if no_improve >= PATIENCE:
             print(f"\n  ⏹  Early stopping a epoca {epoch} "
                   f"(nessun miglioramento per {PATIENCE} epoche consecutive)")
@@ -264,7 +280,7 @@ def train():
 
     print(f"\n[3/4] Training completato. Miglior F1-macro val (domain): {best_f1:.4f}")
 
-    # ── Valutazione sul test set ───────────────────────────────────────────────
+    # ── Valutazione sul test set - FASE DI TESTING ───────────────────────────────────────────────
     model.load_state_dict(best_state)
     model.eval()
     with torch.no_grad():
@@ -287,6 +303,7 @@ def train():
     print(f"  is_followup F1-bin : {test_fu_f1:.4f}")
 
     # ── Salvataggio checkpoint ────────────────────────────────────────────────
+    '''SALVA I PESI DEL MODELLO PER POTERLI ESPORTARE'''
     print(f"\n[4/4] Salvataggio: {WEIGHTS_PATH}")
     WEIGHTS_PATH.parent.mkdir(parents=True, exist_ok=True)
 

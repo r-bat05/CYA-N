@@ -113,7 +113,7 @@
 
 2) costruire una rete neurale propria per la classificazione
     - eliminare l'early stopping per l'addestramento della rete   
-    - capire come esportare il modello (come salvare i parametri)
+    - capire come esportare il modello (come salvare i parametri) --> file nn_weights
 
 3) rivedere i criteri di attivazione della pipeline --> solo per compiti complessi e da rivedere quali criteri devono essere soddisfatti (opzione: in base alle probabilità e alla difficoltà della richiesta, basando tutto sugli output del modello)
 
