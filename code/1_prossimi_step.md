@@ -112,7 +112,11 @@
 - ma cosa cazzo dici --> **general**
 
 2) costruire una rete neurale propria per la classificazione
-3) rivedere i criteri di attivazione della pipeline --> solo per compiti complessi e da rivedere quali criteri devono essere soddisfatti
+    - eliminare l'early stopping per l'addestramento della rete   
+    - capire come esportare il modello (come salvare i parametri)
+
+3) rivedere i criteri di attivazione della pipeline --> solo per compiti complessi e da rivedere quali criteri devono essere soddisfatti (opzione: in base alle probabilità e alla difficoltà della richiesta, basando tutto sugli output del modello)
+
 4) migliorare i prompt
 
    - per i modelli piccoli di coding, deve solo scrivere codice e commentarlo, senza spiegazioni teoriche perchè altrimenti le sbaglia. Gli altri devono attenersi a dare risposte brevi, senza argomentare troppo per evitare errori o allucinazioni
