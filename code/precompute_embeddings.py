@@ -8,12 +8,19 @@ Path attesi (dalla root del progetto):
   INPUT  → code/dataset_v2.jsonl
   OUTPUT → code/classifier/embeddings_v2.pkl
 
-NOTA is_followup
-  Il campo is_followup non è presente nel JSONL.
-  Viene derivato automaticamente: history non vuota → is_followup=1.
-  Risultato: 42 positivi su 1274 (ratio ~1:29).
-  Il neural head per is_followup va addestrato con pos_weight alto
-  o sostituito con Python heuristics (vedi train_nn.py).
+NOTA is_followup [AGGIORNATO — Report Gemini punto 2]
+  Il campo is_followup è presente nel JSONL e viene letto DIRETTAMENTE dal
+  record (r.get('is_followup')), NON derivato da keyword o dalla presenza
+  della history. È assegnato strutturalmente in build_dataset_v2.py tramite
+  i costruttori _fu() (True) e _cd()/_r() (False), all'atto stesso della
+  creazione del record. Questo vincolo architetturale è intenzionale e va
+  protetto: non reintrodurre MAI derivazioni testuali/euristiche qui.
+  Il controllo sotto fa fallire lo script se un record ne è privo, per
+  intercettare subito eventuali regressioni nel generatore del dataset.
+
+NOTA history [FIX — Report Gemini punto 3]
+  build_input_str() non è più locale: importata da history_utils.py, unica
+  fonte di verità condivisa anche con nn_classifier.py in fase di inferenza.
 """
 
 import json
@@ -23,35 +30,34 @@ from pathlib import Path
 import torch
 from sentence_transformers import SentenceTransformer
 
+from history_utils import build_input_str, HISTORY_MAX_TURNS
+
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
-ENCODER_MODEL    = 'paraphrase-multilingual-MiniLM-L12-v2'
-DATASET_PATH     = Path('code/dataset_v2.jsonl')
-OUTPUT_PATH      = Path('code/classifier/embeddings_v2.pkl')
-HISTORY_MAX_TURNS = 2   # quante query della history concatenare (da config)
-BATCH_SIZE        = 64
+ENCODER_MODEL = 'paraphrase-multilingual-MiniLM-L12-v2'
+DATASET_PATH  = Path('code/dataset_v2.jsonl')
+OUTPUT_PATH   = Path('code/classifier/embeddings_v2.pkl')
+BATCH_SIZE    = 64
 # ──────────────────────────────────────────────────────────────────────────────
-
-
-def build_input_str(query: str, history: list) -> str:
-    """
-    Costruisce la stringa di input per l'encoder.
-    Formato: "[HISTORY] q_{n-2} | q_{n-1} [QUERY] query_corrente"
-    Se history è vuota restituisce solo la query.
-    """
-    if history:
-        hist_slice = history[-HISTORY_MAX_TURNS:]
-        hist_str = " | ".join(hist_slice)
-        return f"[HISTORY] {hist_str} [QUERY] {query}"
-    return query
 
 
 def load_dataset(path: Path) -> list[dict]:
     records = []
     with open(path, 'r', encoding='utf-8') as f:
-        for line in f:
+        for line_num, line in enumerate(f, start=1):
             line = line.strip()
-            if line:
-                records.append(json.loads(line))
+            if not line:
+                continue
+            record = json.loads(line)
+            # [FIX Gemini #2] Guardia difensiva: il campo is_followup DEVE
+            # esistere ed essere strutturale (bool), mai assente/derivato.
+            if 'is_followup' not in record:
+                raise ValueError(
+                    f"Record senza campo 'is_followup' alla riga {line_num}: "
+                    f"{record.get('query', '???')!r}. "
+                    f"Il campo va assegnato in build_dataset_v2.py tramite "
+                    f"_fu()/_cd()/_r(), mai omesso."
+                )
+            records.append(record)
     return records
 
 
@@ -87,7 +93,6 @@ def precompute(dataset_path: Path = DATASET_PATH, output_path: Path = OUTPUT_PAT
     # ── 4. Costruzione tensori label ─────────────────────────────────────────
     print(f"[4/5] Costruzione tensori label...")
 
-    # domain_labels [N, 4] float — multi-label (Sigmoid)
     domain_labels = torch.tensor(
         [
             [
@@ -101,23 +106,18 @@ def precompute(dataset_path: Path = DATASET_PATH, output_path: Path = OUTPUT_PAT
         dtype=torch.float32,
     )  # [N, 4]
 
-    # difficulty_labels [N] long — indice di classe per CrossEntropyLoss
-    # difficulty nel JSONL è 1/2/3 → convertiamo a 0/1/2
     difficulty_labels = torch.tensor(
         [r['difficulty'] - 1 for r in records],
         dtype=torch.long,
     )  # [N]
 
-    # is_followup_labels [N] float — derivato da history (non presente nel JSONL)
-    # ⚠ WARNING: solo 42 positivi su 1274. Usare pos_weight in BCELoss o
-    #   sostituire con Python heuristics in nn_classifier.py.
+    # [FIX Gemini #2] letto direttamente dal record, non derivato.
     is_followup_labels = torch.tensor(
         [1.0 if r.get('is_followup') else 0.0 for r in records],
         dtype=torch.float32,
     )  # [N]
 
     # ── 5. Indici di split ───────────────────────────────────────────────────
-    # Il campo 'split' è già nel dataset (train/val/test)
     split_indices = {'train': [], 'val': [], 'test': []}
     for i, r in enumerate(records):
         split_indices[r['split']].append(i)
@@ -132,22 +132,18 @@ def precompute(dataset_path: Path = DATASET_PATH, output_path: Path = OUTPUT_PAT
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     payload = {
-        # tensori principali
-        'embeddings':         embeddings,         # [N, 384] float32
-        'domain_labels':      domain_labels,      # [N, 4]   float32 multi-label
-        'difficulty_labels':  difficulty_labels,  # [N]      int64  (0,1,2)
-        'is_followup_labels': is_followup_labels, # [N]      float32 (derivato da history)
-        # split indices
-        'splits': splits,   # dict: 'train'/'val'/'test' → LongTensor di indici
-        # debug
+        'embeddings':         embeddings,
+        'domain_labels':      domain_labels,
+        'difficulty_labels':  difficulty_labels,
+        'is_followup_labels': is_followup_labels,
+        'splits': splits,
         'input_strings': input_strings,
-        # metadati
         'meta': {
             'encoder_model':      ENCODER_MODEL,
             'n_records':          n,
             'history_max_turns':  HISTORY_MAX_TURNS,
             'normalized':         True,
-            'is_followup_source': 'derived_from_history',
+            'is_followup_source': 'structural_field_in_jsonl',  # [FIX doc]
             'is_followup_positives': int(is_followup_labels.sum()),
             'split_sizes': {k: len(v) for k, v in split_indices.items()},
         },
@@ -158,7 +154,6 @@ def precompute(dataset_path: Path = DATASET_PATH, output_path: Path = OUTPUT_PAT
 
     size_mb = output_path.stat().st_size / 1e6
 
-    # ── Report finale ────────────────────────────────────────────────────────
     print(f"\n{'='*50}")
     print(f"EMBEDDINGS SALVATI → {output_path}  ({size_mb:.1f} MB)")
     print(f"{'='*50}")
@@ -177,11 +172,10 @@ def precompute(dataset_path: Path = DATASET_PATH, output_path: Path = OUTPUT_PAT
         cnt = int((difficulty_labels == i).sum())
         print(f"  {name:10s}: {cnt:4d}  ({cnt/n*100:.1f}%)")
 
-    print(f"\n  --- IS_FOLLOWUP (derivato da history) ---")
+    print(f"\n  --- IS_FOLLOWUP (campo strutturale del JSONL) ---")
     pos = int(is_followup_labels.sum())
     print(f"  positivi : {pos}  ({pos/n*100:.1f}%)")
     print(f"  negativi : {n-pos}  ({(n-pos)/n*100:.1f}%)")
-    print(f"  ⚠ ratio molto sbilanciato — usare pos_weight in BCELoss")
 
     pipeline_cnt = sum(1 for r in records if r.get('is_pipeline'))
     print(f"\n  --- PIPELINE ---")

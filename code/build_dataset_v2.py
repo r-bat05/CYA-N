@@ -54,6 +54,7 @@ SYNONYMS = {
     'ottimizza':  ['migliora', 'potenzia', 'perfeziona'],
     'configura':  ['imposta', 'predisponi'],
     'verifica':   ['controlla', 'valida', 'accerta'],
+    "cos'è":      ['cosa si intende per', 'che cosa rappresenta', 'in cosa consiste'],  # [FIX]
 }
 
 # ── Shortcut label sets ────────────────────────────────────────────────────────
@@ -312,7 +313,7 @@ MANUAL_RECORDS = [
     _cd("scrivi un programma che simula il lancio di una moneta", _C, 2, ["Spiega la teoria della probabilità."]),
     _cd("qual è la formula per calcolare gli interessi composti?", _M, 2, ["Cosa mi consigli per risparmiare?"]),
     _cd("quali norme regolano il telelavoro in Italia?", _R, 2, ["Cosa cambierà nel mondo del lavoro con l'AI?"]),
-    _cd("come si calcola l'IVA su una fattura?", _G, 1, ["Come funziona la partita IVA?"]),
+    _cd("come si calcola l'IVA su una fattura?", _M, 1, ["Come funziona la partita IVA?"]),
     _cd("scrivi una funzione Python per la validazione dell'email", _C, 1, ["Cosa prevede il GDPR sul consenso?"]),
     _cd("implementa il login con JWT in Flask", _C, 2, ["Come funziona l'autenticazione a due fattori?"]),
     _cd("è legale vendere dati statistici anonimi?", _R, 2, ["Come funziona l'analisi della varianza ANOVA?"]),
@@ -366,6 +367,40 @@ MANUAL_RECORDS = [
        _RM, 3, True, "rights->math"),
     _r("calcola matematicamente il piano di ammortamento secondo normativa bancaria italiana",
        _RM, 3, True, "rights->math"),
+
+    # ── [FIX WRONG_QUERY] RIGHTS colloquiale — responsabilità civile ──
+    _r("Mio figlio ha rotto il vetro del vicino giocando a pallone: devo pagare io i danni?", _R, 2),
+    _r("Il mio cane ha morso un passante per strada, chi paga le spese mediche?", _R, 2),
+    _r("Sono scivolato in un negozio per il pavimento bagnato, posso chiedere un risarcimento?", _R, 2),
+
+    # ── [FIX WRONG_QUERY] MATH — calcoli percentuali/fiscali ──
+    _r("Come si calcola la percentuale di sconto applicata a un prezzo?", _M, 1),
+    _r("Qual è la formula per calcolare l'IVA al 22% su un importo?", _M, 1),
+
+    # ── [FIX WRONG_QUERY] CODING — ricorsione/algoritmi (NON identiche a
+    #    step4_evaluation.py: evitare leakage sul test set) ──
+    _r("Crea una funzione ricorsiva in Python per calcolare il fattoriale di un numero.", _C, 1),
+    _r("Come si implementa il calcolo dei numeri di Fibonacci con la ricorsione in Python?", _C, 1),
+    _r("Scrivi in Python l'algoritmo di Dijkstra per il cammino minimo su un grafo pesato.", _C, 2),
+    _r("Implementa la ricerca binaria in versione ricorsiva usando Python.", _C, 1),
+
+    # ── [FIX WRONG_QUERY] Rinforzo negative-class is_followup su switch di
+    #    dominio — contrasta sbilanciamento _fu:_cd ~7.5:1 (Report Gemini #1) ──
+    _cd("quanto costa un biglietto aereo per Tokyo?",              _G, 1, ["Spiega il pattern Observer in OOP."]),
+    _cd("che tempo fa domani?",                                    _G, 1, ["Dimostra il teorema di Lagrange."]),
+    _cd("mi consigli una serie tv?",                               _G, 1, ["Cosa prevede il GDPR sul diritto all'oblio?"]),
+    _cd("qual è il senso della vita secondo te?",                  _G, 1, ["Implementa un algoritmo di clustering K-means."]),
+    _cd("come si allena la resistenza per una maratona?",          _G, 1, ["Spiega la differenza tra nullità e annullabilità."]),
+    _cd("quanto è alto il Monte Everest?",                         _G, 1, ["Calcola l'integrale di 1/(1+x^2)."]),
+    _cd("mi spieghi le regole del tennis?",                        _G, 1, ["Come si implementa OAuth 2.0?"]),
+    _cd("qual è il miglior modo per risparmiare energia in casa?", _G, 1, ["Quali sono le tutele per il whistleblowing?"]),
+    _cd("hai un consiglio per smettere di fumare?",                _G, 1, ["Spiega la decomposizione LU di una matrice."]),
+    _cd("cosa vedo stasera al cinema?",                            _G, 1, ["Implementa il pattern Factory in Java."]),
+    _cd("in che anno è caduto il Muro di Berlino?",                _G, 1, ["Come funziona la crittografia a curva ellittica?"]),
+    _cd("qual è il modo migliore per organizzare un trasloco?",    _G, 1, ["Cosa prevede il Codice del Consumo sul recesso?"]),
+    _cd("come si fa il nodo alla cravatta?",                       _G, 1, ["Dimostra il teorema di Bayes con un esempio."]),
+    _cd("mi dai un consiglio per dormire meglio?",                 _G, 1, ["Spiega il funzionamento di un container Docker."]),
+    _cd("qual è la differenza tra tè verde e tè nero?",            _G, 1, ["Quali sanzioni prevede il GDPR per una violazione grave?"]),
 ]
 
 # ── Helper functions ───────────────────────────────────────────────────────────

@@ -111,22 +111,27 @@ def load_pkl(path: Path) -> dict:
         return pickle.load(f)
 
 
+# [FIX Report Gemini #1] Cap anti-distorsione: un pos_weight troppo alto
+# (14-30x sui dati attuali) spinge i logit artificialmente in alto anche
+# su esempi ambigui, causando falsi positivi is_followup=True su switch
+# di dominio (vedi wrong_query.md, categoria E-CD). Il cap preserva il
+# beneficio del pos_weight (recall sulla classe rara) senza la distorsione
+# sistemica sul resto della distribuzione.
+MAX_POS_WEIGHT = 8.0
+
+
 def compute_pos_weights_domain(labels: torch.Tensor) -> torch.Tensor:
-    """
-    pos_weight[i] = (N - pos_i) / pos_i  per BCEWithLogitsLoss.
-    Shape: [4] — una voce per ogni dominio (coding, math, rights, general).
-    """
+    """pos_weight[i] = min((N-pos_i)/pos_i, MAX_POS_WEIGHT) per dominio."""
     pos = labels.sum(dim=0).clamp(min=1.0)
     neg = float(labels.shape[0]) - pos
-    return (neg / pos).float()
+    return (neg / pos).clamp(max=MAX_POS_WEIGHT).float()
 
 
 def compute_pos_weight_scalar(labels: torch.Tensor) -> torch.Tensor:
-    """pos_weight scalare per is_followup (binario)."""
+    """pos_weight scalare per is_followup, cappato a MAX_POS_WEIGHT."""
     pos = labels.sum().clamp(min=1.0)
     neg = float(labels.shape[0]) - pos
-    return (neg / pos).unsqueeze(0)
-
+    return (neg / pos).clamp(max=MAX_POS_WEIGHT).float().unsqueeze(0)
 
 #calcola la metrica f1 per ogni dominio
 def f1_domain_macro(logits: torch.Tensor, labels: torch.Tensor) -> float:

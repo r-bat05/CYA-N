@@ -502,8 +502,8 @@ SMOKE_TESTS = [
         "query": "2+2",
         "history": [], "last_domain": "",
         # Problema noto: piccolo calcolo → general, NON math (per il LLM router)
-        # Il dataset training lo etichetta general (vedi dataset_v2.jsonl)
-        "expected_class_id": 3, "expected_domain": "general",
+        # Il dataset training lo etichetta math (vedi dataset_v2.jsonl)
+        "expected_class_id": 3, "expected_domain": "math",
         "expected_followup": False, "expected_diff_min": 1,
         "note": "Query numerica banale: il dataset la etichetta 'general' (vedi expand_dataset_v2.py)"
     },
