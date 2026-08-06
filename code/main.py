@@ -1,6 +1,13 @@
 """
-    CYA N - AI LOCAL DISPATCHER V7.1.0
+    CYA N - AI LOCAL DISPATCHER V7.2.0
     Entry Point dell'applicazione.
+
+    Novità V7.2.0:
+    - [ROUTER SWAP] llm_router.py (qwen2.5:1.5b via Ollama) rimosso dal
+      progetto. Import del router sostituito con nn_classifier.py
+      (MultiTaskMLP locale, ~15-70ms/query, nessuna chiamata Ollama per il
+      routing). Interfaccia predict() identica: nessun'altra modifica
+      richiesta nella logica di main.py.
 
     Novità V7.1.0:
     - [ROUTER] predict() ora restituisce (class_id, conf, scores, difficulty, is_followup).
@@ -28,10 +35,8 @@ import sys
 import time
 import psutil
 import config
-import dispatcher_request
 from ai_engine import get_ai_model, ResourceExhaustedError
-from llm_router import predict as router_predict, PIPELINE_CLASSES, DOMAIN_NAMES, unload_router
-from dispatcher_request import keyword_loader, _count_hits
+from nn_classifier import predict as router_predict, PIPELINE_CLASSES, DOMAIN_NAMES, unload_router
 
 _ERROR_PREFIXES    = ("Errore Ollama:", "Errore Generico:", "__SYS_WARN__:")
 _TECHNICAL_DOMAINS = {'coding', 'math', 'rights'}
@@ -40,7 +45,7 @@ _CLASS_TO_DOMAIN   = {0: 'coding', 1: 'math', 2: 'rights', 3: 'general'}
 
 def print_banner():
     print("\n" + "=" * 60)
-    print("      CYA N  |  AI LOCAL DISPATCHER V7.1.0    ")
+    print("      CYA N  |  AI LOCAL DISPATCHER V7.2.0    ")
     print("      (Coding • Math • Rights • General)      ")
     print("=" * 60 + "\n")
 

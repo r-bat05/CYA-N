@@ -195,21 +195,8 @@ SYSTEM_SETTINGS = {
         'lo stesso per',
     ],
 
-    # [ROUTER] Micro-LLM per routing semantico (sostituisce MLP frozen)
-    'router_model':      'qwen2.5:1.5b',
-    'router_keep_alive': '10m',
-
     # [CJK] Filtro caratteri Cinese/Giapponese/Coreano in clean_response().
     'cjk_filter_enabled': True,
-}
-
-# --- 5. CONFIGURAZIONE DISPATCHER (SMART MATCH & LEVENSHTEIN) ---
-LEV_MIN_LEN = 4
-
-LEV_TOLERANCE_MAP = {
-    6:            1,
-    10:           2,
-    float('inf'): 3
 }
 
 # --- 6. CONFIGURAZIONE NEURAL CLASSIFIER ---
