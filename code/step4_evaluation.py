@@ -615,7 +615,6 @@ def run_evaluation():
         try:
             class_id, confidence, domain_scores, difficulty, is_followup = predict(
                 tc['query'],
-                last_domain=tc.get('last_domain', ''),
                 history=tc.get('history', []),
             )
         except Exception as e:

@@ -3,8 +3,20 @@ nn_classifier.py — CYA N | Step 5: Neural Classifier Inference Module
 =======================================================================
 Drop-in replacement di llm_router.py.
 Stessa interfaccia pubblica:
-    predict(text, last_domain, history) → (class_id, conf, domain_scores, diff, is_followup)
+    predict(text, history) → (class_id, conf, domain_scores, diff, is_followup)
     unload_router()
+
+[FIX Criticità 3 — Report Gemini] Rimosso il parametro last_domain da
+predict(): non era mai letto nel body della funzione, residuo
+dell'euristica sticky routing (_should_sticky_route) già eliminata da
+main.py in V7.4.0. La NN non ha alcun neurone addestrato su questa
+stringa: passarla era dead code silenzioso.
+
+[FIX Criticità 2 — Report Gemini] unload_router() ora libera davvero
+encoder MiniLM (~470MB) e pesi MLP dalla RAM Python (del + gc.collect()),
+invece di essere un pass. Necessario sul vincolo hardware di sviluppo
+(8GB RAM): senza unload reale, il classificatore resta caricato mentre
+Ollama tenta di allocare il modello generativo dell'agente.
 
 Dipendenze:
   - code/classifier/nn_weights.pt    (prodotto da train_nn.py)
@@ -25,6 +37,7 @@ funzione usata in fase di training da precompute_embeddings.py.
 """
 
 import time
+import gc
 import torch
 import torch.nn as nn
 from sentence_transformers import SentenceTransformer
@@ -188,7 +201,6 @@ def _derive_class_id(
 
 def predict(
     text: str,
-    last_domain: str = '',
     history: list = None,
 ) -> Tuple[int, float, dict, int, bool]:
     history = history or []
@@ -250,4 +262,21 @@ def predict(
 
 
 def unload_router():
-    pass
+    """
+    [FIX Criticità 2] Libera esplicitamente encoder MiniLM (~470MB) e pesi
+    MLP dalla RAM Python. Va chiamata subito dopo la classificazione,
+    PRIMA che Ollama carichi il modello generativo dell'agente. Costo:
+    ricaricamento (encoder + pesi) al turno successivo (~1-3s), accettabile
+    sul vincolo hardware di sviluppo (8GB RAM).
+    """
+    global _model, _encoder, _loaded
+    if _model is None and _encoder is None:
+        return
+    del _model, _encoder
+    _model, _encoder, _loaded = None, None, False
+    gc.collect()
+    try:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass

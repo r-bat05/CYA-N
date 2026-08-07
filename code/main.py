@@ -117,7 +117,7 @@ def main():
             # ---------------------------------------------------------
             print("\n⚙️  Fase 0 — Classificazione Neurale (NN Router)...")
             class_id, confidence, domain_scores, difficulty, is_followup = router_predict(
-                user_input, last_active_domain, chat_history
+                user_input, chat_history
             )
 
             if class_id == -1:

@@ -733,7 +733,6 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "posso raccontarti un segreto", 
 
         # Fix Q4: "parabola" in contesto fisico quotidiano (non matematico)
-        "Mio figlio ha rotto qualcosa in casa per un lancio sbagliato, chi è responsabile dei danni verso il vicino?",
         "Come ci si comporta quando si rompe accidentalmente qualcosa di proprietà altrui durante un'attività sportiva?",
 
         #Macroeconomia, bilanci, finanza quotidiana

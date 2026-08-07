@@ -401,18 +401,55 @@ MANUAL_RECORDS = [
 
 # ── Helper functions ───────────────────────────────────────────────────────────
 
+_HARD_MARKERS = {
+    'coding': [
+        'algoritmo genetico', 'programmazione dinamica', 'rete neurale',
+        'crittografia', 'ellittica', 'distribuit', 'concorren',
+        'compilatore', 'kernel', 'simplesso', 'trasformata',
+        'fattorizzazione', 'complessità', 'automa cellulare',
+        'omomorfic', 'frattal', 'gestore di memoria', 'interrupt',
+    ],
+    'math': [
+        'dimostra', 'dimostrazione', 'teorema', 'per induzione', 'per assurdo',
+        'spazio di hilbert', 'spazio di banach', 'convergenza', 'topologia',
+        'varietà differenziabile', 'decomposizione spettrale',
+        'equazione differenziale', 'trasformata', 'funzione zeta',
+        'gödel', 'lebesgue', 'markov', 'mcmc', 'diagonalizza',
+    ],
+    'rights': [
+        'costituzional', 'diritto internazionale', 'giurisdizione extraterritoriale',
+        'corte penale internazionale', 'immunità diplomatica',
+        'responsabilità internazionale', "crimini contro l'umanità",
+    ],
+    'general': [
+        'paradosso', 'meccanica quantistica', 'filosofia', 'teoria delle idee',
+        'relatività', 'buco nero', 'principio di indeterminazione',
+    ],
+}
+
+
 def estimate_difficulty(query: str, is_pipeline: bool, dominant_domain: str) -> int:
     """
-    Assegnazione architetturale stabile per evitare Label Noise.
-    La difficoltà è ancorata direttamente ai cluster semantici naturali.
+    [FIX — Opzione B, Report Gemini] Sostituita la costante fissa per
+    dominio (Livello 2 per ogni query tecnica, 1 per general): non
+    forniva alla difficulty_head alcun segnale reale, riducendola a un
+    proxy del domain-label. Ora il livello 3 (tecnici) / 2 (general)
+    scatta solo in presenza di marker lessicali di complessità teorica
+    o strutturale. Preferita a un criterio basato sulla lunghezza della
+    query, che penalizzerebbe ingiustamente le molte query tecniche
+    short-form presenti nel dataset (fix P2 anti-degradazione).
+    Euristica non validata empiricamente su larga scala: da verificare
+    con uno smoke test dedicato prima di considerarla definitiva.
     """
     if is_pipeline:
         return 3
+
+    q_lower = query.lower()
+    has_hard_marker = any(m in q_lower for m in _HARD_MARKERS.get(dominant_domain, []))
+
     if dominant_domain == 'general':
-        return 1
-    
-    # Coding, Math e Rights mono-dominio sono sempre considerati elaborazioni tecniche (Livello 2)
-    return 2
+        return 2 if has_hard_marker else 1
+    return 3 if has_hard_marker else 2
 
 
 def get_dominant_domain(domain_labels: dict) -> str:
@@ -526,6 +563,17 @@ def main():
     print(f"  Manual Cases     : {len(MANUAL_RECORDS)}")
     print(f"  TOTALE           : {len(all_rec)}")
 
+    # [FIX LEAKAGE] Split PRIMA dell'augmentation: augment_class() genera
+    # varianti quasi-identiche (un solo sinonimo sostituito) della stessa
+    # frase base. Splittando DOPO l'augmentation, frase originale e sua
+    # variante possono finire l'una in train e l'altra in test/val: il
+    # modello "vede" in valutazione una quasi-copia di un esempio di
+    # training, gonfiando artificialmente le metriche. Ogni record
+    # sintetico eredita ora lo split del proprio record sorgente (già
+    # avviene gratis: augment_class() copia tutti i campi di r, incluso
+    # 'split', prima di sovrascrivere solo 'query').
+    all_rec = stratified_split(all_rec)
+
     class_map = defaultdict(list)
     for r in all_rec:
         class_map[get_class_key(r)].append(r)
@@ -544,8 +592,10 @@ def main():
     all_rec = all_rec + extra
     print(f"  Totale dopo augmentation: {len(all_rec)}")
 
+    # [FIX LEAKAGE] Split già assegnato in FASE 1, prima dell'augmentation.
+    # Questo shuffle è solo per l'ordine di scrittura nel file JSONL — NON
+    # tocca lo split, altrimenti si reintroduce il leak.
     random.shuffle(all_rec)
-    all_rec = stratified_split(all_rec)
 
     with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
         for r in all_rec:
