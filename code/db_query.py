@@ -346,6 +346,41 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Calcola la curvatura di Gauss e la curvatura media di una superficie parametrizzata.",
         "Enuncia il teorema di colorazione dei grafi planari e il relativo argomento combinatorio.",
 
+        # --- CALCOLO DIFFERENZIALE E INTEGRALE (Formule crude) ---
+        "Calcola la derivata prima di f(x) = e^(2x) * cos(x)",
+        "Risolvi l'integrale indefinito di 1/(1+x^2) dx",
+        "Trova il limite per x che tende a zero di (sin(x) - x) / x^3",
+        "Calcola d/dx [log_2(sin^2(log(1/x)))]",
+        "Dimostra che la funzione f(x) = |x| non è derivabile in x = 0",
+        "Sviluppa in serie di Taylor la funzione f(x) = ln(1+x) centrata in x=0",
+        "Trova i punti di massimo e minimo relativo per l'equazione y = x^3 - 3x + 2",
+        
+        # --- ALGEBRA LINEARE E MATRICI ---
+        "Risolvi il seguente sistema di equazioni lineari a tre incognite",
+        "Calcola il determinante e l'inversa della matrice quadrata A 3x3",
+        "Determina gli autovalori e gli autovettori associati a questa matrice",
+        "Dimostra se i vettori v=(1,2,3) e w=(4,5,6) sono linearmente indipendenti",
+        "Trova il rango della matrice incompleta del sistema",
+
+        # --- GEOMETRIA E TRIGONOMETRIA ---
+        "Trova l'equazione della retta tangente alla parabola y = x^2 nel punto P(1,1)",
+        "Calcola il coseno dell'angolo compreso tra due vettori nello spazio R^3",
+        "Dimostra il teorema dei seni applicato a un triangolo scaleno",
+        "Qual è il volume di un cilindro con raggio di base 5 cm e altezza 10 cm?",
+        "Converti le seguenti coordinate cartesiane in coordinate polari",
+
+        # --- STATISTICA, PROBABILITÀ E COMBINATORIA ---
+        "Calcola la deviazione standard e la varianza della seguente distribuzione di dati",
+        "Qual è la probabilità di ottenere due 6 lanciando contemporaneamente due dadi non truccati?",
+        "Spiega il teorema di Bayes e applicalo a questo problema di probabilità condizionata",
+        "In quanti modi diversi posso disporre 5 libri su uno scaffale?",
+        "Calcola il coefficiente binomiale (n su k) per n=8 e k=3",
+
+        # --- ARITMETICA MODULARE E LOGICA ---
+        "Trova il massimo comun divisore tra 1071 e 462 usando il metodo delle divisioni successive",
+        "Risolvi la congruenza lineare 3x ≡ 4 (mod 7)",
+        "Dimostra per induzione matematica che la somma dei primi n numeri interi è n(n+1)/2"
+
         # --- Probabilità e Statistica ---
         "Calcola la probabilità condizionata dell'evento A sapendo che si è verificato B col teorema di Bayes.",
         "Determina il valore atteso (media), la varianza e la deviazione standard della distribuzione.",

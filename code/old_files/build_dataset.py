@@ -24,7 +24,7 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from db_query import INTENT_SENTENCES, BRIDGE_SENTENCES
+from code.db_query import INTENT_SENTENCES, BRIDGE_SENTENCES
 import config
 
 EMBEDDING_MODEL = 'nomic-embed-text'

@@ -86,8 +86,8 @@ SYSTEM_SETTINGS = {
 # Fanno parte di COME la rete produce il proprio output, non lo alterano
 # a posteriori — per questo restano, a differenza delle soglie rimosse sopra.
 NEURAL_CLASSIFIER_SETTINGS = {
-    'threshold_mono':     0.35,   # soglia candidatura stadio 1 (permissiva)
-    'threshold_pipeline': 0.60,   # soglia conferma coppia stadio 2 (severa)
+    'threshold_mono':     0.50,   # soglia candidatura stadio 1 (permissiva)
+    'threshold_pipeline': 0.75,   # soglia conferma coppia stadio 2 (severa)
 }
 
 # --- 5. CONFIGURAZIONE PIPELINE MULTI-AGENTE ---

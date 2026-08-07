@@ -13,21 +13,17 @@ Sorgenti:
 Output: code/dataset_v2.jsonl
 """
 
-import sys, json, random, re
+import json, random, re
 from collections import defaultdict, Counter
-from pathlib import Path
-
-# ── Path setup ─────────────────────────────────────────────────────────────────
-CODE_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(CODE_DIR / 'old_files'))
 from db_query import INTENT_SENTENCES, BRIDGE_SENTENCES
+from pathlib import Path
 
 random.seed(42)
 
 # ── Costanti ───────────────────────────────────────────────────────────────────
 TARGET_MONO = 250   # min esempi per ogni dominio mono
 TARGET_PIPE = 80    # min esempi per ogni tipo pipeline
-OUTPUT_PATH = CODE_DIR / 'dataset_v2.jsonl'
+OUTPUT_PATH = Path(__file__).resolve().parent / 'dataset_v2.jsonl'
 
 BRIDGE_MAP = {
     ('coding', 'rights'):  ('rights->coding', True),
@@ -407,46 +403,17 @@ MANUAL_RECORDS = [
 
 def estimate_difficulty(query: str, is_pipeline: bool, dominant_domain: str) -> int:
     """
-    Stima la difficoltà (1-3) analizzando la struttura e la densità concettuale
-    con confini di parola (word boundaries) per evitare falsi positivi.
+    Assegnazione architetturale stabile per evitare Label Noise.
+    La difficoltà è ancorata direttamente ai cluster semantici naturali.
     """
-    # 1. Le pipeline sono intrinsecamente complesse
     if is_pipeline:
         return 3
-
-    word_count = len(query.split())
-
-    # 2. Dominio general: mai oltre livello 2
     if dominant_domain == 'general':
-        return 2 if word_count >= 12 else 1
-
-    # 3. Domini tecnici troppo corti restano a 1
-    if word_count < 6:
         return 1
+    
+    # Coding, Math e Rights mono-dominio sono sempre considerati elaborazioni tecniche (Livello 2)
+    return 2
 
-    q_lower = query.lower()
-
-    # Pattern con word boundaries (\b) per evitare match parziali (es. "in-sicurezza")
-    advanced_patterns = [
-        r"\bdimostra\b", r"\bottimizza\b", r"\barchitettura\b", r"\bsicurezza\b", 
-        r"\bcomplessità\b", r"\bdifferenziale\b", r"\bteorema\b", r"\bnormativa\b", 
-        r"\bcrittografia\b", r"\basintotica\b", r"\bdistribuzione\b", r"\balgoritmo\b", 
-        r"\bstrutturale\b", r"\bsincronizzazione\b", r"\bimplementa\b", 
-        r"\bvalutazione\b", r"\bparadigma\b", r"\bconcorrenza\b"
-    ]
-
-    # Misuriamo la densità concettuale usando le espressioni regolari
-    conceptual_density = sum(1 for pattern in advanced_patterns if re.search(pattern, q_lower))
-
-    # Requisito forte per Difficoltà 3
-    if conceptual_density >= 2:
-        return 3
-
-    # Requisito medio per Difficoltà 2
-    if conceptual_density == 1 or word_count >= 10:
-        return 2
-
-    return 1
 
 def get_dominant_domain(domain_labels: dict) -> str:
     """Restituisce il dominio con valore 1 più alto (o il primo se pari)."""
