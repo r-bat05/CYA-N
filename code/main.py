@@ -1,36 +1,48 @@
 """
-    CYA N - AI LOCAL DISPATCHER V7.2.0
+    CYA N - AI LOCAL DISPATCHER V7.4.0
     Entry Point dell'applicazione.
 
-    Novità V7.2.0:
-    - [ROUTER SWAP] llm_router.py (qwen2.5:1.5b via Ollama) rimosso dal
-      progetto. Import del router sostituito con nn_classifier.py
-      (MultiTaskMLP locale, ~15-70ms/query, nessuna chiamata Ollama per il
-      routing). Interfaccia predict() identica: nessun'altra modifica
-      richiesta nella logica di main.py.
+    Novità V7.4.0 (Routing purity — output NN come unica fonte):
+    - [ROUTING PURITY] Rimossa _should_sticky_route() e l'intero meccanismo
+      di Domain Retention/override basato su soglie di confidenza Python
+      (sticky_tech_switch_min, sticky_short_override_min, sticky_short_words).
+      Il dominio instradato è ora SEMPRE quello indicato da class_id, senza
+      eccezioni basate su last_active_domain.
+    - [ROUTING PURITY] Rimossa la declassificazione pipeline per query corte
+      (min_words_for_pipeline): se class_id è una classe pipeline (4/5/6),
+      la pipeline viene eseguita a prescindere dal numero di parole.
+    - [ROUTING PURITY] Rimossa la promozione "SCORE PIPELINE" (mono→pipeline
+      via domain_scores + pipeline_score_min): non esiste più nessuna logica
+      che promuove una classificazione mono-dominio della NN a pipeline.
+    - [ROUTING PURITY] Rimossa [P0] GUARDIA GENERAL: era già codice morto
+      dopo la rimozione della promozione score-based, dato che 'general' non
+      è mai incluso in PIPELINE_CLASSES (vedi nn_classifier.py).
+    - [ROUTING PURITY] Rimosso _TECHNICAL_DOMAINS: usato solo dai meccanismi
+      sopra.
+    - Risultato: class_id (e la sua mappatura PIPELINE_CLASSES/_CLASS_TO_DOMAIN)
+      è l'UNICA fonte che decide dominio singolo vs pipeline. domain_scores,
+      difficulty e is_followup restano solo a scopo di log/debug — nessuna
+      logica in questo file li usa più per alterare l'instradamento.
+    - [HISTORY] domain_switched resta: NON è instradamento, decide solo se
+      isolare la chat history passata all'agente per evitare contaminazione
+      tra domini diversi. Non cambia mai il dominio scelto dalla NN.
 
-    Novità V7.1.0:
-    - [ROUTER] predict() ora restituisce (class_id, conf, scores, difficulty, is_followup).
-    - [STICKY V7.2] _should_sticky_route semplificato: LLM-first.
-      La logica Python ridotta a 3 step:
-        1. Override esplicito (context switch tecnico)
-        2. LLM is_followup=True → stick
-        3. Pipeline follow-up (Python-side, fuori visibilità LLM)
-      Rimossi step query_corta e weak_general: il LLM ora li gestisce direttamente
-      tramite is_followup. Questo elimina i falsi sticky su "ricetta sacher?",
-      "Dio esiste?", "consiglio scarpe" quando il LLM classifica correttamente.
-    - [HISTORY] History isolation su domain switch: quando il dominio cambia,
-      viene passata history vuota all'agente per evitare contaminazione da
-      risposte precedenti di un dominio diverso (fix "esempio?" → risposta TFR).
-    - [LOG] Stampa difficulty e domain_scores dal router.
+    Novità V7.3.0 (Cleanup post-branch build_classifier_NN):
+    - [CLEANUP] Rimosso il ramo di fallback a keyword-dispatcher (mai
+      importato, codice morto). Se il classifier non è disponibile, il
+      turno viene scartato con un errore esplicito.
+    - [CLEANUP] Rimossa _has_domain_keywords() e last_pipeline_domains.
+
+    Novità V7.2.0:
+    - [ROUTER SWAP] llm_router.py rimosso. Import sostituito con
+      nn_classifier.py (MultiTaskMLP locale, nessuna chiamata Ollama per
+      il routing). Interfaccia predict() identica.
 
     Novità V7.0.0:
-    - [NEURAL] Sostituito routing k-NN con neural_classifier.py → llm_router.py
-    - [NEURAL] Pipeline detection integrata nel class_id del classifier
-    - [CLEANUP] Rimossi classify_knn, initialize_store, pipeline_order_matrix
+    - [NEURAL] Sostituito routing k-NN con neural_classifier.py.
+    - [NEURAL] Pipeline detection integrata nel class_id del classifier.
 """
 
-import re as _re
 import sys
 import time
 import psutil
@@ -38,14 +50,13 @@ import config
 from ai_engine import get_ai_model, ResourceExhaustedError
 from nn_classifier import predict as router_predict, PIPELINE_CLASSES, DOMAIN_NAMES, unload_router
 
-_ERROR_PREFIXES    = ("Errore Ollama:", "Errore Generico:", "__SYS_WARN__:")
-_TECHNICAL_DOMAINS = {'coding', 'math', 'rights'}
-_CLASS_TO_DOMAIN   = {0: 'coding', 1: 'math', 2: 'rights', 3: 'general'}
+_ERROR_PREFIXES  = ("Errore Ollama:", "Errore Generico:", "__SYS_WARN__:")
+_CLASS_TO_DOMAIN = {0: 'coding', 1: 'math', 2: 'rights', 3: 'general'}
 
 
 def print_banner():
     print("\n" + "=" * 60)
-    print("      CYA N  |  AI LOCAL DISPATCHER V7.2.0    ")
+    print("      CYA N  |  AI LOCAL DISPATCHER V7.4.0    ")
     print("      (Coding • Math • Rights • General)      ")
     print("=" * 60 + "\n")
 
@@ -63,74 +74,6 @@ def _is_error(result: str) -> bool:
     return not result or any(result.startswith(p) for p in _ERROR_PREFIXES)
 
 
-def _has_domain_keywords(query: str, domain: str) -> bool:
-    """Restituisce True se la query contiene almeno una keyword del dominio dato."""
-    kw_map = {
-        'coding': keyword_loader.CODING,
-        'math':   keyword_loader.MATH,
-        'rights': keyword_loader.RIGHTS,
-    }
-    if domain not in kw_map:
-        return False
-    s_lower = query.lower()
-    tokens  = set(_re.findall(r'[a-zA-Z0-9_+#]+', s_lower))
-    return _count_hits(tokens, s_lower, kw_map[domain]) > 0
-
-
-def _should_sticky_route(
-    query: str,
-    sem_domains: list,
-    sem_confidence: float,
-    last_domain: str,
-    is_followup_llm: bool = False,
-    last_pipeline_domains: tuple = ('', ''),
-) -> tuple:
-    """
-    Domain Retention V7.2 — LLM-first.
-
-    Il LLM (tramite is_followup_llm) è il segnale primario per il follow-up.
-    Il Python gestisce solo ciò che il LLM non può vedere:
-      1. Override esplicito (context switch verso dominio tecnico diverso)
-      2. LLM is_followup=True → stick
-      3. Pipeline follow-up (Python-side: last_pipeline_domains non è nel contesto LLM)
-
-    Returns: (should_stick, sticky_domain, reason, override_target)
-    """
-    if not last_domain or last_domain not in _TECHNICAL_DOMAINS:
-        return False, last_domain, '', None
-
-    tech_switch_min    = config.SYSTEM_SETTINGS.get('sticky_tech_switch_min',    0.38)
-    short_override_min = config.SYSTEM_SETTINGS.get('sticky_short_override_min', 0.65)
-    short_threshold    = config.SYSTEM_SETTINGS.get('sticky_short_words',        10)
-
-    word_count = len(query.split())
-    top_domain = sem_domains[0] if sem_domains else 'general'
-    is_short   = word_count < short_threshold
-
-    # --- 1. Override: context switch verso dominio tecnico diverso ---
-    override_threshold = short_override_min if is_short else tech_switch_min
-    switching_domains  = [
-        d for d in sem_domains
-        if d in _TECHNICAL_DOMAINS and d != last_domain
-    ]
-    if switching_domains and sem_confidence >= override_threshold:
-        override_target = top_domain if top_domain in switching_domains else switching_domains[0]
-        return False, last_domain, '', override_target
-
-    # --- 2. LLM dice follow-up → stick ---
-    if is_followup_llm:
-        return True, last_domain, 'llm_followup', None
-
-    # --- 3. Pipeline follow-up (Python-side, fuori dalla visibilità LLM) ---
-    pipe_a, pipe_b = last_pipeline_domains
-    if (pipe_a and pipe_b
-            and last_domain == pipe_b
-            and top_domain == 'general'
-            and _has_domain_keywords(query, pipe_a)):
-        return True, pipe_a, f'pipeline_followup({pipe_a})', None
-
-    return False, last_domain, '', None
-
 def main():
     print_banner()
 
@@ -145,7 +88,6 @@ def main():
     max_history_turns       = config.SYSTEM_SETTINGS.get('max_history_turns', 3)
     max_messages            = max_history_turns * 2
     last_active_domain: str = ''
-    last_pipeline_domains: tuple = ('', '')
 
     while True:
         try:
@@ -164,163 +106,47 @@ def main():
 
             if user_input.lower() in ['/reset', '/clear']:
                 chat_history.clear()
-                last_active_domain    = ''
-                last_pipeline_domains = ('', '')
+                last_active_domain = ''
                 print("🔄 Chat history e dominio attivo azzerati.\n")
                 continue
 
             # ---------------------------------------------------------
-            # FASE 0: ROUTING NEURALE
+            # FASE 0: ROUTING NEURALE — class_id è l'UNICA fonte di verità.
+            # domain_scores, difficulty e is_followup sono solo diagnostica:
+            # nessuna riga di codice sotto li usa per cambiare l'instradamento.
             # ---------------------------------------------------------
-            print("\n⚙️  Fase 0 — Classificazione Neurale (LLM Router)...")
-            class_id, confidence, domain_scores, difficulty, is_followup_llm = router_predict(
+            print("\n⚙️  Fase 0 — Classificazione Neurale (NN Router)...")
+            class_id, confidence, domain_scores, difficulty, is_followup = router_predict(
                 user_input, last_active_domain, chat_history
             )
 
-            is_hybrid  = False
-            domain_a   = domain_b = ""
-            domain_switched = False  # [HISTORY] flag per isolamento history
-            categories_segments = {k: [] for k in agents.keys()}
-
-            # =============================================================
-            # CASO FALLBACK: classifier non disponibile
-            # =============================================================
             if class_id == -1:
-                print("⚠️  [FALLBACK] Neural classifier non disponibile.")
-                print("🔄 [FALLBACK] Attivazione instradamento a Keyword come emergenza...")
+                print("⚠️  [ERRORE] Neural classifier non disponibile: richiesta non instradabile.")
+                print("   Verifica che 'classifier/nn_weights.pt' sia presente (esegui train_nn.py) e riprova.")
+                print("\n" + "_" * 60 + "\n")
+                continue
 
-                is_hybrid, domain_a, domain_b = dispatcher_request.detect_hybrid(user_input)
-                if not is_hybrid:
-                    winning_domain = dispatcher_request.classify_segment(user_input)
-                    if winning_domain == 'general':
-                        # In fallback: sticky solo se LLM non disponibile, usa Python puro
-                        stick, sticky_domain, reason, override_target = _should_sticky_route(
-                            user_input, ['general'], 1.0, last_active_domain,
-                            is_followup_llm=False,
-                            last_pipeline_domains=last_pipeline_domains,
-                        )
-                        if stick:
-                            print(f"📎 [STICKY] Keyword fallback su 'general'. "
-                                  f"Domain Retention → {sticky_domain.upper()} [{reason}]")
-                            winning_domain = sticky_domain
-                        elif override_target:
-                            winning_domain = override_target
+            if domain_scores:
+                scores_str = ' | '.join(f"{k}:{v:.2f}" for k, v in domain_scores.items())
+                print(f"🔍 [DEBUG NEURAL] Scores: [{scores_str}] | "
+                      f"Difficulty: {difficulty} | Followup: {is_followup}")
 
-                    if winning_domain != last_active_domain and last_active_domain:
-                        domain_switched = True
+            domain_switched = False  # [HISTORY] solo igiene contesto, non instradamento
+            is_hybrid        = False
+            domain_a = domain_b = ""
 
-                    categories_segments[winning_domain if winning_domain in categories_segments
-                                        else 'general'] = [user_input]
-
-            # =============================================================
-            # ROUTING NEURALE VALIDO
-            # =============================================================
-            else:
-                word_count = len(user_input.split())
-                min_words  = config.PIPELINE_SETTINGS.get('min_words_for_pipeline', 12)
-
-                # Log scores e difficulty
-                if domain_scores:
-                    scores_str = ' | '.join(f"{k}:{v:.2f}" for k, v in domain_scores.items())
-                    print(f"🔍 [DEBUG NEURAL] Scores: [{scores_str}] | Difficulty: {difficulty}")
-
-                # [SCORE PIPELINE] top_domain inizializzato qui per visibilità fuori dall'else
-                top_domain = ''
-
-                if class_id in PIPELINE_CLASSES:
-                    domain_a, domain_b = PIPELINE_CLASSES[class_id]
-                    original_sem_domains  = [domain_a, domain_b]
-                    is_pipeline_candidate = True
-                else:
-                    top_domain = _CLASS_TO_DOMAIN[class_id]
-                    original_sem_domains  = [top_domain]
-                    is_pipeline_candidate = False
-
-                # Declassifica pipeline se query troppo corta
-                if is_pipeline_candidate and word_count < min_words:
-                    print(f"🔍 [DEBUG NEURAL] Classe pipeline declassata: "
-                          f"query troppo corta ({word_count} < {min_words} parole).")
-                    is_pipeline_candidate = False
-
-                # [SCORE PIPELINE] Safety net LLM-based: promuove a pipeline se il LLM
-                # ha classificato mono-domain ma i suoi stessi score indicano dual-domain.
-                # NON usa keyword — dipende esclusivamente dagli score restituiti dal router.
-                # Condizioni: mono-domain originale | query >= min_words | dominio tecnico
-                #             | score secondario tecnico >= soglia | difficoltà >= 2
-                if (not is_pipeline_candidate
-                        and top_domain in _TECHNICAL_DOMAINS
-                        and word_count >= min_words
-                        and difficulty >= 2
-                        and domain_scores):
-                    pipeline_score_min = config.PIPELINE_SETTINGS.get('pipeline_score_min', 0.15)
-                    sec = {d: domain_scores.get(d, 0.0) for d in _TECHNICAL_DOMAINS if d != top_domain}
-                    best_sec, best_sec_score = max(sec.items(), key=lambda x: x[1])
-                    if best_sec_score >= pipeline_score_min:
-                        pair = frozenset({top_domain, best_sec})
-                        domain_a, domain_b = config.PIPELINE_SETTINGS['pipeline_order_matrix'].get(
-                            pair, (top_domain, best_sec)
-                        )
-                        is_pipeline_candidate = True
-                        print(f"🔀 [SCORE PIPELINE] Promozione score-based: "
-                              f"{domain_a.upper()}→{domain_b.upper()} "
-                              f"(secondary={best_sec_score:.2f}, diff={difficulty})")
-
+            if class_id in PIPELINE_CLASSES:
+                domain_a, domain_b = PIPELINE_CLASSES[class_id]
+                is_hybrid = True
                 print(f"🔍 [DEBUG NEURAL] Classe={DOMAIN_NAMES[class_id]} | "
                       f"Confidence={confidence:.2f} | "
-                      f"Pipeline={'CONFERMATA' if is_pipeline_candidate else 'NO'}")
-
-                if is_pipeline_candidate:
-                    print(f"🔍 [DEBUG NEURAL] Pipeline diretta: "
-                          f"{domain_a.upper()} → {domain_b.upper()} "
-                          f"(sticky routing bypassato)")
-                    is_hybrid = True
-
-                else:
-                    stick, sticky_domain, reason, override_target = _should_sticky_route(
-                        user_input, original_sem_domains, confidence, last_active_domain,
-                        is_followup_llm=is_followup_llm,
-                        last_pipeline_domains=last_pipeline_domains,
-                    )
-
-                    if stick:
-                        print(f"📎 [STICKY] Domain Retention attivo: "
-                              f"routing forzato → {sticky_domain.upper()} "
-                              f"(last='{last_active_domain}', "
-                              f"neural top='{original_sem_domains[0]}', conf={confidence:.2f}, "
-                              f"trigger='{reason}')")
-                        is_hybrid = False
-                        categories_segments[sticky_domain] = [user_input]
-                        # sticky → stesso dominio, no switch
-
-                    elif override_target:
-                        print(f"🔀 [SWITCH] Context switch rilevato: "
-                              f"{last_active_domain.upper() if last_active_domain else 'NONE'} → "
-                              f"{override_target.upper()} "
-                              f"(conf={confidence:.2f})")
-                        is_hybrid = False
-                        domain_switched = True  # [HISTORY] dominio cambia → isola history
-                        categories_segments[override_target if override_target in categories_segments
-                                            else 'general'] = [user_input]
-
-                    else:
-                        target = original_sem_domains[0]
-                        print(f"🔍 [DEBUG NEURAL] Dominio: {target.upper()}")
-                        if target != last_active_domain and last_active_domain:
-                            domain_switched = True  # [HISTORY] dominio cambia → isola history
-                        categories_segments[target if target in categories_segments
-                                            else 'general'] = [user_input]
-
-            # ---------------------------------------------------------
-            # [P0] GUARDIA GENERAL
-            # ---------------------------------------------------------
-            if is_hybrid and 'general' in (domain_a, domain_b):
-                target = 'general' if domain_a == 'general' else domain_a
-                print(f"🔍 [P0 GENERAL GUARD] Downgrade ibrido: GENERAL isolato. "
-                      f"Routing mono-dominio → {target.upper()}")
-                is_hybrid = False
-                if target != last_active_domain and last_active_domain:
-                    domain_switched = True
-                categories_segments[target] = [user_input]
+                      f"Pipeline: {domain_a.upper()} → {domain_b.upper()}")
+            else:
+                target = _CLASS_TO_DOMAIN[class_id]
+                print(f"🔍 [DEBUG NEURAL] Classe={DOMAIN_NAMES[class_id]} | "
+                      f"Confidence={confidence:.2f} | Dominio: {target.upper()}")
+                if last_active_domain and target != last_active_domain:
+                    domain_switched = True  # [HISTORY] dominio cambia → isola history
 
             unload_router()
 
@@ -393,8 +219,7 @@ def main():
                     print(result)
                 else:
                     _update_history(chat_history, user_input, result, max_messages)
-                    last_active_domain    = domain_b
-                    last_pipeline_domains = (domain_a, domain_b)
+                    last_active_domain = domain_b
 
                 print("\n" + "_" * 60 + "\n")
                 continue
@@ -402,44 +227,33 @@ def main():
             # ---------------------------------------------------------
             # ESECUZIONE MONO-DOMINIO
             # ---------------------------------------------------------
-            has_tasks = any(segments for segments in categories_segments.values())
-            if not has_tasks:
-                print("⚠️  Input non processabile o archi non individuati.")
+            ai_agent = agents[target]
+
+            # [HISTORY] Isola la history se il dominio è cambiato: evita che
+            # il modello del nuovo dominio "veda" risposte di un dominio
+            # diverso e generi output contaminati. Non altera MAI target.
+            effective_history = [] if domain_switched else chat_history
+            if domain_switched:
+                print(f"🔄 [HISTORY] Domain switch rilevato: history isolata per {target.upper()}")
+
+            print(f"\n╭── 🧠 MODULO [{target.upper()}] in azione...")
+            print(f"│ Modello: {ai_agent.model_name}")
+            print(f"╰──────────────────────────────────────────")
+
+            try:
+                result = ai_agent.resolve(user_input, effective_history)
+            except ResourceExhaustedError as e:
+                print(f"\n⛔ OOM — Esecuzione interrotta: {e}")
+                print("\n" + "_" * 60 + "\n")
                 continue
 
-            for category, segments in categories_segments.items():
-                if not segments:
-                    continue
+            if _is_error(result):
+                print(result)
+            else:
+                _update_history(chat_history, user_input, result, max_messages)
+                last_active_domain = target   # aggiorna sempre, anche su 'general'
 
-                full_query = "\n".join(segments)
-                ai_agent   = agents[category]
-
-                # [HISTORY] Isola la history se il dominio è cambiato:
-                # evita che il modello del nuovo dominio "veda" risposte
-                # di un dominio diverso e generi output contaminati.
-                effective_history = [] if domain_switched else chat_history
-                if domain_switched:
-                    print(f"🔄 [HISTORY] Domain switch rilevato: history isolata per {category.upper()}")
-
-                print(f"\n╭── 🧠 MODULO [{category.upper()}] in azione...")
-                print(f"│ Modello: {ai_agent.model_name}")
-                print(f"╰──────────────────────────────────────────")
-
-                try:
-                    result = ai_agent.resolve(full_query, effective_history)
-                except ResourceExhaustedError as e:
-                    print(f"\n⛔ OOM — Esecuzione interrotta: {e}")
-                    print("\n" + "_" * 60 + "\n")
-                    continue
-
-                if _is_error(result):
-                    print(result)
-                else:
-                    _update_history(chat_history, user_input, result, max_messages)
-                    last_active_domain    = category          # aggiorna sempre, anche su 'general'
-                    last_pipeline_domains = ('', '')          # reset sempre su mono-domain
-
-                print("\n" + "_" * 60 + "\n")
+            print("\n" + "_" * 60 + "\n")
 
         except KeyboardInterrupt:
             print("\n\n🛑 Interruzione manuale rilevata.")
