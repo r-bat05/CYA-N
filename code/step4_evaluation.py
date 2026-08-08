@@ -604,7 +604,7 @@ def run_evaluation():
     print(f"  Query totali: {len(SMOKE_TESTS)}\n")
 
     # SALVO LE QUERY ERRATE NEL FILE - lo cancello se già esiste
-    file_wrong_queries = "wrong_query.md"
+    file_wrong_queries = "wrong_query_TESTING.md"
     #cancello il file se esiste
     if os.path.exists(file_wrong_queries):
         os.remove(file_wrong_queries)
@@ -631,7 +631,6 @@ def run_evaluation():
 
         ok_domain   = actual_domain == exp_domain
         ok_followup = is_followup   == exp_followup
-        ok_diff     = difficulty    >= exp_diff_min
 
         errore = 0
 

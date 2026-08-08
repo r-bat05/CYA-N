@@ -612,13 +612,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Spiega la disciplina giuridica delle firme elettroniche (semplice, avanzata, qualificata) e del CAD.",
 
         # --- Lato rights: frasi originali Math-Rights ---
-        "Qual è la formula matematica e legale stabilita dalla normativa italiana per calcolare il TFR netto?",
-        "Come si calcola matematicamente il piano di ammortamento alla francese per un mutuo secondo la legge?",
-        "Qual è il calcolo legale esatto per la ripartizione millesimale delle spese condominiali del tetto?",
         "Cosa prevede la giurisprudenza per il calcolo dell'anatocismo e degli interessi di mora sui debiti?",
-        "Spiegami come si calcolano matematicamente le quote di legittima in una successione complessa.",
-        "Quale metodo di calcolo numerico prevede la legge italiana per applicare l'adeguamento ISTAT agli assegni di mantenimento?",
-        "Come si quantifica il danno biologico permanente usando le tabelle del Tribunale di Milano?",
         "Cosa prevede la normativa europea in merito al calcolo del TAEG nei contratti di finanziamento?",
         "Come si calcola l'imposta di registro e l'IVA per la compravendita immobiliare secondo l'erario.",
         "Quali sono i criteri legali per determinare il superamento del tasso soglia dell'usura bancaria?",

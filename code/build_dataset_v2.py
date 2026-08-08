@@ -315,6 +315,28 @@ MANUAL_RECORDS = [
     _cd("è legale vendere dati statistici anonimi?", _R, 2, ["Come funziona l'analisi della varianza ANOVA?"]),
     _cd("quali norme regolano le scommesse sportive in Italia?", _R, 2, ["Spiega la probabilità condizionata."]),
 
+    # ── SWITCH VERSO CODING (Da General, Math, Rights) ──
+    _cd("scrivi uno script in Python per fare web scraping", _C, 2, ["Come faccio a coltivare i pomodori in balcone?"]),
+    _cd("implementa un'architettura microservizi in Node.js", _C, 3, ["Qual è l'integrale definito di x al quadrato?"]),
+    _cd("come si risolve un merge conflict su Git?", _C, 1, ["Cosa prevede l'articolo 2043 del codice civile sui danni?"]),
+    _cd("configura un cluster Kubernetes con Terraform", _C, 3, ["Qual è il miglior film di Quentin Tarantino?"]),
+    _cd("scrivi una funzione C++ per invertire una stringa", _C, 1, ["Spiega il teorema di Bayes sulla probabilità condizionata."]),
+
+    # ── SWITCH VERSO MATH (Da General, Coding, Rights) ──
+    _cd("calcola gli autovalori di questa matrice 3x3", _M, 2, ["Come si centra verticalmente un div in CSS?"]),
+    _cd("dimostra per induzione che la somma dei primi n numeri è n(n+1)/2", _M, 2, ["Quali sono i requisiti per ottenere il divorzio breve?"]),
+    _cd("qual è lo sviluppo in serie di Taylor del seno?", _M, 2, ["Come si prepara la vera carbonara romana?"]),
+    _cd("risolvi questa equazione differenziale di secondo ordine", _M, 3, ["Implementa un'API REST in linguaggio Go."]),
+    _cd("calcola la probabilità di ottenere due sei lanciando due dadi", _M, 1, ["Dove posso andare in vacanza ad agosto spendendo poco?"]),
+
+    # ── SWITCH VERSO RIGHTS (Da General, Coding, Math) ──
+    _cd("cosa rischia penalmente chi commette il reato di diffamazione online?", _R, 2, ["Come funziona il garbage collector in Java?"]),
+    _cd("quali sono i diritti di un lavoratore licenziato senza giusta causa?", _R, 2, ["Qual è il limite per x che tende a zero di sin(x)/x?"]),
+    _cd("come funziona l'affidamento congiunto dei figli in caso di separazione?", _R, 2, ["Consigliami un buon libro fantasy da leggere."]),
+    _cd("quali sanzioni prevede il GDPR per la perdita di dati sanitari?", _R, 2, ["Spiega la scomposizione ai valori singolari (SVD) di una matrice."]),
+    _cd("come si fa ricorso al TAR contro l'esito di un concorso pubblico?", _R, 2, ["Configura un database PostgreSQL utilizzando un file docker-compose."]),
+
+
     # ── Query ambigue SENZA history (→ general) ──
     _r("ciao, come stai?", _G, 1),
     _r("grazie!",          _G, 1),
