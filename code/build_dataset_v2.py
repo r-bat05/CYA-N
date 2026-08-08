@@ -397,6 +397,28 @@ MANUAL_RECORDS = [
     _cd("come si fa il nodo alla cravatta?",                       _G, 1, ["Dimostra il teorema di Bayes con un esempio."]),
     _cd("mi dai un consiglio per dormire meglio?",                 _G, 1, ["Spiega il funzionamento di un container Docker."]),
     _cd("qual è la differenza tra tè verde e tè nero?",            _G, 1, ["Quali sanzioni prevede il GDPR per una violazione grave?"]),
+
+    # ── [FIX wrong_query.md] Ulteriore rinforzo negative-class is_followup:
+    #    i test falliti su domain_switch corrispondono a query IDENTICHE già
+    #    presenti sopra ma comunque misclassificate a is_followup=True → il
+    #    problema non è copertura dati ma calibrazione (vedi MAX_POS_WEIGHT).
+    #    Questi 15 record ampliano comunque la diversità lessicale/tematica
+    #    della classe negativa per dare più segnale al training. ──
+    _cd("mi consigli un buon vino per la cena?",                   _G, 1, ["Come si implementa un web scraper con BeautifulSoup?"]),
+    _cd("che ore sono a New York adesso?",                         _G, 1, ["Spiega la differenza tra TCP e UDP."]),
+    _cd("qual è la canzone più ascoltata quest'anno?",             _G, 1, ["Come si scrive un decoratore in Python?"]),
+    _cd("mi consigli un buon profumo da regalare?",                _G, 1, ["Implementa un Dockerfile multi-stage per Node.js."]),
+    _cd("come si gioca a burraco?",                                _G, 1, ["Come funziona il garbage collector in Java?"]),
+    _cd("quanti pianeti ci sono nel sistema solare?",              _G, 1, ["Calcola l'integrale improprio di 1/x^2 da 1 a infinito."]),
+    _cd("mi consigli uno sport da iniziare a 30 anni?",            _G, 1, ["Dimostra il teorema di Rolle."]),
+    _cd("qual è il fiume più lungo del mondo?",                    _G, 1, ["Calcola gli autovalori di una matrice 4x4."]),
+    _cd("come si prepara un buon caffè con la moka?",              _G, 1, ["Spiega la distribuzione di Poisson."]),
+    _cd("mi racconti una barzelletta sui matematici?",             _G, 1, ["Risolvi l'equazione differenziale del secondo ordine."]),
+    _cd("cosa mi consigli per un regalo di compleanno economico?", _G, 1, ["Cosa prevede il Codice del Consumo sulla garanzia legale?"]),
+    _cd("quali sono le migliori app per imparare l'inglese?",      _G, 1, ["Come funziona il ricorso al TAR?"]),
+    _cd("mi dai qualche consiglio per un colloquio da remoto?",    _G, 1, ["Quali sono le tutele per il whistleblowing aziendale?"]),
+    _cd("qual è il modo migliore per fare amicizia in una nuova città?", _G, 1, ["Cosa prevede la Costituzione sul referendum abrogativo?"]),
+    _cd("come si fa a togliere una macchia di grasso da una giacca?",    _G, 1, ["Spiega la differenza tra dolo e colpa nel diritto penale."]),
 ]
 
 # ── Helper functions ───────────────────────────────────────────────────────────

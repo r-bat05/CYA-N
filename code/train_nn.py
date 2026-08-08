@@ -112,12 +112,13 @@ def load_pkl(path: Path) -> dict:
 
 
 # [FIX Report Gemini #1] Cap anti-distorsione: un pos_weight troppo alto
-# (14-30x sui dati attuali) spinge i logit artificialmente in alto anche
-# su esempi ambigui, causando falsi positivi is_followup=True su switch
-# di dominio (vedi wrong_query.md, categoria E-CD). Il cap preserva il
-# beneficio del pos_weight (recall sulla classe rara) senza la distorsione
-# sistemica sul resto della distribuzione.
-MAX_POS_WEIGHT = 8.0
+# spinge i logit artificialmente in alto anche su esempi ambigui/negativi,
+# causando falsi positivi is_followup=True sia su switch di dominio sia
+# su query mono-dominio senza history (vedi wrong_query.md). Abbassato da
+# 8.0 a 5.0: preserva parte del beneficio del pos_weight (recall sui
+# followup corti tipo "perché?") riducendo la distorsione sistemica sul
+# resto della distribuzione.
+MAX_POS_WEIGHT = 5.0
 
 
 def compute_pos_weights_domain(labels: torch.Tensor) -> torch.Tensor:
