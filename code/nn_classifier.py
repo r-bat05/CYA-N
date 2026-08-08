@@ -24,7 +24,7 @@ Dipendenze:
 
 [FIX — Bug A] Le soglie DOMAIN_THRESHOLD e PIPELINE_PAIR_THRESHOLD erano
 hardcoded a 0.50 ENTRAMBE, ignorando config.NEURAL_CLASSIFIER_SETTINGS
-(threshold_mono=0.35, threshold_pipeline=0.60) già definito ma mai
+(valori correnti in config.py — vedi NEURAL_CLASSIFIER_SETTINGS) già definito ma mai
 importato. DOMAIN_THRESHOLD era inoltre dead code: no   n referenziata in
 nessuna funzione. La doppia soglia "candidatura permissiva / conferma
 severa" descritta nei commenti originali non esisteva mai a runtime.
