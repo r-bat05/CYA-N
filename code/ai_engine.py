@@ -445,11 +445,12 @@ class GptOssAI(BaseAI):
 
 
 def get_ai_model(category: str):
-    if category == 'coding':
-        return CodeLlamaAI()
-    elif category == 'math':
-        return DeepSeekAI()
-    elif category == 'rights':
-        return GptOssAI(category='rights')
-    else:
-        return GptOssAI(category='general')
+    match category:
+        case 'coding':
+            return CodeLlamaAI()
+        case 'math':
+            return DeepSeekAI()
+        case 'rights':
+            return GptOssAI(category='rights')
+        case _:
+            return GptOssAI(category='general')

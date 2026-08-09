@@ -1,96 +1,77 @@
 # 🧠 CYA N (Choose Your AI - Noob)
 
-[![Versione](https://img.shields.io/badge/Versione-7.1.0_Dev-orange.svg)]()
+[![Versione](https://img.shields.io/badge/Versione-7.4.0_Dev-orange.svg)]()
 [![Python](https://img.shields.io/badge/Python-3.8+-yellow.svg)]()
 [![Ollama](https://img.shields.io/badge/Backend-Ollama-black.svg)]()
-[![Router](https://img.shields.io/badge/Router-LLM_qwen2.5:1.5b-purple.svg)]()
+[![Classifier](<https://img.shields.io/badge/Classifier-MultiTaskMLP_%3C20ms-blueviolet.svg>)]()
+[![Accuracy](https://img.shields.io/badge/Routing_Accuracy-93.2%25-brightgreen.svg)]()
 [![Privacy](https://img.shields.io/badge/Privacy-100%25_Offline-success.svg)]()
 
-**CYA N** è un orchestratore intelligente per Large Language Models (LLM) progettato per funzionare interamente in locale. Agisce come un **dispatcher semantico**: analizza ogni richiesta tramite un micro-LLM classificatore, smistando automaticamente l'input verso l'agente IA più qualificato o orchestrando una collaborazione tra più agenti per query complesse.
+**CYA N** è un orchestratore intelligente per Large Language Models (LLM) progettato per funzionare interamente in locale. Agisce come un **dispatcher semantico**: analizza ogni richiesta tramite un classificatore neurale leggero addestrato, smistando automaticamente l'input verso l'agente IA più qualificato (secondo i benchmark rilasciati) o gestendo una collaborazione tra più agenti per query complesse.
 
-Progettato con un focus estremo sull'ottimizzazione delle risorse, CYA N traccia archi operativi fluidi anche su macchine consumer con soli **8 GB di RAM**, grazie a un sistema di controllo dinamico della memoria, scaricamento esplicito del router e sincronizzazione hardware.
+Progettato con un focus estremo sull'ottimizzazione delle risorse, CYA N è adatto anche per macchine con soli **8 GB di RAM** (dove è stato testato il progetto), grazie a un sistema di controllo dinamico della memoria, scaricamento esplicito dei modelli quando necessario e sincronizzazione hardware.
 
 ---
 
-## ✨ Funzionalità Principali e Architettura V7.1.0
+## ✨ Funzionalità Principali e Architettura V7.4.0
 
-- 🔀 **LLM Router (Fase 0):** Il cuore del sistema è `llm_router.py`, che invoca `qwen2.5:1.5b` come classificatore semantico dedicato (temperatura 0, deterministico). Restituisce dominio, confidence scores per i 4 domini base, difficulty (1–3) e flag `is_followup`. Supporta 7 etichette di output: 4 mono-dominio + 3 pipeline (math→coding, rights→coding, rights→math).
-- 🔁 **Score-Based Pipeline Promotion:** Anche se il router classifica una query come mono-dominio, il sistema può promuoverla a pipeline se gli score interni indicano un secondo dominio tecnico rilevante (`pipeline_score_min`) e la difficoltà rilevata è ≥ 2.
-- 🔑 **Keyword Fallback (Fase 1 e 2):** In caso di indisponibilità del router LLM (`class_id == -1`), interviene `dispatcher_request.py` con un matcher in due fasi: *Hard-Match* rigoroso O(1) tramite set + regex, e *Soft-Match* basato sulla Distanza di Levenshtein con tolleranza dinamica.
-- 📌 **Domain Retention V7.2 (Sticky Routing — LLM-first):** Le query brevi di follow-up vengono ancorate all'ultimo dominio attivo. La logica è a 3 step: **(1)** Override se il router rileva un dominio tecnico diverso con alta confidenza; **(2)** Sticky se `is_followup=true` dal router LLM; **(3)** Pipeline follow-up Python-side per contesti non visibili al LLM.
-- 💬 **Chat History (Sliding Window):** Dialoghi multi-turno tramite finestra scorrevole (`max_history_turns`, default 5). Isolamento automatico della history su domain switch per evitare contaminazione cross-dominio.
-- 🛡️ **GENERAL Isolation (P0 Guard):** Impedisce al dominio generalista di inquinare le pipeline tecniche (Semantic Bleed). Se `GENERAL` appare in una coppia ibrida, la pipeline viene abortita e degradata al dominio tecnico dominante.
-- 🧠 **Pipeline Multi-Agente (Draft & Merge):** Se la query richiede due domini, CYA N esegue i modelli in sequenza. L'Agente A genera una bozza tecnica; l'Agente B integra con la sua specializzazione secondo la `pipeline_order_matrix`. Il router viene scaricato (unload) prima dell'attivazione degli agenti per liberare RAM.
+- 🧬 **NN Classifier — MultiTaskMLP (Fase 0):** Il cuore del sistema è `nn_classifier.py`, un Multi-Layer Perceptron (~145K parametri) addestrato su embedding di `paraphrase-multilingual-MiniLM-L12-v2` (384-dim). Tre teste specializzate condividono un backbone comune: **domain** (multi-label, 4 output), **difficulty** (1–3) e **is\_followup** (binaria). Inferenza in **meno di 20 ms** e **meno di 100 MB di RAM**, contro i 300–800 ms e ~1.5 GB del precedente router LLM.
+- 🎯 **Routing Purity:** Il `class_id` prodotto dal classificatore è **l'unica fonte di verità** per l'instradamento. Non esistono euristiche Python  che lo alterino: niente sticky routing testuale, niente promozione score-based, niente filtri di lunghezza della query. `domain_scores`, `difficulty` e `is_followup` restano puramente diagnostici (log di sessione).
+- 🔀 **Instradamento a Due Stadi:** `_derive_class_id()` seleziona i domini tecnici candidati con una soglia permissiva (`threshold_mono = 0.50`) e conferma una pipeline solo se **entrambi** i domini superano una soglia severa (`threshold_pipeline = 0.75`). Il dominio `general` è escluso per costruzione dalle pipeline: nessuna guardia esterna è più necessaria.
+- 💬 **Chat History (Sliding Window):** Dialoghi multi-turno tramite finestra scorrevole (`max_history_turns`, default 5). La profondità usata dal classificatore (`HISTORY_MAX_TURNS = 2`, in `history_utils.py`) è indipendente da quella dei modelli generativi.
+- 🧩 **Isolamento del Contesto su Domain Switch:** Quando il dominio cambia rispetto all'ultimo turno, la history viene passata vuota all'agente corrente per evitare contaminazione cross-dominio. Questo meccanismo **non altera mai il routing**: agisce solo sul contesto conversazionale.
+- 🧠 **Pipeline Multi-Agente (Draft & Merge):** Per le query ibride (`class_id` 4–6), CYA N esegue i modelli in sequenza. L'Agente A genera una bozza tecnica; l'Agente B la integra con la propria specializzazione. L'ordine è codificato direttamente nel `class_id`, senza matrici di configurazione esterne.
 - 🔎 **Critic Pass (Auto-Revisione):** L'Agente B esegue un passaggio finale di autovalutazione antagonistica, confrontando la propria sintesi con la query originale. La Chat History è esclusa in questa fase per garantire oggettività.
-- ⏱️ **Explicit Unload + Active Polling (RAM):** Prima di caricare ogni modello, il sistema interroga l'hardware (`psutil`) per un eventuale downgrade preventivo. Il router viene scaricato esplicitamente dopo la classificazione. Durante le pipeline, `explicit_unload()` forza il rilascio immediato dell'Agente A, poi il polling attivo attende la disponibilità di RAM prima di avviare l'Agente B.
+- ⏱️ **Explicit Unload + Active Polling (RAM):** Il classificatore viene scaricato esplicitamente (`unload_router()`) subito dopo la classificazione, liberando l'encoder MiniLM prima di caricare qualsiasi agente generativo. Nelle pipeline, `explicit_unload()` forza il rilascio dell'Agente A; il polling attivo su `psutil` attende la RAM libera prima di avviare l'Agente B.
 - 🧹 **Sanificazione Code-Block Aware:** Intercettazione dei tag di ragionamento (letti dinamicamente da `config`), traduzione matematica (LaTeX → Unicode) e filtri CJK applicati **esclusivamente sul testo discorsivo**, proteggendo i blocchi di codice Markdown.
+- ⚠️ **Nessun Fallback Testuale:** Il vecchio dispatcher a parole chiave (`dispatcher_request.py`) è stato rimosso in quanto codice morto. Se il classificatore non è disponibile (pesi assenti), il turno viene scartato con un errore esplicito anziché degradare silenziosamente.
 
 ---
 
 ## 🏗️ Topologia del Sistema e Archi di Instradamento
 
+Il flusso di elaborazione di ogni richiesta attraversa quattro fasi distinte, rispecchiando fedelmente la sequenza implementata in `main.py`:
+
 ```mermaid
 graph TD
-    A[Richiesta Utente] --> B(LLM Router qwen2.5:1.5b)
-    B -->|class_id == -1 / Offline| C(Keyword Matcher Levenshtein)
-    B -->|class_id 0-6 valido| D{Smistamento Domini}
-    C --> D
+    subgraph FASE0["FASE 0 — Classificazione Neurale"]
+        A[Richiesta Utente] --> B["NN Classifier<br/>MultiTaskMLP + MiniLM encoder"]
+        B --> U["unload_router()<br/>libera RAM encoder + pesi"]
+    end
 
-    D -->|is_followup / follow-up breve| S[Sticky Routing V7.2]
-    S --> D
+    U --> DEC{class_id}
 
-    D -->|P0 Guard Intercept| L[Isolamento GENERAL]
-    L --> D
+    subgraph FASE1["FASE 1 — Routing Puro"]
+        DEC -->|"0-3 → mono-dominio"| MONO{Dominio Target}
+        DEC -->|"4-6 → pipeline"| HYB[Pipeline Sequenziale]
+        DEC -->|"-1 → non disponibile"| ERR["Turno Scartato<br/>(errore esplicito)"]
+    end
 
-    D -->|Coding| E{RAM > 5.5GB?}
-    D -->|Math| F[DeepSeek-R1 7B]
-    D -->|Rights / General| G{RAM > 12GB?}
-    D -->|Pipeline class_id 4-6| P[Pipeline Sequenziale]
+    subgraph FASE2["FASE 2 — Esecuzione Agenti"]
+        MONO -->|Coding| RC{RAM ≥ 5.5GB?}
+        MONO -->|Math| RM["DeepSeek-R1 7B<br/>(no fallback)"]
+        MONO -->|Rights / General| RG{RAM ≥ 12GB?}
 
-    E -->|Sì| H[Qwen2.5 9B]
-    E -->|No / Fallback| I[Qwen2.5-Coder 1.5B]
+        RC -->|Sì| H1[Qwen2.5 9B]
+        RC -->|No| H2[Qwen2.5-Coder 1.5B]
+        RG -->|Sì| H3[GPT-OSS 20B]
+        RG -->|No| H4[Llama 3.2 3B]
 
-    G -->|Sì| J[GPT-OSS 20B]
-    G -->|No / Fallback| K[Llama 3.2 3B]
+        HYB --> PA["Agente A — Draft"]
+        PA --> PU["explicit_unload()<br/>+ RAM Active Polling"]
+        PU --> PB["Agente B — Merge"]
+        PB --> PC["Critic Pass<br/>(auto-revisione)"]
+    end
 
-    P --> PA[Agente A → Draft]
-    PA --> PU[Explicit Unload + RAM Polling]
-    PU --> PB[Agente B → Merge]
-    PB --> PC[Critic Pass]
-
-    H --> Z((Output Sanificato))
-    I --> Z
-    F --> Z
-    J --> Z
-    K --> Z
-    PC --> Z
-```
-
----
-
-## 🗂️ Struttura del Progetto
-
-```
-CYA-N/
-├── code/
-│   ├── main.py                  # Entry point V7.1.0 — orchestrazione e routing loop
-│   ├── llm_router.py            # Router semantico LLM (qwen2.5:1.5b) — Fase 0
-│   ├── neural_classifier.py     # Classificatore neurale MLP (in sviluppo)
-│   ├── ai_engine.py             # Motore di inferenza, BaseAI, explicit_unload
-│   ├── config.py                # Configurazione centralizzata
-│   ├── dispatcher_request.py    # Fallback keyword Hard/Soft Match
-│   ├── prompts_templates.py     # System prompt e template pipeline
-│   ├── helper.py                # Sanificazione output, spinner, LaTeX→Unicode
-│   ├── db_query.py              # Dataset di training (INTENT_SENTENCES, BRIDGE_SENTENCES)
-│   ├── build_dataset.py         # Generatore dataset per neural classifier
-│   └── 1_prossimi_step.md       # Issue tracker e roadmap
-├── keywords/
-│   ├── coding.txt
-│   ├── math.txt
-│   └── rights.txt
-├── CYA_N.pdf                    # Documentazione tecnica architetturale
-├── QUERY_TESTED.md              # Log query di test e risultati
-└── README.md
+    subgraph FASE3["FASE 3 — Output"]
+        H1 --> S["Sanificazione<br/>Code-Block Aware"]
+        H2 --> S
+        RM --> S
+        H3 --> S
+        H4 --> S
+        PC --> S
+        S --> Z(("Risposta Finale"))
+    end
 ```
 
 ---
@@ -101,21 +82,19 @@ CYA-N/
 
 - Python 3.8+
 - [Ollama](https://ollama.com/) installato e in esecuzione
+- Git LFS (per `classifier/nn_weights.pt` ed `embeddings_v2.pkl`)
 
 ### 1. Dipendenze Python
 
 ```bash
-pip install psutil ollama sentence-transformers
+pip install psutil ollama sentence-transformers torch scikit-learn
 ```
 
-> **Nota:** `psutil` è una dipendenza critica. Senza di essa il sistema non può monitorare la RAM a runtime, disabilitando downgrade preventivi, Active Polling e Explicit Unload. `sentence-transformers` è necessario per il futuro classificatore neurale.
+> **Nota:** `psutil` è una dipendenza critica. Senza di essa il sistema non può monitorare la RAM a runtime, disabilitando downgrade preventivi, Active Polling ed Explicit Unload. `torch` e `sentence-transformers` sono necessari sia per l'addestramento sia per l'inferenza del classificatore; `scikit-learn` serve solo in fase di training (calcolo F1-score).
 
-### 2. Download dei Modelli Ollama
+### 2. Download dei Modelli Generativi (Ollama)
 
 ```bash
-# Router semantico (dipendenza critica)
-ollama pull qwen2.5:1.5b
-
 # Dominio Coding
 ollama pull qwen2.5:9b
 ollama pull qwen2.5-coder:1.5b   # fallback
@@ -128,9 +107,18 @@ ollama pull gpt-oss:20b
 ollama pull llama3.2:3b           # fallback
 ```
 
-> **Build di sviluppo (8 GB RAM):** `config.py` imposta `qwen2.5-coder:1.5b` per tutti i domini. Pull obbligatorio: `qwen2.5:1.5b` (router) + `qwen2.5-coder:1.5b` (agenti).
+### 3. Classificatore Neurale
 
-### 3. Avvio
+Se `code/classifier/nn_weights.pt` è già presente (es. scaricato via Git LFS), questo step si può saltare. In caso contrario, l'addestramento va eseguito dalla root del progetto seguendo la cascata completa — ogni script consuma l'output del precedente:
+
+```bash
+python code/build_dataset_v2.py        # genera dataset_v2.jsonl
+python code/precompute_embeddings.py   # calcola embeddings_v2.pkl
+python code/train_nn.py                # produce nn_weights.pt
+python code/step4_evaluation.py        # opzionale — verifica qualità (smoke test)
+```
+
+### 4. Avvio
 
 ```bash
 python code/main.py
@@ -140,38 +128,55 @@ python code/main.py
 
 ## 🧩 Domìni Supportati
 
-| Dominio          | Modello Primario   | Fallback               | Temperatura |
-| ---------------- | ------------------ | ---------------------- | ----------- |
-| Coding           | `qwen2.5:9b`     | `qwen2.5-coder:1.5b` | 0.5         |
-| Math             | `deepseek-r1:7b` | —                     | 0.2         |
-| Rights           | `gpt-oss:20b`    | `llama3.2:3b`        | 0.4         |
-| General          | `gpt-oss:20b`    | `llama3.2:3b`        | 0.7         |
-| **Router** | `qwen2.5:1.5b`   | keyword fallback       | 0.0         |
+| Dominio | Modello Primario   | Fallback               | Temperatura |
+| ------- | ------------------ | ---------------------- | ----------- |
+| Coding  | `qwen2.5:9b`     | `qwen2.5-coder:1.5b` | 0.5         |
+| Math    | `deepseek-r1:7b` | —                     | 0.2         |
+| Rights  | `gpt-oss:20b`    | `llama3.2:3b`        | 0.4         |
+| General | `gpt-oss:20b`    | `llama3.2:3b`        | 0.7         |
+
+### Classificatore (Fase 0 — non appartiene alla flotta Ollama)
+
+| Componente                         | Dettaglio                                                           |
+| ---------------------------------- | ------------------------------------------------------------------- |
+| Architettura                       | MultiTaskMLP, ~145K parametri                                       |
+| Encoder (frozen)                   | `paraphrase-multilingual-MiniLM-L12-v2`, 384-dim, L2-normalizzato |
+| Latenza                            | < 20 ms                                                             |
+| Impronta RAM                       | < 100 MB                                                            |
+| Accuratezza (smoke test, 59 query) | 91.5% assoluta · 93.2% di routing effettivo                        |
 
 ### Pipeline Supportate
 
-| class_id | Pipeline       | Ordine Esecuzione                |
-| -------- | -------------- | -------------------------------- |
-| 4        | math→coding   | Math (Draft) → Coding (Merge)   |
-| 5        | rights→coding | Rights (Draft) → Coding (Merge) |
-| 6        | rights→math   | Rights (Draft) → Math (Merge)   |
+| class_id | Pipeline         | Ordine Esecuzione                |
+| -------- | ---------------- | -------------------------------- |
+| 4        | math → coding   | Math (Draft) → Coding (Merge)   |
+| 5        | rights → coding | Rights (Draft) → Coding (Merge) |
+| 6        | rights → math   | Rights (Draft) → Math (Merge)   |
 
 ---
 
 ## 🛠️ Comandi Speciali
 
-| Comando                   | Effetto                                    |
-| ------------------------- | ------------------------------------------ |
-| `/reset`, `/clear`    | Azzera chat history e stato Sticky Routing |
-| `exit`, `quit`, `q` | Chiude la sessione                         |
+| Comando                             | Effetto                                                                                |
+| ----------------------------------- | -------------------------------------------------------------------------------------- |
+| `/reset`, `/clear`              | Azzera chat history e ultimo dominio attivo (usato solo per l'isolamento del contesto) |
+| `exit`, `esci`, `quit`, `q` | Chiude la sessione                                                                     |
 
 ---
 
 ## 🗺️ Roadmap
 
-- [ ] **Neural Classifier:** Drop-in replacement di `llm_router.py` basato su MLP frozen encoder (`paraphrase-multilingual-MiniLM-L12-v2`, 384-dim). Testa dominio (Sigmoid, 4 output multi-label) + testa difficoltà (Softmax, 3 classi). Training locale ~2–4 min su CPU, pesi ~700 KB.
-- [ ] **Dataset Construction:** ~1800–2200 esempi pesati verso casi difficili (query corte/ambigue, keyword fuorvianti, pipeline implicite, follow-up senza contesto).
-- [ ] **is_followup Head V2:** Terza testa neurale per la classificazione del follow-up all'interno del neural classifier.
+**Completato**
+
+- [X] **NN Classifier (MultiTaskMLP):** sostituisce integralmente `llm_router.py`. Il `class_id` è l'unica fonte di verità per il routing (*Routing Purity*).
+- [X] **Cascata di Training:** `build_dataset_v2.py → precompute_embeddings.py → train_nn.py → step4_evaluation.py`, con split anti-leakage (70/15/15 prima dell'augmentation).
+- [X] **is\_followup Head:** terza testa neurale integrata nel MultiTaskMLP, non più delegata a euristiche Python.
+
+**In corso**
+
+- [ ] **Prossimo milestone:** Step 1 di `1_prossimi_step.md` — criteri di attivazione della pipeline.
+- [ ] **Dataset patching:** risoluzione del sotto-caso `coding` (history) + query corta/generica → `general`, responsabile dei 4 errori residui nello smoke test. Rimandato a dati di produzione reali.
+- [ ] **Cleanup minore:** aggiornamento docstring in `nn_classifier.py` (soglie obsolete), rimozione variabile `ok_diff` inutilizzata in `step4_evaluation.py`, eliminazione del prototipo superato `script_NN_classifier.py`.
 
 ---
 
