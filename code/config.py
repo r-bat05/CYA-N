@@ -1,6 +1,13 @@
 """
     CONFIGURAZIONE CENTRALE (CYA N)
 
+    Novità V7.1.0 (Prompt Tiering — patch_prompt_LLM):
+    - [TIER] Aggiunto il campo 'prompt_tier' ('compact' | 'extended') a
+      ciascuna voce di MODELS_CONFIG. Statico, letto una sola volta da
+      BaseAI.__init__ in ai_engine.py, indipendente da is_using_fallback.
+      Governa SOLO il contenuto del system prompt (prompts_templates.py):
+      nessun impatto su routing/NN/RAM. Vedi report_prompt_tiering.md.
+
     Novità V7.0.0 (Routing purity — output NN come unica fonte):
     - [ROUTING PURITY] Rimossi da SYSTEM_SETTINGS: sticky_short_words,
       sticky_tech_switch_min, sticky_short_override_min. Servivano solo a
@@ -25,41 +32,50 @@
 GB = 1024 * 1024 * 1024
 
 RAM_THRESHOLDS = {
-    'small':    0.5 * GB,
+    'small':    1 * GB,
     'medium':   5.5 * GB,
     'large':   12.0 * GB,
     'math_opt': 0.5 * GB #2.5
 }
 
 # --- 2. CONFIGURAZIONE MODELLI AI ---
+# [TIER] prompt_tier ('compact' | 'extended'): riflette l'architettura
+# FINALE intesa (modelli grandi commentati inline), non la config di test
+# attuale dove tutti i 'primary' puntano allo stesso modello piccolo.
+# Vedi report_prompt_tiering.md §2 per la motivazione per dominio.
 MODELS_CONFIG = {
     'coding': {
-        'primary':                "qwen2.5-coder:1.5b", #qwen 9b
+        'primary':                "qwen3.5:9b",
         'fallback':               "qwen2.5-coder:1.5b",
         'temperature':            0.5,
         'ram_threshold':          'medium',
-        'fallback_ram_threshold': 'small'
+        'fallback_ram_threshold': 'small',
+        'prompt_tier':            'extended',
     },
     'math': {
-        'primary':                "qwen2.5-coder:1.5b", #deepseek
+        'primary':                "deepseek-r1:7b",
         'fallback':               None,
         'temperature':            0.2,
         'ram_threshold':          'math_opt',
-        'fallback_ram_threshold': None
+        'fallback_ram_threshold': None,
+        #DEEPSEEK FA GIA' REASONING INTERNO --> mettere extendend sarebbe ripetitivo
+        'prompt_tier':            'compact', 
     },
     'rights': {
-        'primary':                "qwen2.5-coder:1.5b", #gpt-oss
-        'fallback':               "qwen2.5-coder:1.5b",
+        'primary':                "gpt-oss:20b",
+        'fallback':               "gemma3:4b",
         'temperature':            0.4,
         'ram_threshold':          'large',
-        'fallback_ram_threshold': 'small'
+        'fallback_ram_threshold': 'small',
+        'prompt_tier':            'extended',
     },
     'general': {
-        'primary':                "qwen2.5-coder:1.5b", #gpt-oss
-        'fallback':               "qwen2.5-coder:1.5b",
+        'primary':                "gpt-oss:20b", 
+        'fallback':               "gemma3:4b",
         'temperature':            0.7,
         'ram_threshold':          'large',
-        'fallback_ram_threshold': 'small'
+        'fallback_ram_threshold': 'small',
+        'prompt_tier':            'extended',
     }
 }
 

@@ -1,5 +1,15 @@
 """
-    MOTORE AI IBRIDO V6.6.2
+    MOTORE AI IBRIDO V6.7.0
+
+    Novita' V6.7.0 (Prompt Tiering — patch_prompt_LLM):
+    - [TIER] BaseAI.__init__ legge self.prompt_tier da
+      config.MODELS_CONFIG[category]['prompt_tier'] (default 'compact' se
+      assente). Statico per tutta la vita dell'istanza, indipendente da
+      is_using_fallback (asimmetria di rischio: vedi report_prompt_tiering.md).
+    - [TIER] Tutti i 12 call-site di get_prompts() (3 classi x 4 metodi)
+      passano ora self.prompt_tier come secondo argomento. Nessun'altra
+      logica del file (generate/_merge_few_shot/_truncate_context/
+      check_resources/explicit_unload) è coinvolta.
 
     Novita' V6.6.2:
     - [BUG1] Stringa di fallback per output vuoto modificata da "ATTENZIONE: ..."
@@ -58,6 +68,9 @@ class BaseAI(ABC):
         self.model_name       = self.cfg['primary']
         self.fallback_model   = self.cfg['fallback']
         self.temperature      = self.cfg['temperature']
+        # [TIER] Statico, letto una sola volta. Default 'compact' = direzione
+        # sicura (meno elaborazione) se un dominio futuro non specifica il tier.
+        self.prompt_tier      = self.cfg.get('prompt_tier', 'compact')
         self.primary_ram_req  = config.RAM_THRESHOLDS[self.cfg['ram_threshold']]
         self.fallback_ram_req = 0
         if self.cfg['fallback_ram_threshold']:
@@ -265,7 +278,7 @@ class CodeLlamaAI(BaseAI):
 
     def resolve(self, prompt: str, history: list = None):
         history = history or []
-        sys_prompt, few_shot, _ = get_prompts('coding')
+        sys_prompt, few_shot, _ = get_prompts('coding', self.prompt_tier)
         combined_sys = self._merge_few_shot(sys_prompt, few_shot)
         final_prompt = (f"[RICHIESTA]: {prompt}\n\n"
                         f"[IMPORTANTE]: Spiega il codice e i concetti ESCLUSIVAMENTE IN ITALIANO.")
@@ -278,7 +291,7 @@ class CodeLlamaAI(BaseAI):
 
     def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None):
         history = history or []
-        sys_prompt, few_shot, _ = get_prompts('coding')
+        sys_prompt, few_shot, _ = get_prompts('coding', self.prompt_tier)
         combined_sys = self._merge_few_shot(sys_prompt, few_shot)
         directional  = PIPELINE_PROMPTS['directional'].format(domain_b=domain_b.upper())
         final_prompt = f"[RICHIESTA]: {prompt}\n{directional}"
@@ -292,7 +305,7 @@ class CodeLlamaAI(BaseAI):
     def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None):
         output_a = self._truncate_context(output_a)
         history  = history or []
-        sys_prompt, _, _ = get_prompts('coding')
+        sys_prompt, _, _ = get_prompts('coding', self.prompt_tier)
         handoff = PIPELINE_PROMPTS['handoff'].format(
             original_query=original_prompt,
             domain_a=domain_a.upper(),
@@ -308,7 +321,7 @@ class CodeLlamaAI(BaseAI):
 
     def execute_critic_pass(self, draft_b: str, original_prompt: str):
         draft_b    = self._truncate_context(draft_b)
-        sys_prompt, _, _ = get_prompts('coding')
+        sys_prompt, _, _ = get_prompts('coding', self.prompt_tier)
         critic_template  = PIPELINE_PROMPTS['critic']
         if "{original_query}" in critic_template:
             critic = critic_template.format(original_query=original_prompt)
@@ -328,7 +341,7 @@ class DeepSeekAI(BaseAI):
 
     def resolve(self, prompt: str, history: list = None):
         history = history or []
-        sys_prompt, few_shot, enforcement = get_prompts('math')
+        sys_prompt, few_shot, enforcement = get_prompts('math', self.prompt_tier)
         combined_sys = self._merge_few_shot(sys_prompt, few_shot)
         messages = [
             {'role': 'system', 'content': combined_sys},
@@ -339,7 +352,7 @@ class DeepSeekAI(BaseAI):
 
     def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None):
         history = history or []
-        sys_prompt, few_shot, enforcement = get_prompts('math')
+        sys_prompt, few_shot, enforcement = get_prompts('math', self.prompt_tier)
         combined_sys = self._merge_few_shot(sys_prompt, few_shot)
         directional = PIPELINE_PROMPTS['directional'].format(domain_b=domain_b.upper())
         messages = [
@@ -352,7 +365,7 @@ class DeepSeekAI(BaseAI):
     def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None):
         output_a = self._truncate_context(output_a)
         history  = history or []
-        sys_prompt, _, enforcement = get_prompts('math')
+        sys_prompt, _, enforcement = get_prompts('math', self.prompt_tier)
         handoff = PIPELINE_PROMPTS['handoff'].format(
             original_query=original_prompt,
             domain_a=domain_a.upper(),
@@ -368,7 +381,7 @@ class DeepSeekAI(BaseAI):
 
     def execute_critic_pass(self, draft_b: str, original_prompt: str):
         draft_b = self._truncate_context(draft_b)
-        sys_prompt, _, _ = get_prompts('math')
+        sys_prompt, _, _ = get_prompts('math', self.prompt_tier)
         critic_template = PIPELINE_PROMPTS['critic']
         if "{original_query}" in critic_template:
             critic = critic_template.format(original_query=original_prompt)
@@ -387,7 +400,7 @@ class GptOssAI(BaseAI):
 
     def resolve(self, prompt: str, history: list = None):
         history = history or []
-        sys_prompt, few_shot, _ = get_prompts(self.category)
+        sys_prompt, few_shot, _ = get_prompts(self.category, self.prompt_tier)
         combined_sys      = self._merge_few_shot(sys_prompt, few_shot)
         full_user_content = (f"[RICHIESTA UTENTE]: {prompt}\n\n"
                              f"[IMPORTANTE]: Rispondi IN ITALIANO.")
@@ -400,7 +413,7 @@ class GptOssAI(BaseAI):
 
     def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None):
         history = history or []
-        sys_prompt, few_shot, _ = get_prompts(self.category)
+        sys_prompt, few_shot, _ = get_prompts(self.category, self.prompt_tier)
         combined_sys      = self._merge_few_shot(sys_prompt, few_shot)
         directional       = PIPELINE_PROMPTS['directional'].format(domain_b=domain_b.upper())
         full_user_content = f"[RICHIESTA UTENTE]: {prompt}\n{directional}"
@@ -414,7 +427,7 @@ class GptOssAI(BaseAI):
     def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None):
         output_a = self._truncate_context(output_a)
         history  = history or []
-        sys_prompt, _, _ = get_prompts(self.category)
+        sys_prompt, _, _ = get_prompts(self.category, self.prompt_tier)
         handoff = PIPELINE_PROMPTS['handoff'].format(
             original_query=original_prompt,
             domain_a=domain_a.upper(),
@@ -430,7 +443,7 @@ class GptOssAI(BaseAI):
 
     def execute_critic_pass(self, draft_b: str, original_prompt: str):
         draft_b         = self._truncate_context(draft_b)
-        sys_prompt, _, _ = get_prompts(self.category)
+        sys_prompt, _, _ = get_prompts(self.category, self.prompt_tier)
         critic_template  = PIPELINE_PROMPTS['critic']
         if "{original_query}" in critic_template:
             critic = critic_template.format(original_query=original_prompt)
