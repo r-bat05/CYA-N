@@ -281,7 +281,7 @@ class CodeLlamaAI(BaseAI):
         sys_prompt, few_shot, _ = get_prompts('coding', self.prompt_tier)
         combined_sys = self._merge_few_shot(sys_prompt, few_shot)
         final_prompt = (f"[RICHIESTA]: {prompt}\n\n"
-                        f"[IMPORTANTE]: Spiega il codice e i concetti ESCLUSIVAMENTE IN ITALIANO.")
+                        f"[IMPORTANTE]: Spiega il codice e i concetti ESCLUSIVAMENTE IN INGLESE.")
         messages = [
             {'role': 'system', 'content': combined_sys},
             *history,
@@ -402,8 +402,12 @@ class GptOssAI(BaseAI):
         history = history or []
         sys_prompt, few_shot, _ = get_prompts(self.category, self.prompt_tier)
         combined_sys      = self._merge_few_shot(sys_prompt, few_shot)
+        # [LANG] 'rights' resta in italiano (dominio giuridico italiano);
+        # 'general' passa a inglese. GptOssAI è condivisa da entrambe le
+        # categorie (vedi get_ai_model()), quindi il branch è necessario.
+        lang_note = "Rispondi IN ITALIANO." if self.category == 'rights' else "Rispondi IN INGLESE."
         full_user_content = (f"[RICHIESTA UTENTE]: {prompt}\n\n"
-                             f"[IMPORTANTE]: Rispondi IN ITALIANO.")
+                             f"[IMPORTANTE]: {lang_note}")
         messages = [
             {'role': 'system', 'content': combined_sys},
             *history,
