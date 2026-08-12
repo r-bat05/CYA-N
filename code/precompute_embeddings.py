@@ -34,8 +34,16 @@ from history_utils import build_input_str, HISTORY_MAX_TURNS
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 ENCODER_MODEL = 'paraphrase-multilingual-MiniLM-L12-v2'
-DATASET_PATH  = Path('code/dataset_v2.jsonl')
-OUTPUT_PATH   = Path('code/classifier/embeddings_v2.pkl')
+# [M4 FIX] Path relativi alla cwd ('code/...') funzionavano solo se lo
+# script veniva eseguito dalla root del repo, incoerente con
+# nn_classifier.py (già Path(__file__).resolve().parent) e build_dataset_v2.py
+# (idem). Eseguire da una cwd diversa produceva un FileNotFoundError
+# silenziosamente incoerente col resto del sistema. Ora ancorato alla
+# posizione del file stesso: lo script vive in code/, quindi dataset_v2.jsonl
+# è nella stessa directory e classifier/ è una sua sottocartella.
+_BASE_DIR     = Path(__file__).resolve().parent
+DATASET_PATH  = _BASE_DIR / 'dataset_v2.jsonl'
+OUTPUT_PATH   = _BASE_DIR / 'classifier' / 'embeddings_v2.pkl'
 BATCH_SIZE    = 64
 # ──────────────────────────────────────────────────────────────────────────────
 

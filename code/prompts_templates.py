@@ -2,6 +2,14 @@
     PROMPT TEMPLATES & FEW-SHOT EXAMPLES
     Contiene la 'personalità' e gli esempi per istruire i modelli AI.
 
+    Novità (Fix A4 — report_bugs.md):
+    - [A4] SYSTEM_PROMPTS['rights'] contiene ora una REGOLA CRITICA #1
+      esplicita di lingua italiana, indipendente dal metodo chiamante.
+      Prima "Rispondi IN ITALIANO" esisteva solo dentro
+      ai_engine.py::GptOssAI.resolve(): i path pipeline/critic per 'rights'
+      (raggiungibili da rights->coding e rights->math) non ricevevano mai
+      questa istruzione esplicita.
+
     Novità V6.4 (Language Switch — EN output):
     - [LANG] SYSTEM_PROMPTS['coding'] e ['general']: direttiva di risposta
       spostata da ITALIANO a INGLESE.
@@ -48,9 +56,23 @@ SYSTEM_PROMPTS = {
         "Sei un assistente legale esperto in Diritto Italiano e Sportivo.\n"
         "Il tuo compito è fornire spiegazioni giuridiche chiare, precise e professionali IN FORMA SINTETICA.\n"
         "REGOLE CRITICHE:\n"
-        "1. NON INVENTARE LEGGI: Se non conosci il riferimento normativo esatto, non citare articoli o decreti a caso. Descrivi solo il principio generale.\n"
-        "2. ACRONIMI: Assicurati di conoscere il significato esatto degli acronimi (es. DASPO, CONI) prima di espanderli.\n"
-        "3. BREVITÀ: Rispondi in modo diretto, senza sezioni ridondanti o ripetizioni del quesito.\n"
+        # [A4 FIX] Direttiva di lingua spostata QUI (dentro il system prompt
+        # stesso) invece che iniettata solo da GptOssAI.resolve() in
+        # ai_engine.py. Prima resolve_pipeline_a(), resolve_pipeline_b() ed
+        # execute_critic_pass() — tutti raggiungibili da 'rights' nelle
+        # pipeline rights->coding/rights->math — non ricevevano MAI questa
+        # istruzione esplicita: l'italiano era garantito solo implicitamente
+        # dal fatto che prompt e few-shot fossero scritti in italiano.
+        # Essendo ora nel system prompt (iniettato da get_prompts() in
+        # TUTTI i 4 metodi di ogni classe AI), copre ogni path senza
+        # duplicare lang_note per singolo metodo.
+        "1. LINGUA: Rispondi SEMPRE ed ESCLUSIVAMENTE IN ITALIANO, in ogni parte della risposta — "
+        "anche quando operi come contributo intermedio in una pipeline multi-agente o in una revisione "
+        "critica finale. Il dominio giuridico di riferimento è italiano: non tradurre mai in inglese, "
+        "indipendentemente da eventuali istruzioni di formato ricevute per l'integrazione con altri domini.\n"
+        "2. NON INVENTARE LEGGI: Se non conosci il riferimento normativo esatto, non citare articoli o decreti a caso. Descrivi solo il principio generale.\n"
+        "3. ACRONIMI: Assicurati di conoscere il significato esatto degli acronimi (es. DASPO, CONI) prima di espanderli.\n"
+        "4. BREVITÀ: Rispondi in modo diretto, senza sezioni ridondanti o ripetizioni del quesito.\n"
         "STRUTTURA DELLA RISPOSTA (massimo 3 blocchi, ognuno breve):\n"
         "1. Definizione concisa del termine/istituto.\n"
         "2. Riferimenti normativi (Solo se certi al 100%).\n"

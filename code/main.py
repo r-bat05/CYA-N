@@ -1,6 +1,22 @@
 """
-    CYA N - AI LOCAL DISPATCHER V7.4.0
+    CYA N - AI LOCAL DISPATCHER V7.5.0
     Entry Point dell'applicazione.
+
+    Novità V7.5.0 (Fix da report_bugs.md):
+    - [C1] Nuova _truncate_for_history(): cap in caratteri (da
+      config.SYSTEM_SETTINGS['history_message_max_chars']) su ogni singolo
+      messaggio inserito in chat_history da _update_history(). Prima
+      esisteva solo un cap sul NUMERO di messaggi (max_history_turns), mai
+      sulla loro lunghezza — rischio di overflow silenzioso di ctx_size.
+    - [A1] L'isolamento history su domain switch (domain_switched) esisteva
+      prima solo nel ramo mono-dominio. Ora calcolato anche nel ramo
+      pipeline (confronto last_active_domain vs domain_a) e applicato con
+      effective_history sia a resolve_pipeline_a() sia a resolve_pipeline_b().
+    - [M5] _CLASS_TO_DOMAIN ora derivato da nn_classifier.DOMAIN_NAMES
+      invece di essere ridichiarato come dict indipendente (evita drift tra
+      due fonti della stessa mappatura).
+    - [minor] Aggiunto separatore "_"*60 mancante nel ramo
+      except Exception finale, per coerenza col resto del log.
 
     Novità V7.4.0 (Routing purity — output NN come unica fonte):
     - [ROUTING PURITY] Rimossa _should_sticky_route() e l'intero meccanismo
@@ -51,20 +67,43 @@ from ai_engine import get_ai_model, ResourceExhaustedError
 from nn_classifier import predict as router_predict, PIPELINE_CLASSES, DOMAIN_NAMES, unload_router
 
 _ERROR_PREFIXES  = ("Errore Ollama:", "Errore Generico:", "__SYS_WARN__:")
-_CLASS_TO_DOMAIN = {0: 'coding', 1: 'math', 2: 'rights', 3: 'general'}
+# [M5 FIX] Derivato da nn_classifier.DOMAIN_NAMES (unica fonte di verità)
+# invece di ridichiarato come dict indipendente: prima, un domani un quinto
+# dominio mono richiedeva l'aggiornamento sincrono di DUE file.
+_CLASS_TO_DOMAIN = {i: name for i, name in enumerate(DOMAIN_NAMES[:4])}
 
 
 def print_banner():
     print("\n" + "=" * 60)
-    print("      CYA N  |  AI LOCAL DISPATCHER V7.4.0    ")
+    print("      CYA N  |  AI LOCAL DISPATCHER V7.5.0    ")
     print("      (Coding • Math • Rights • General)      ")
     print("=" * 60 + "\n")
 
 
+_HISTORY_MSG_MAX_CHARS = config.SYSTEM_SETTINGS.get('history_message_max_chars', 1200)
+
+
+def _truncate_for_history(text: str, limit: int = _HISTORY_MSG_MAX_CHARS) -> str:
+    """
+    [C1 FIX] Tronca un singolo messaggio PRIMA di inserirlo in chat_history.
+    Prima nessun cap esisteva sulla lunghezza dei messaggi (solo sul numero,
+    via max_history_turns): con ctx_size=4096 fisso per tutti i domini, una
+    sliding window di 10 messaggi con risposte lunghe (codice, spiegazioni
+    rights estese) rischiava l'overflow silenzioso in Ollama, che tronca
+    tipicamente dall'inizio del contesto — perdendo il system prompt stesso
+    senza errore visibile. Il testo COMPLETO resta comunque stampato
+    all'utente durante lo streaming in ai_engine.py::generate(): questo
+    troncamento agisce solo su ciò che viene ricordato nei turni successivi.
+    """
+    if len(text) > limit:
+        return text[:limit] + "\n...[STORICO TRONCATO PER LIMITI DI CONTESTO]..."
+    return text
+
+
 def _update_history(history: list, user_input: str, response: str, max_messages: int):
     """[CHAT] Aggiunge il turno corrente alla history e applica la sliding window."""
-    history.append({'role': 'user',      'content': user_input})
-    history.append({'role': 'assistant', 'content': response})
+    history.append({'role': 'user',      'content': _truncate_for_history(user_input)})
+    history.append({'role': 'assistant', 'content': _truncate_for_history(response)})
     if len(history) > max_messages:
         del history[:len(history) - max_messages]
 
@@ -141,6 +180,14 @@ def main():
                 print(f"🔍 [DEBUG NEURAL] Classe={DOMAIN_NAMES[class_id]} | "
                       f"Confidence={confidence:.2f} | "
                       f"Pipeline: {domain_a.upper()} → {domain_b.upper()}")
+                # [A1 FIX] L'isolamento history esisteva PRIMA solo nel ramo
+                # mono-dominio: se l'ultimo dominio attivo era 'general' e la
+                # nuova richiesta attivava una pipeline math->coding, la
+                # history general contaminava l'agente A senza protezione —
+                # lo stesso scenario che questo meccanismo doveva evitare,
+                # ma applicato a un solo ramo di codice invece che a entrambi.
+                if last_active_domain and domain_a != last_active_domain:
+                    domain_switched = True
             else:
                 target = _CLASS_TO_DOMAIN[class_id]
                 print(f"🔍 [DEBUG NEURAL] Classe={DOMAIN_NAMES[class_id]} | "
@@ -154,6 +201,13 @@ def main():
             # ESECUZIONE PIPELINE IBRIDA
             # ---------------------------------------------------------
             if is_hybrid:
+                # [A1 FIX] Stesso pattern di isolamento già usato nel ramo
+                # mono-dominio, ora applicato anche qui.
+                effective_history = [] if domain_switched else chat_history
+                if domain_switched:
+                    print(f"🔄 [HISTORY] Domain switch rilevato: history isolata per "
+                          f"pipeline {domain_a.upper()}→{domain_b.upper()}")
+
                 print(f"\n╭── 🧠 PIPELINE IBRIDA [{domain_a.upper()} → {domain_b.upper()}] in azione...")
                 print(f"│ Agente A (Draft): {agents[domain_a].model_name}")
                 print(f"│ Agente B (Merge): {agents[domain_b].model_name}")
@@ -162,7 +216,7 @@ def main():
                 print(f"\n⚙️  Fase 1/3 — Elaborazione contesto [{domain_a.upper()}] in corso...")
                 try:
                     output_a = agents[domain_a].resolve_pipeline_a(
-                        user_input, domain_b, chat_history
+                        user_input, domain_b, effective_history
                     )
                 except ResourceExhaustedError as e:
                     print(f"\n⛔ OOM — Pipeline interrotta in Fase 1/3: {e}")
@@ -193,7 +247,7 @@ def main():
                 print(f"⚙️  Fase 2/3 — Integrazione dominio [{domain_b.upper()}] in corso...")
                 try:
                     output_b = agents[domain_b].resolve_pipeline_b(
-                        user_input, output_a, domain_a, chat_history
+                        user_input, output_a, domain_a, effective_history
                     )
                 except ResourceExhaustedError as e:
                     print(f"\n⛔ OOM — Pipeline interrotta in Fase 2/3: {e}")
@@ -263,6 +317,7 @@ def main():
         except Exception as e:
             print(f"\n❌ ERRORE IMPREVISTO: {e}")
             print("Consiglio: Verifica che l'arco di comunicazione con Ollama sia attivo.")
+            print("\n" + "_" * 60 + "\n")
 
 
 if __name__ == "__main__":

@@ -106,6 +106,18 @@ _encoder: Optional[SentenceTransformer] = None
 _loaded:  bool                          = False
 
 
+def _fmt_metric(value) -> str:
+    """
+    [M6 FIX] ckpt.get(key, 'N/A') seguito da un format :.4f} sollevava
+    ValueError/TypeError ("Unknown format code 'f' for object of type
+    'str'") quando la chiave mancava dal checkpoint. L'eccezione veniva
+    comunque intercettata dal try/except in predict() (l'app non crashava),
+    ma il messaggio mostrato ("Errore caricamento (...)") era criptico e
+    non indicava la vera causa (checkpoint incompleto/vecchio).
+    """
+    return f"{value:.4f}" if isinstance(value, (int, float)) else "N/A"
+
+
 def _load_model():
     global _model, _encoder, _loaded
 
@@ -129,9 +141,9 @@ def _load_model():
     _model.load_state_dict(ckpt['model_state_dict'])
     _model.eval()
 
-    print(f"[NN_CLASSIFIER] Test F1-macro domain : {ckpt.get('test_f1_domain', 'N/A'):.4f}")
-    print(f"[NN_CLASSIFIER] Test difficulty acc  : {ckpt.get('test_diff_acc', 'N/A'):.4f}")
-    print(f"[NN_CLASSIFIER] Test is_followup F1  : {ckpt.get('test_followup_f1', 'N/A'):.4f}")
+    print(f"[NN_CLASSIFIER] Test F1-macro domain : {_fmt_metric(ckpt.get('test_f1_domain'))}")
+    print(f"[NN_CLASSIFIER] Test difficulty acc  : {_fmt_metric(ckpt.get('test_diff_acc'))}")
+    print(f"[NN_CLASSIFIER] Test is_followup F1  : {_fmt_metric(ckpt.get('test_followup_f1'))}")
 
     _loaded = True
 
@@ -158,11 +170,19 @@ def _derive_class_id(
     Da domain_probs [coding, math, rights, general] → (class_id, confidence).
 
     LOGICA A DUE STADI [FIX Bug A]:
-      Stadio 1 (permissivo, candidate_threshold=0.35): quali domini tecnici
-        superano la soglia minima per essere "in lizza" per una pipeline.
-      Stadio 2 (severo, pipeline_threshold=0.60): la coppia top-2 viene
-        CONFERMATA pipeline solo se ENTRAMBI i probs superano questa soglia
-        più alta. Altrimenti si scende a mono-domain (argmax sui 4).
+      Stadio 1 (candidate_threshold, letto da
+        config.NEURAL_CLASSIFIER_SETTINGS['threshold_mono'] — attualmente
+        0.50, NON 0.35: il default 0.35 nella firma della funzione è solo
+        un fallback difensivo del .get(), mai raggiunto a runtime perché
+        config.py definisce sempre 'threshold_mono' esplicitamente, vedi
+        DOMAIN_THRESHOLD sopra): quali domini tecnici superano la soglia
+        minima per essere "in lizza" per una pipeline.
+      Stadio 2 (pipeline_threshold, letto da
+        config.NEURAL_CLASSIFIER_SETTINGS['threshold_pipeline'] —
+        attualmente 0.75, NON 0.60, stesso discorso del default difensivo):
+        la coppia top-2 viene CONFERMATA pipeline solo se ENTRAMBI i probs
+        superano questa soglia più alta. Altrimenti si scende a
+        mono-domain (argmax sui 4).
 
       Questo impedisce che un dominio tecnico "debole" (es. math=0.40 dovuto
       a parole matematiche di contorno in una query di puro coding) faccia

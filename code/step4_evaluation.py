@@ -589,7 +589,8 @@ SMOKE_TESTS = [
 _DOMAIN_NAMES_4 = ['coding', 'math', 'rights', 'general']
 
 def _class_id_to_domain(class_id: int) -> str:
-    from nn_classifier import DOMAIN_NAMES
+    # [minor FIX] Rimosso import locale ridondante: DOMAIN_NAMES è già
+    # importato a livello di modulo in cima al file.
     return DOMAIN_NAMES[class_id] if 0 <= class_id < len(DOMAIN_NAMES) else "???"
 
 def _is_pipeline(class_id: int) -> bool:

@@ -33,8 +33,12 @@ from torch.utils.data import DataLoader, TensorDataset
 from sklearn.metrics import f1_score
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
-PKL_PATH         = Path('code/classifier/embeddings_v2.pkl')
-WEIGHTS_PATH     = Path('code/classifier/nn_weights.pt')
+# [M4 FIX] Ancorato a Path(__file__).resolve().parent invece che relativo
+# alla cwd — stesso pattern già usato da nn_classifier.py, coerente con
+# precompute_embeddings.py (patchato allo stesso modo).
+_BASE_DIR        = Path(__file__).resolve().parent
+PKL_PATH         = _BASE_DIR / 'classifier' / 'embeddings_v2.pkl'
+WEIGHTS_PATH     = _BASE_DIR / 'classifier' / 'nn_weights.pt'
 
 LR               = 1e-3        # Lr iniziale (serve per l'ottimizzatore dei pesi Adam)
 WEIGHT_DECAY     = 1e-4        # regolarizzazione L2. Non ci saranno pesi troppo grandi
@@ -199,8 +203,12 @@ def train():
     # ── 4. Modello, ottimizzatore, scheduler ──────────────────────────────────
     model     = MultiTaskMLP()
     optimizer = optim.Adam(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    # [minor FIX] Rimosso verbose=False: parametro deprecato nelle versioni
+    # recenti di PyTorch (rimosso in favore di get_last_lr()/logging
+    # manuale). Nessun impatto comportamentale: il default è già "nessun
+    # print automatico", identico a verbose=False.
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='max', patience=SCHED_PATIENCE, factor=0.5, verbose=False
+        optimizer, mode='max', patience=SCHED_PATIENCE, factor=0.5
     )
 
     n_params = sum(p.numel() for p in model.parameters())
@@ -274,9 +282,13 @@ def train():
             marker = ""
 
         if epoch % 10 == 0 or epoch == 1:
+            # [minor FIX] {marker} era calcolato ogni epoca ma mai
+            # effettivamente stampato (il vecchio "#{marker}" era un
+            # commento, non un'interpolazione f-string). Riattivato: mostra
+            # "★" quando l'epoca corrente ha migliorato il best F1-macro.
             print(f"  ep={epoch:4d} | tr_loss={avg_loss:.4f} | vl_loss={val_loss:.4f} | "
                   f"vl_f1={val_f1:.4f} | best={best_f1:.4f} | "
-                  f"no_impr={no_improve}/{PATIENCE} | lr={current_lr:.2e}")#{marker}
+                  f"no_impr={no_improve}/{PATIENCE} | lr={current_lr:.2e}{marker}")
 
         #se ho avuto 0 migliorati nelle ultime PATIENCE iterazioni...
         if no_improve >= PATIENCE:

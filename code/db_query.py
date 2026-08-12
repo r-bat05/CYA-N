@@ -1,21 +1,5 @@
 """
-    DATABASE QUERY — Frasi di training per il Vector Store.
-
-    Novità V2.1:
-    - [FIX] Aggiunte frasi math su teoria dei segnali (Nyquist-Shannon, DFT, Fourier)
-      e metodi Monte Carlo / convergenza stocastica. Queste aree erano scoperte,
-      causando score math troppo bassi (<3.0) su query ibride MATH->CODING e
-      mancata attivazione della pipeline.
-    - [FIX] Aggiunte frasi bridge ('coding','math') per FFT/campionamento e Monte Carlo.
-
-    Novità V2.0:
-    - [P3] Rimossi tutti i cloni manuali ("Trucco del Clone") dai domini.
-      Le frasi bridge erano duplicate fisicamente in ogni dominio coinvolto,
-      causando debito tecnico e rischio di desincronizzazione.
-    - [P3] Aggiunto BRIDGE_SENTENCES: Dict[Tuple[str, str], List[str]].
-      Ogni coppia di domini mappa alle frasi condivise. vector_store.py
-      le itera, le embeda UNA SOLA VOLTA e crea record per entrambi i domini.
-      Questo garantisce un'unica sorgente di verità per le frasi di confine.
+    DATABASE QUERY — Frasi di training.
 """
 
 from typing import Dict, List, Tuple
@@ -112,7 +96,6 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Implementa l'algoritmo di Prim o Kruskal in Python per trovare l'albero di copertura minimo di un grafo.",
         "Scrivi il codice Python per creare un grafo con NetworkX e trovare il percorso minimo tra due nodi.",
         "Come si visita un grafo in Python usando BFS e DFS su una lista di adiacenza?",
-        "Implementa l'algoritmo di Prim o Kruskal in Python per trovare l'albero di copertura minimo di un grafo.",
         "Come si fa il parsing di testi con NLTK o spaCy in Python per estrarre token, lemmi e frequenze?",
         "Scrivi uno script Python per analizzare la frequenza delle parole in un corpus di testi usando Counter.",
 

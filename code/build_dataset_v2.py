@@ -11,6 +11,16 @@ Sorgenti:
   3. Augmentation lessicale      → sinonimi per bilanciare le classi
 
 Output: code/dataset_v2.jsonl
+
+Novità (Fix da report_bugs.md):
+- [A2] Nuova dedup_records(): rimuove query duplicate verbatim PRIMA dello
+  split stratificato, prevenendo leakage train/val/test da record clonati.
+- [M1] Warning esplicito se augment_class() non raggiunge il target
+  richiesto per una classe (copertura SYNONYMS insufficiente).
+- [M2] Le classi bridge non-pipeline (general+math, general+rights) non
+  sono più escluse dall'augmentation: nuovo target dedicato TARGET_BRIDGE_NEG.
+- [M3] stratified_split() logga un warning per ogni classe con split
+  val e/o test vuoto.
 """
 
 import json, random, re
@@ -23,6 +33,15 @@ random.seed(42)
 # ── Costanti ───────────────────────────────────────────────────────────────────
 TARGET_MONO = 250   # min esempi per ogni dominio mono
 TARGET_PIPE = 80    # min esempi per ogni tipo pipeline
+# [M2 FIX] Target esplicito per le classi bridge NON-pipeline (general+math,
+# general+rights, cioè '+' in k ma '->' non in k): prima erano ESCLUSE
+# dall'augmentation (`if '+' in k and '->' not in k: continue`), restando a
+# 7/9 esempi grezzi contro i 250 dei mono-domain e gli 80 delle pipeline —
+# uno sbilanciamento marcato proprio sugli esempi che insegnano alla NN a
+# NON promuovere 'general' a pipeline (segnale statisticamente debole).
+# Valore intermedio (non TARGET_PIPE: sono esempi negativi, non pattern
+# positivi da massimizzare quanto le pipeline vere).
+TARGET_BRIDGE_NEG = 40
 OUTPUT_PATH = Path(__file__).resolve().parent / 'dataset_v2.jsonl'
 
 BRIDGE_MAP = {
@@ -573,21 +592,64 @@ def augment_class(group: list, target: int) -> list:
             extra.append(new_r)
     return extra
 
+def dedup_records(records: list) -> list:
+    """
+    [A2 FIX] Rete di sicurezza strutturale: rimuove record con query
+    duplicata (normalizzata: strip + lowercase), tenendo il primo
+    occorrente. Va chiamata PRIMA di stratified_split() — un duplicato non
+    rimosso può finire per metà in train e per metà in val/test dopo lo
+    shuffle interno allo split, reintroducendo esattamente il tipo di data
+    leakage che il fix "split prima di augmentation" (vedi main()) doveva
+    eliminare, ma a monte, nei dati sorgente stessi (causa concreta: la
+    frase Prim/Kruskal duplicata in db_query.py — già rimossa alla fonte,
+    ma questa funzione previene ricadute future in INTENT_SENTENCES,
+    BRIDGE_SENTENCES o MANUAL_RECORDS).
+    """
+    seen = set()
+    deduped = []
+    duplicates_found = []
+    for r in records:
+        norm = r['query'].strip().lower()
+        if norm in seen:
+            duplicates_found.append(r['query'])
+            continue
+        seen.add(norm)
+        deduped.append(r)
+
+    if duplicates_found:
+        print(f"\n⚠️  [A2 WARNING] {len(duplicates_found)} query duplicate rimosse dal dataset:")
+        for q in duplicates_found:
+            print(f"     - {q[:70]}{'...' if len(q) > 70 else ''}")
+
+    return deduped
+
+
 def stratified_split(records: list) -> list:
     groups = defaultdict(list)
     for r in records:
         groups[get_class_key(r)].append(r)
 
     result = []
-    for group in groups.values():
+    empty_splits = []  # [M3 FIX] classi con split val/test vuoto (n troppo piccolo)
+    for key, group in groups.items():
         random.shuffle(group)
         n  = len(group)
         t1 = max(1, int(n * 0.70))
         t2 = max(t1 + 1, int(n * 0.85))
-        for r in group[:t1]:   r['split'] = 'train'
-        for r in group[t1:t2]: r['split'] = 'val'
-        for r in group[t2:]:   r['split'] = 'test'
+        train_slice, val_slice, test_slice = group[:t1], group[t1:t2], group[t2:]
+        for r in train_slice: r['split'] = 'train'
+        for r in val_slice:   r['split'] = 'val'
+        for r in test_slice:  r['split'] = 'test'
+        if not val_slice or not test_slice:
+            empty_splits.append((key, n, len(train_slice), len(val_slice), len(test_slice)))
         result.extend(group)
+
+    if empty_splits:
+        print(f"\n⚠️  [M3 WARNING] Classi con split val e/o test VUOTO (n troppo piccolo "
+              f"per lo split 70/15/15 — punto cieco nella valutazione per-classe):")
+        for key, n, tr, va, te in empty_splits:
+            print(f"     {key:25s}: n={n:3d} → train={tr} val={va} test={te}")
+
     return result
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -600,6 +662,9 @@ def main():
     intent  = build_intent_records()
     bridge  = build_bridge_records()
     all_rec = intent + bridge + MANUAL_RECORDS
+
+    # [A2 FIX] Dedup PRIMA di split/augmentation: vedi dedup_records().
+    all_rec = dedup_records(all_rec)
 
     print(f"\n[FASE 1] Dati base unificati:")
     print(f"  INTENT_SENTENCES : {len(intent)}")
@@ -624,14 +689,40 @@ def main():
 
     print(f"\n[FASE 2] Augmentation:")
     extra = []
+    below_target = []  # [M1 FIX] classi che restano sotto il target richiesto
     for k, group in class_map.items():
-        if '+' in k and '->' not in k:
-            continue
-        target = TARGET_PIPE if '->' in k else TARGET_MONO
+        if '->' in k:
+            target = TARGET_PIPE
+        elif '+' in k:
+            # [M2 FIX] Bridge non-pipeline (general+math, general+rights):
+            # prima escluse del tutto dall'augmentation (`continue`), ora
+            # portate a un target esplicito e più basso di TARGET_PIPE
+            # (sono esempi negativi che insegnano il NO-pipeline, non
+            # pattern positivi da massimizzare).
+            target = TARGET_BRIDGE_NEG
+        else:
+            target = TARGET_MONO
+
         if len(group) < target:
             aug = augment_class(group, target)
-            print(f"  {k:25s}: +{len(aug)} record augmentati")
+            total_after = len(group) + len(aug)
+            print(f"  {k:25s}: +{len(aug):3d} record augmentati (tot={total_after}/{target})")
+            if total_after < target:
+                # [M1 FIX] augment_query() sostituisce solo la PRIMA parola
+                # che matcha SYNONYMS: una frase sorgente produce al massimo
+                # len(SYNONYMS[parola]) varianti uniche, indipendentemente
+                # da quante volte viene ripescata dal pool. Se la copertura
+                # lessicale di SYNONYMS è scarsa per questa classe, il pool
+                # si esaurisce e il target NON viene raggiunto — prima
+                # nessun warning lo segnalava.
+                below_target.append((k, total_after, target))
             extra.extend(aug)
+
+    if below_target:
+        print(f"\n⚠️  [M1 WARNING] Classi sotto target dopo augmentation "
+              f"(copertura SYNONYMS insufficiente per generare abbastanza varianti uniche):")
+        for k, got, target in below_target:
+            print(f"     {k:25s}: {got}/{target}  (mancano {target - got})")
 
     all_rec = all_rec + extra
     print(f"  Totale dopo augmentation: {len(all_rec)}")

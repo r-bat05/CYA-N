@@ -10,7 +10,7 @@ import config as _config
 # ---------------------------------------------------------------------------
 latex_to_unicode = {
     # --- Casi Speciali ---
-    r"\frac{d}{dx}": "d/dx", r"\,dx": " dx", r"dx": "dx",
+    r"\frac{d}{dx}": "d/dx", r"\,dx": " dx",
 
     # --- Lettere Greche (Minuscole) ---
     r"\alpha": "α", r"\beta": "β", r"\gamma": "γ", r"\delta": "δ", r"\epsilon": "ε",
@@ -62,6 +62,23 @@ latex_to_unicode = {
 
 # Pre-compilazione: chiavi ordinate per lunghezza decrescente (evita sostituzioni parziali)
 _SORTED_LATEX_KEYS = sorted(latex_to_unicode.keys(), key=len, reverse=True)
+
+# [O2 FIX] Pattern unico pre-compilato al posto di ~100 .replace() sequenziali
+# per segmento (era O(segmenti × chiavi), ora O(1 passata regex) per segmento).
+# L'ordine (chiavi più lunghe prima) è preservato dall'alternanza, che in
+# Python prova le alternative nell'ordine in cui compaiono nel pattern.
+# Equivalente comportamentale garantito: nessun VALORE del dizionario
+# (es. "α", "×", "→") combacia con nessuna CHIAVE (sempre prefissata da
+# backslash o parentesi letterali), quindi non esiste rischio di
+# ri-sostituzione a catena che il vecchio approccio sequenziale avrebbe
+# potuto (per costruzione) introdurre.
+_LATEX_PATTERN = re.compile(
+    '|'.join(re.escape(k) for k in _SORTED_LATEX_KEYS)
+) if _SORTED_LATEX_KEYS else None
+
+
+def _latex_replace_match(match: re.Match) -> str:
+    return latex_to_unicode[match.group(0)]
 
 # Regex per isolare i blocchi di codice Markdown (triple e singolo backtick).
 _CODE_BLOCK_RE = re.compile(r'(```[\s\S]*?```|`[^`\n]*`)')
@@ -134,12 +151,27 @@ def clean_response(text: str) -> str:
     close_tag = re.escape(_config.SYSTEM_SETTINGS.get('think_close_tag', '</think>'))
     text = re.sub(f'{open_tag}.*?{close_tag}', '', text, flags=re.DOTALL)
 
+    # [M7 FIX] Guardia per code fence ``` non chiuso: una risposta troncata
+    # a metà blocco di codice (limite token) lascia un numero DISPARI di
+    # occorrenze di ```. Senza questa guardia, lo split code-block-aware
+    # sottostante tratterebbe l'intero residuo (fence di apertura + codice
+    # non ancora chiuso) come testo discorsivo, esponendolo a sostituzione
+    # LaTeX/filtro CJK e mutilando codice legittimo. Isoliamo tutto ciò che
+    # segue l'ultima occorrenza di ``` come blocco protetto, non filtrato,
+    # e lo riattacchiamo invariato a fine funzione.
+    unclosed_fence_tail = ""
+    if text.count('```') % 2 == 1:
+        last_fence_idx = text.rfind('```')
+        unclosed_fence_tail = text[last_fence_idx:]
+        text = text[:last_fence_idx]
+
     # 2. Split code-block aware: separa testo discorsivo da blocchi di codice.
     #    Indici PARI  → testo discorsivo  (applicare filtri)
     #    Indici DISPARI → blocchi codice  (preservare intatti)
     parts = _CODE_BLOCK_RE.split(text)
 
     cjk_enabled = _config.SYSTEM_SETTINGS.get('cjk_filter_enabled', True)
+    removed_cjk_chars = []  # [A3 FIX] traccia rimozioni non vuote per il log
 
     for i in range(0, len(parts), 2):  # solo indici pari = testo discorsivo
         segment = parts[i]
@@ -147,16 +179,39 @@ def clean_response(text: str) -> str:
         # [CJK FIX] Applicato solo sul testo discorsivo e solo se abilitato.
         # Spostato dentro il loop per evitare di agire sui code block.
         if cjk_enabled:
+            matches = _CJK_RE.findall(segment)
+            if matches:
+                removed_cjk_chars.extend(matches)
             segment = _CJK_RE.sub('', segment)
 
-        # [BUG5] Sostituzione LaTeX solo sulle parti non-codice.
-        for latex_key in _SORTED_LATEX_KEYS:
-            if latex_key in segment:
-                segment = segment.replace(latex_key, latex_to_unicode[latex_key])
+        # [BUG5 / O2 FIX] Sostituzione LaTeX solo sulle parti non-codice, ora
+        # con un'unica regex pre-compilata invece di ~100 .replace()
+        # sequenziali (vedi _LATEX_PATTERN sopra).
+        if _LATEX_PATTERN is not None:
+            segment = _LATEX_PATTERN.sub(_latex_replace_match, segment)
 
         parts[i] = segment
 
-    return ''.join(parts)
+    result = ''.join(parts)
+    if unclosed_fence_tail:
+        result += unclosed_fence_tail
+
+    # [A3 FIX] Il filtro CJK è globale e attivo di default per TUTTI i
+    # domini (incluso 'general', che tratta anche cultura/lingue: galateo
+    # giapponese, ecc.). Se un carattere CJK legittimo viene rimosso,
+    # l'utente riceveva prima una risposta silenziosamente incompleta senza
+    # alcuna indicazione. Non disabilitiamo il filtro per dominio (avrebbe
+    # richiesto propagare 'category' in ogni call-site di clean_response()
+    # dentro ai_engine.py::generate(), toccando anche quel file) ma
+    # rendiamo la rimozione osservabile per il debug, come da opzione B
+    # proposta in report_bugs.md (A3).
+    if removed_cjk_chars:
+        preview = ''.join(removed_cjk_chars[:20])
+        print(f"⚠️  [CJK_FILTER] Rimossi {len(removed_cjk_chars)} caratteri CJK "
+              f"dalla risposta (preview: '{preview}'). Se il contenuto era "
+              f"intenzionale, disabilita 'cjk_filter_enabled' in config.py.")
+
+    return result
 
 
 def print_time_elapsed(start_time: float):

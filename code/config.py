@@ -35,7 +35,17 @@ RAM_THRESHOLDS = {
     'small':    1 * GB,
     'medium':   5.5 * GB,
     'large':   12.0 * GB,
-    'math_opt': 0.5 * GB #2.5
+    # [C2 FIX] Era 0.5GB: INFERIORE a 'small'=1GB nonostante deepseek-r1:7b
+    # (primary math, NESSUN fallback) sia più grande di qwen2.5-coder:1.5b
+    # e gemma3:4b (entrambi coperti da 'small'). check_resources() passava
+    # quasi sempre anche con RAM insufficiente, spostando l'errore da
+    # ResourceExhaustedError (pulito) a un Errore Ollama/Generico grezzo in
+    # generate(). Valore ricalcolato per coerenza d'ordine con
+    # medium(9b→5.5GB) e large(20b→12GB) (~0.6GB/miliardo di parametri
+    # osservato su questi due punti): 7B * 0.6 ≈ 4.2GB, arrotondato a 4.5GB
+    # con margine di sicurezza. Va verificato con `ollama show deepseek-r1:7b`
+    # sulla quantizzazione realmente in uso prima di considerarlo definitivo.
+    'math_opt': 4.5 * GB,
 }
 
 # --- 2. CONFIGURAZIONE MODELLI AI ---
@@ -91,6 +101,17 @@ SYSTEM_SETTINGS = {
 
     # [CHAT] Profondità sliding window della chat history.
     'max_history_turns': 5,
+
+    # [C1 FIX] Cap in caratteri per singolo messaggio salvato in chat_history
+    # (main.py::_update_history). Prima non esisteva alcun limite sulla
+    # LUNGHEZZA dei messaggi (solo sul numero, via max_history_turns): con
+    # ctx_size=4096 token e fino a 10 messaggi in sliding window (risposte
+    # coding con blocchi di codice, spiegazioni rights estese), il system
+    # prompt poteva essere troncato in overflow da Ollama senza alcun errore
+    # visibile. 1200 char/messaggio lascia margine per system prompt
+    # (extended tier + few-shot) + query corrente entro il budget di 4096
+    # token (~16000 char stimati per l'italiano/inglese misto).
+    'history_message_max_chars': 1200,
 
     # [CJK] Filtro caratteri Cinese/Giapponese/Coreano in clean_response().
     'cjk_filter_enabled': True,
