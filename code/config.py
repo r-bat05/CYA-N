@@ -64,10 +64,10 @@ MODELS_CONFIG = {
     },
     'math': {
         'primary':                "deepseek-r1:7b",
-        'fallback':               None,
+        'fallback':               "deepseek-r1:1.5b",
         'temperature':            0.2,
         'ram_threshold':          'math_opt',
-        'fallback_ram_threshold': None,
+        'fallback_ram_threshold': 'small',
         #DEEPSEEK FA GIA' REASONING INTERNO --> mettere extendend sarebbe ripetitivo
         'prompt_tier':            'compact', 
     },

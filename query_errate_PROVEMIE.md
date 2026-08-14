@@ -3,7 +3,6 @@
 1) Sembra che il modello faccia fatica quando ha domande molto tecniche
 2) in molte query sbaglia il followup
 
-
 Inserisci la tua richiesta (o 'exit' per uscire): creami un bottone in HTML con effetti scenici per migliorare la bellezza del mio sito
 
 ⚙️  Fase 0 — Classificazione Neurale (NN Router)...
@@ -94,8 +93,6 @@ Inserisci la tua richiesta (o 'exit' per uscire): visita post order alberi d-ari
 
 ---
 
-
-
 Inserisci la tua richiesta (o 'exit' per uscire): spiegami il metodo di Ruffini
 
 ⚙️  Fase 0 — Classificazione Neurale (NN Router)...
@@ -107,8 +104,6 @@ Inserisci la tua richiesta (o 'exit' per uscire): spiegami il metodo di Ruffini
 ╭── 🧠 MODULO [GENERAL] in azione...
 
 ---
-
-
 
 ### PROBLEMA: qui è troppo alto il punteggio di rights
 
@@ -124,3 +119,13 @@ Inserisci la tua richiesta (o 'exit' per uscire): curvatura spazio tempo
 ╭── 🧠 MODULO [MATH] in azione...
 
 ---
+
+**PROBLEMA: volevo la pipeline math->coding**
+
+Inserisci la tua richiesta (o 'exit' per uscire): risolvi l'integrale indefinito nell'immagine e scrivi il codice python relativo alla soluzione
+
+⚙️  Fase 0 — Classificazione Neurale (NN Router)...
+...
+[NN_CLASSIFIER] CODING | conf=0.999 | diff=2 | followup=False (fu_prob=0.019) | scores=[coding:0.999 | math:0.068 | rights:0.001 | general:0.002] | 311ms
+🔍 [DEBUG NEURAL] Scores: [coding:1.00 | math:0.07 | rights:0.00 | general:0.00] | Difficulty: 2 | Followup: False
+🔍 [DEBUG NEURAL] Classe=coding | Confidence=1.00 | Dominio: CODING
