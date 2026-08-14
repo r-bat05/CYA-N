@@ -1,6 +1,6 @@
 # 🧠 CYA N (Choose Your AI - Noob)
 
-[![Versione](https://img.shields.io/badge/Versione-7.4.0_Dev-orange.svg)]()
+[![Versione](https://img.shields.io/badge/Versione-7.5.0_Dev-orange.svg)]()
 [![Python](https://img.shields.io/badge/Python-3.8+-yellow.svg)]()
 [![Ollama](https://img.shields.io/badge/Backend-Ollama-black.svg)]()
 [![Classifier](<https://img.shields.io/badge/Classifier-MultiTaskMLP_%3C20ms-blueviolet.svg>)]()
@@ -13,12 +13,13 @@ Progettato con un focus estremo sull'ottimizzazione delle risorse, CYA N è adat
 
 ---
 
-## ✨ Funzionalità Principali e Architettura V7.4.0
+## ✨ Funzionalità Principali e Architettura V7.5.0
 
 - 🧬 **NN Classifier — MultiTaskMLP (Fase 0):** Il cuore del sistema è `nn_classifier.py`, un Multi-Layer Perceptron (~145K parametri) addestrato su embedding di `paraphrase-multilingual-MiniLM-L12-v2` (384-dim). Tre teste specializzate condividono un backbone comune: **domain** (multi-label, 4 output), **difficulty** (1–3) e **is\_followup** (binaria). Inferenza in **meno di 20 ms** e **meno di 100 MB di RAM**, contro i 300–800 ms e ~1.5 GB del precedente router LLM.
 - 🎯 **Routing Purity:** Il `class_id` prodotto dal classificatore è **l'unica fonte di verità** per l'instradamento. Non esistono euristiche Python  che lo alterino: niente sticky routing testuale, niente promozione score-based, niente filtri di lunghezza della query. `domain_scores`, `difficulty` e `is_followup` restano puramente diagnostici (log di sessione).
 - 🔀 **Instradamento a Due Stadi:** `_derive_class_id()` seleziona i domini tecnici candidati con una soglia permissiva (`threshold_mono = 0.50`) e conferma una pipeline solo se **entrambi** i domini superano una soglia severa (`threshold_pipeline = 0.75`). Il dominio `general` è escluso per costruzione dalle pipeline: nessuna guardia esterna è più necessaria.
-- 💬 **Chat History (Sliding Window):** Dialoghi multi-turno tramite finestra scorrevole (`max_history_turns`, default 5). La profondità usata dal classificatore (`HISTORY_MAX_TURNS = 2`, in `history_utils.py`) è indipendente da quella dei modelli generativi.
+- 💬 **Chat History (Sliding Window):** Dialoghi multi-turno tramite finestra scorrevole (`max_history_turns`, default 5). Oltre al limite sul *numero* di messaggi, ogni singolo messaggio viene troncato prima dell'inserimento in history (`history_message_max_chars`, default 1200 caratteri, via `_truncate_for_history()` in `main.py`) per prevenire un overflow silenzioso della finestra di contesto (`ctx_size=4096`). La profondità usata dal classificatore (`HISTORY_MAX_TURNS = 2`, in `history_utils.py`) resta indipendente da entrambi questi limiti.
+- 🎚️ **Prompt Tiering:** Ogni dominio dichiara staticamente, in `config.MODELS_CONFIG`, un `prompt_tier` (`compact` | `extended`), letto una sola volta da `BaseAI.__init__` e indipendente dallo stato di fallback runtime (asimmetria di rischio: un prompt esteso su un modello di fallback nel peggiore dei casi viene solo parzialmente seguito). Il tier `extended` arricchisce *additivamente* il system prompt base tramite `TIER_INJECTIONS`, mai in sostituzione; `math` resta `compact` perché `deepseek-r1:7b` esegue già un ragionamento a catena interno (i tag `<think>` sono comunque rimossi da `clean_response()`).
 - 🧩 **Isolamento del Contesto su Domain Switch:** Quando il dominio cambia rispetto all'ultimo turno, la history viene passata vuota all'agente corrente per evitare contaminazione cross-dominio. Questo meccanismo **non altera mai il routing**: agisce solo sul contesto conversazionale.
 - 🧠 **Pipeline Multi-Agente (Draft & Merge):** Per le query ibride (`class_id` 4–6), CYA N esegue i modelli in sequenza. L'Agente A genera una bozza tecnica; l'Agente B la integra con la propria specializzazione. L'ordine è codificato direttamente nel `class_id`, senza matrici di configurazione esterne.
 - 🔎 **Critic Pass (Auto-Revisione):** L'Agente B esegue un passaggio finale di autovalutazione antagonistica, confrontando la propria sintesi con la query originale. La Chat History è esclusa in questa fase per garantire oggettività.
@@ -49,13 +50,15 @@ graph TD
 
     subgraph FASE2["FASE 2 — Esecuzione Agenti"]
         MONO -->|Coding| RC{RAM ≥ 5.5GB?}
-        MONO -->|Math| RM["DeepSeek-R1 7B<br/>(no fallback)"]
+        MONO -->|Math| RM{RAM ≥ 4.5GB?}
         MONO -->|Rights / General| RG{RAM ≥ 12GB?}
 
-        RC -->|Sì| H1[Qwen2.5 9B]
+        RC -->|Sì| H1[Qwen3.5 9B]
         RC -->|No| H2[Qwen2.5-Coder 1.5B]
+        RM -->|Sì| H5[DeepSeek-R1 7B]
+        RM -->|No| H6[DeepSeek-R1 1.5B]
         RG -->|Sì| H3[GPT-OSS 20B]
-        RG -->|No| H4[Llama 3.2 3B]
+        RG -->|No| H4[Gemma3 4B]
 
         HYB --> PA["Agente A — Draft"]
         PA --> PU["explicit_unload()<br/>+ RAM Active Polling"]
@@ -66,7 +69,8 @@ graph TD
     subgraph FASE3["FASE 3 — Output"]
         H1 --> S["Sanificazione<br/>Code-Block Aware"]
         H2 --> S
-        RM --> S
+        H5 --> S
+        H6 --> S
         H3 --> S
         H4 --> S
         PC --> S
@@ -96,15 +100,16 @@ pip install psutil ollama sentence-transformers torch scikit-learn
 
 ```bash
 # Dominio Coding
-ollama pull qwen2.5:9b
+ollama pull qwen3.5:9b
 ollama pull qwen2.5-coder:1.5b   # fallback
 
 # Dominio Math
 ollama pull deepseek-r1:7b
+ollama pull deepseek-r1:1.5b      # fallback
 
 # Domini Rights e General
 ollama pull gpt-oss:20b
-ollama pull llama3.2:3b           # fallback
+ollama pull gemma3:4b             # fallback
 ```
 
 ### 3. Classificatore Neurale
@@ -130,10 +135,10 @@ python code/main.py
 
 | Dominio | Modello Primario   | Fallback               | Temperatura |
 | ------- | ------------------ | ---------------------- | ----------- |
-| Coding  | `qwen2.5:9b`     | `qwen2.5-coder:1.5b` | 0.5         |
-| Math    | `deepseek-r1:7b` | —                     | 0.2         |
-| Rights  | `gpt-oss:20b`    | `llama3.2:3b`        | 0.4         |
-| General | `gpt-oss:20b`    | `llama3.2:3b`        | 0.7         |
+| Coding  | `qwen3.5:9b`     | `qwen2.5-coder:1.5b` | 0.5         |
+| Math    | `deepseek-r1:7b` | `deepseek-r1:1.5b`   | 0.2         |
+| Rights  | `gpt-oss:20b`    | `gemma3:4b`           | 0.4         |
+| General | `gpt-oss:20b`    | `gemma3:4b`           | 0.7         |
 
 ### Classificatore (Fase 0 — non appartiene alla flotta Ollama)
 
@@ -161,22 +166,6 @@ python code/main.py
 | ----------------------------------- | -------------------------------------------------------------------------------------- |
 | `/reset`, `/clear`              | Azzera chat history e ultimo dominio attivo (usato solo per l'isolamento del contesto) |
 | `exit`, `esci`, `quit`, `q` | Chiude la sessione                                                                     |
-
----
-
-## 🗺️ Roadmap
-
-**Completato**
-
-- [X] **NN Classifier (MultiTaskMLP):** sostituisce integralmente `llm_router.py`. Il `class_id` è l'unica fonte di verità per il routing (*Routing Purity*).
-- [X] **Cascata di Training:** `build_dataset_v2.py → precompute_embeddings.py → train_nn.py → step4_evaluation.py`, con split anti-leakage (70/15/15 prima dell'augmentation).
-- [X] **is\_followup Head:** terza testa neurale integrata nel MultiTaskMLP, non più delegata a euristiche Python.
-
-**In corso**
-
-- [ ] **Prossimo milestone:** Step 1 di `1_prossimi_step.md` — criteri di attivazione della pipeline.
-- [ ] **Dataset patching:** risoluzione del sotto-caso `coding` (history) + query corta/generica → `general`, responsabile dei 4 errori residui nello smoke test. Rimandato a dati di produzione reali.
-- [ ] **Cleanup minore:** aggiornamento docstring in `nn_classifier.py` (soglie obsolete), rimozione variabile `ok_diff` inutilizzata in `step4_evaluation.py`, eliminazione del prototipo superato `script_NN_classifier.py`.
 
 ---
 
