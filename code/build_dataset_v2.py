@@ -12,6 +12,26 @@ Sorgenti:
 
 Output: code/dataset_v2.jsonl
 
+Novità (Difficulty Manuale — report_difficulty_manual.md):
+- [DIFFICULTY] Rimossa l'euristica estimate_difficulty() (marker lessicali
+  _HARD_MARKERS + floor fisso per dominio: livello 3/2 per query tecniche,
+  mai validata su larga scala e strutturalmente cieca su casi come
+  "trasformata di Fourier", corta ma concettualmente difficile). Rimossa
+  anche get_dominant_domain(), usata esclusivamente da estimate_difficulty()
+  per calcolare il dominio dominante di un bridge — nessun altro call site.
+- [DIFFICULTY] Sostituita da get_difficulty_label(query): lookup fail-fast
+  su difficulty_labels.json, file esterno con etichetta manuale (1/2/3) per
+  ciascuna delle 1010 query esatte di INTENT_SENTENCES/BRIDGE_SENTENCES
+  (724 + 286, verificato — vedi report §5). Lo script NON gira finché il
+  file non è completo al 100%: get_difficulty_label() solleva ValueError
+  con la query esatta mancante, stesso pattern fail-fast già in uso per
+  is_followup in precompute_embeddings.py::load_dataset(). Comportamento
+  intenzionale: impedisce la generazione silenziosa di un dataset con
+  etichette parziali.
+- [DIFFICULTY] MANUAL_RECORDS invariato e FUORI SCOPE: _r()/_fu()/_cd()
+  prendono già 'diff' come parametro esplicito passato a mano, mai
+  derivato da estimate_difficulty(). Nessuna modifica necessaria.
+
 Novità (Fix da report_bugs.md):
 - [A2] Nuova dedup_records(): rimuove query duplicate verbatim PRIMA dello
   split stratificato, prevenendo leakage train/val/test da record clonati.
@@ -462,62 +482,59 @@ MANUAL_RECORDS = [
     _cd("come si fa a togliere una macchia di grasso da una giacca?",    _G, 1, ["Spiega la differenza tra dolo e colpa nel diritto penale."]),
 ]
 
+# ── Difficulty Labels (manuale) ──────────────────────────────────────────────
+# [DIFFICULTY MANUALE] Sostituisce l'euristica estimate_difficulty() rimossa
+# (vedi Novità in testa al file e report_difficulty_manual.md §1). La
+# difficoltà è ora un'etichetta manuale per query ESATTA, mantenuta in un
+# JSON esterno dal Coordinatore. Caricato a import-time: se il file manca,
+# fallisce subito con un errore chiaro invece di un FileNotFoundError
+# generico più a valle.
+DIFFICULTY_LABELS_PATH = Path(__file__).resolve().parent / 'difficulty_labels.json'
+
+
+def _load_difficulty_labels() -> dict:
+    if not DIFFICULTY_LABELS_PATH.exists():
+        raise FileNotFoundError(
+            f"File etichette difficoltà non trovato: {DIFFICULTY_LABELS_PATH}\n"
+            f"Vedi report_difficulty_manual.md §4.1 per lo schema atteso "
+            f"({{'<query esatta>': 1|2|3|null}})."
+        )
+    with open(DIFFICULTY_LABELS_PATH, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+DIFFICULTY_LABELS: dict = _load_difficulty_labels()
+
+
+def get_difficulty_label(query: str) -> int:
+    """
+    Lookup fail-fast della difficoltà manuale (1/2/3) per una query ESATTA
+    (verbatim, come compare in INTENT_SENTENCES/BRIDGE_SENTENCES — 0
+    duplicati verificati, chiave univoca garantita).
+
+    Solleva ValueError se:
+      - la query non è presente come chiave nel JSON (drift tra
+        db_query.py e difficulty_labels.json — es. una frase modificata
+        dopo la generazione dello skeleton);
+      - il valore è ancora null (non etichettata);
+      - il valore non è un intero in {1, 2, 3}.
+
+    Stesso pattern fail-fast già in uso per is_followup in
+    precompute_embeddings.py::load_dataset(): un dataset con etichette
+    mancanti non deve MAI essere generato silenziosamente.
+    """
+    value = DIFFICULTY_LABELS.get(query)
+    if value not in (1, 2, 3):
+        raise ValueError(
+            f"Difficulty mancante o non valida per la query: {query!r} "
+            f"(valore letto: {value!r}). Etichettarla in "
+            f"'{DIFFICULTY_LABELS_PATH.name}' con un intero in {{1,2,3}} "
+            f"prima di rigenerare il dataset."
+        )
+    return value
+
+
 # ── Helper functions ───────────────────────────────────────────────────────────
-
-_HARD_MARKERS = {
-    'coding': [
-        'algoritmo genetico', 'programmazione dinamica', 'rete neurale',
-        'crittografia', 'ellittica', 'distribuit', 'concorren',
-        'compilatore', 'kernel', 'simplesso', 'trasformata',
-        'fattorizzazione', 'complessità', 'automa cellulare',
-        'omomorfic', 'frattal', 'gestore di memoria', 'interrupt',
-    ],
-    'math': [
-        'dimostra', 'dimostrazione', 'teorema', 'per induzione', 'per assurdo',
-        'spazio di hilbert', 'spazio di banach', 'convergenza', 'topologia',
-        'varietà differenziabile', 'decomposizione spettrale',
-        'equazione differenziale', 'trasformata', 'funzione zeta',
-        'gödel', 'lebesgue', 'markov', 'mcmc', 'diagonalizza',
-    ],
-    'rights': [
-        'costituzional', 'diritto internazionale', 'giurisdizione extraterritoriale',
-        'corte penale internazionale', 'immunità diplomatica',
-        'responsabilità internazionale', "crimini contro l'umanità",
-    ],
-    'general': [
-        'paradosso', 'meccanica quantistica', 'filosofia', 'teoria delle idee',
-        'relatività', 'buco nero', 'principio di indeterminazione',
-    ],
-}
-
-
-def estimate_difficulty(query: str, is_pipeline: bool, dominant_domain: str) -> int:
-    """
-    [FIX — Opzione B, Report Gemini] Sostituita la costante fissa per
-    dominio (Livello 2 per ogni query tecnica, 1 per general): non
-    forniva alla difficulty_head alcun segnale reale, riducendola a un
-    proxy del domain-label. Ora il livello 3 (tecnici) / 2 (general)
-    scatta solo in presenza di marker lessicali di complessità teorica
-    o strutturale. Preferita a un criterio basato sulla lunghezza della
-    query, che penalizzerebbe ingiustamente le molte query tecniche
-    short-form presenti nel dataset (fix P2 anti-degradazione).
-    Euristica non validata empiricamente su larga scala: da verificare
-    con uno smoke test dedicato prima di considerarla definitiva.
-    """
-    if is_pipeline:
-        return 3
-
-    q_lower = query.lower()
-    has_hard_marker = any(m in q_lower for m in _HARD_MARKERS.get(dominant_domain, []))
-
-    if dominant_domain == 'general':
-        return 2 if has_hard_marker else 1
-    return 3 if has_hard_marker else 2
-
-
-def get_dominant_domain(domain_labels: dict) -> str:
-    """Restituisce il dominio con valore 1 più alto (o il primo se pari)."""
-    return max(domain_labels, key=domain_labels.get)
 
 def get_class_key(record: dict) -> str:
     if record['is_pipeline'] and record['pipeline_type']:
@@ -550,7 +567,7 @@ def build_intent_records() -> list:
             records.append(_r(
                 query=s, 
                 labels=labels, 
-                diff=estimate_difficulty(s, False, domain),
+                diff=get_difficulty_label(s),
                 is_followup=False # Garantiamo che le frasi base abbiano flag a False
             ))
     return records
@@ -563,12 +580,11 @@ def build_bridge_records() -> list:
         labels[d1] = 1
         labels[d2] = 1
         pipeline_type, is_pipe = BRIDGE_MAP.get((d1, d2), (None, False))
-        dominant = get_dominant_domain(labels)
         for s in sentences:
             records.append(_r(
                 query=s, 
                 labels=labels, 
-                diff=estimate_difficulty(s, is_pipe, dominant),
+                diff=get_difficulty_label(s),
                 is_pipe=is_pipe,
                 pipe_type=pipeline_type,
                 is_followup=False # Garantiamo flag a False
@@ -609,7 +625,7 @@ def dedup_records(records: list) -> list:
     deduped = []
     duplicates_found = []
     for r in records:
-        norm = r['query'].strip().lower()
+        norm = (r['query'].strip().lower(), tuple(h.strip().lower() for h in r.get('history', [])))
         if norm in seen:
             duplicates_found.append(r['query'])
             continue

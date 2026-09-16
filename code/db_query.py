@@ -362,7 +362,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         # --- ARITMETICA MODULARE E LOGICA ---
         "Trova il massimo comun divisore tra 1071 e 462 usando il metodo delle divisioni successive",
         "Risolvi la congruenza lineare 3x ≡ 4 (mod 7)",
-        "Dimostra per induzione matematica che la somma dei primi n numeri interi è n(n+1)/2"
+        "Dimostra per induzione matematica che la somma dei primi n numeri interi è n(n+1)/2",
 
         # --- Probabilità e Statistica ---
         "Calcola la probabilità condizionata dell'evento A sapendo che si è verificato B col teorema di Bayes.",
@@ -508,7 +508,7 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
         "Come funziona il sistema di giustizia costituzionale e l'accesso in via incidentale.",
 
         # --- Diritto Amministrativo ---
-        "Come si compila e si presenta correttamente il modello F24 per pagare le imposte sui redditi all'Agenzia delle Entrate?"
+        "Come si compila e si presenta correttamente il modello F24 per pagare le imposte sui redditi all'Agenzia delle Entrate?",
         "Come funziona il ricorso gerarchico e il ricorso al TAR nel diritto amministrativo?",
         "Spiega la differenza tra nullità e annullabilità di un provvedimento amministrativo.",
         "Quali sono i requisiti normativi per richiedere la cittadinanza italiana per residenza?",
