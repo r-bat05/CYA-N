@@ -1,62 +1,6 @@
 """
-    CYA N - AI LOCAL DISPATCHER V7.5.0
+    CYA N - AI LOCAL DISPATCHER V7.6.0
     Entry Point dell'applicazione.
-
-    Novità V7.5.0 (Fix da report_bugs.md):
-    - [C1] Nuova _truncate_for_history(): cap in caratteri (da
-      config.SYSTEM_SETTINGS['history_message_max_chars']) su ogni singolo
-      messaggio inserito in chat_history da _update_history(). Prima
-      esisteva solo un cap sul NUMERO di messaggi (max_history_turns), mai
-      sulla loro lunghezza — rischio di overflow silenzioso di ctx_size.
-    - [A1] L'isolamento history su domain switch (domain_switched) esisteva
-      prima solo nel ramo mono-dominio. Ora calcolato anche nel ramo
-      pipeline (confronto last_active_domain vs domain_a) e applicato con
-      effective_history sia a resolve_pipeline_a() sia a resolve_pipeline_b().
-    - [M5] _CLASS_TO_DOMAIN ora derivato da nn_classifier.DOMAIN_NAMES
-      invece di essere ridichiarato come dict indipendente (evita drift tra
-      due fonti della stessa mappatura).
-    - [minor] Aggiunto separatore "_"*60 mancante nel ramo
-      except Exception finale, per coerenza col resto del log.
-
-    Novità V7.4.0 (Routing purity — output NN come unica fonte):
-    - [ROUTING PURITY] Rimossa _should_sticky_route() e l'intero meccanismo
-      di Domain Retention/override basato su soglie di confidenza Python
-      (sticky_tech_switch_min, sticky_short_override_min, sticky_short_words).
-      Il dominio instradato è ora SEMPRE quello indicato da class_id, senza
-      eccezioni basate su last_active_domain.
-    - [ROUTING PURITY] Rimossa la declassificazione pipeline per query corte
-      (min_words_for_pipeline): se class_id è una classe pipeline (4/5/6),
-      la pipeline viene eseguita a prescindere dal numero di parole.
-    - [ROUTING PURITY] Rimossa la promozione "SCORE PIPELINE" (mono→pipeline
-      via domain_scores + pipeline_score_min): non esiste più nessuna logica
-      che promuove una classificazione mono-dominio della NN a pipeline.
-    - [ROUTING PURITY] Rimossa [P0] GUARDIA GENERAL: era già codice morto
-      dopo la rimozione della promozione score-based, dato che 'general' non
-      è mai incluso in PIPELINE_CLASSES (vedi nn_classifier.py).
-    - [ROUTING PURITY] Rimosso _TECHNICAL_DOMAINS: usato solo dai meccanismi
-      sopra.
-    - Risultato: class_id (e la sua mappatura PIPELINE_CLASSES/_CLASS_TO_DOMAIN)
-      è l'UNICA fonte che decide dominio singolo vs pipeline. domain_scores,
-      difficulty e is_followup restano solo a scopo di log/debug — nessuna
-      logica in questo file li usa più per alterare l'instradamento.
-    - [HISTORY] domain_switched resta: NON è instradamento, decide solo se
-      isolare la chat history passata all'agente per evitare contaminazione
-      tra domini diversi. Non cambia mai il dominio scelto dalla NN.
-
-    Novità V7.3.0 (Cleanup post-branch build_classifier_NN):
-    - [CLEANUP] Rimosso il ramo di fallback a keyword-dispatcher (mai
-      importato, codice morto). Se il classifier non è disponibile, il
-      turno viene scartato con un errore esplicito.
-    - [CLEANUP] Rimossa _has_domain_keywords() e last_pipeline_domains.
-
-    Novità V7.2.0:
-    - [ROUTER SWAP] llm_router.py rimosso. Import sostituito con
-      nn_classifier.py (MultiTaskMLP locale, nessuna chiamata Ollama per
-      il routing). Interfaccia predict() identica.
-
-    Novità V7.0.0:
-    - [NEURAL] Sostituito routing k-NN con neural_classifier.py.
-    - [NEURAL] Pipeline detection integrata nel class_id del classifier.
 """
 
 import sys
@@ -75,7 +19,7 @@ _CLASS_TO_DOMAIN = {i: name for i, name in enumerate(DOMAIN_NAMES[:4])}
 
 def print_banner():
     print("\n" + "=" * 60)
-    print("      CYA N  |  AI LOCAL DISPATCHER V7.5.0    ")
+    print("      CYA N  |  AI LOCAL DISPATCHER V7.6.0    ")
     print("      (Coding • Math • Rights • General)      ")
     print("=" * 60 + "\n")
 
@@ -111,6 +55,20 @@ def _update_history(history: list, user_input: str, response: str, max_messages:
 def _is_error(result: str) -> bool:
     """Controlla se il risultato è un messaggio d'errore di sistema."""
     return not result or any(result.startswith(p) for p in _ERROR_PREFIXES)
+
+
+def _expected_model(agent, difficulty: int) -> str:
+    """
+    [DIFF-ROUTING] Anteprima informativa (SOLO log) del modello che verrà
+    selezionato dato `difficulty`. Il valore REALE resta deciso a runtime
+    da check_resources() in ai_engine.py, che può forzare il downgrade a
+    fallback anche per difficulty>=2 se la RAM è insufficiente: questa
+    funzione non anticipa quel controllo, mostra solo l'intenzione.
+    """
+    threshold = config.TIER_ROUTING_SETTINGS.get('fallback_max_difficulty', 1)
+    if difficulty <= threshold and agent.fallback_model:
+        return f"{agent.fallback_model} (fallback, diff={difficulty})"
+    return f"{agent.model_name} (primary, diff={difficulty})"
 
 
 def main():
@@ -150,9 +108,11 @@ def main():
                 continue
 
             # ---------------------------------------------------------
-            # FASE 0: ROUTING NEURALE — class_id è l'UNICA fonte di verità.
-            # domain_scores, difficulty e is_followup sono solo diagnostica:
-            # nessuna riga di codice sotto li usa per cambiare l'instradamento.
+            # FASE 0: ROUTING NEURALE — class_id è l'UNICA fonte di verità
+            # per il DOMINIO. domain_scores resta solo diagnostica.
+            # `difficulty` guida invece il TIER (primary/fallback) del
+            # modello nel dominio già scelto — vedi ai_engine.py
+            # ::_resolve_tier_from_difficulty(). Non altera mai class_id.
             # ---------------------------------------------------------
             print("\n⚙️  Fase 0 — Classificazione Neurale (NN Router)...")
             class_id, confidence, domain_scores, difficulty, is_followup = router_predict(
@@ -168,7 +128,7 @@ def main():
             if domain_scores:
                 scores_str = ' | '.join(f"{k}:{v:.2f}" for k, v in domain_scores.items())
                 print(f"🔍 [DEBUG NEURAL] Scores: [{scores_str}] | "
-                      f"Difficulty: {difficulty} | Followup: {is_followup}")
+                      f"Difficulty: {difficulty} (→ tier routing) | Followup: {is_followup}")
 
             domain_switched = False  # [HISTORY] solo igiene contesto, non instradamento
             is_hybrid        = False
@@ -209,14 +169,14 @@ def main():
                           f"pipeline {domain_a.upper()}→{domain_b.upper()}")
 
                 print(f"\n╭── 🧠 PIPELINE IBRIDA [{domain_a.upper()} → {domain_b.upper()}] in azione...")
-                print(f"│ Agente A (Draft): {agents[domain_a].model_name}")
-                print(f"│ Agente B (Merge): {agents[domain_b].model_name}")
+                print(f"│ Agente A (Draft): {_expected_model(agents[domain_a], difficulty)}")
+                print(f"│ Agente B (Merge): {_expected_model(agents[domain_b], difficulty)}")
                 print(f"╰──────────────────────────────────────────")
 
                 print(f"\n⚙️  Fase 1/3 — Elaborazione contesto [{domain_a.upper()}] in corso...")
                 try:
                     output_a = agents[domain_a].resolve_pipeline_a(
-                        user_input, domain_b, effective_history
+                        user_input, domain_b, effective_history, difficulty
                     )
                 except ResourceExhaustedError as e:
                     print(f"\n⛔ OOM — Pipeline interrotta in Fase 1/3: {e}")
@@ -247,7 +207,7 @@ def main():
                 print(f"⚙️  Fase 2/3 — Integrazione dominio [{domain_b.upper()}] in corso...")
                 try:
                     output_b = agents[domain_b].resolve_pipeline_b(
-                        user_input, output_a, domain_a, effective_history
+                        user_input, output_a, domain_a, effective_history, difficulty
                     )
                 except ResourceExhaustedError as e:
                     print(f"\n⛔ OOM — Pipeline interrotta in Fase 2/3: {e}")
@@ -263,7 +223,7 @@ def main():
                 print("-" * 42)
 
                 try:
-                    result = agents[domain_b].execute_critic_pass(output_b, user_input)
+                    result = agents[domain_b].execute_critic_pass(output_b, user_input, difficulty)
                 except ResourceExhaustedError as e:
                     print(f"\n⛔ OOM — Pipeline interrotta in Fase 3/3: {e}")
                     print("\n" + "_" * 60 + "\n")
@@ -291,11 +251,11 @@ def main():
                 print(f"🔄 [HISTORY] Domain switch rilevato: history isolata per {target.upper()}")
 
             print(f"\n╭── 🧠 MODULO [{target.upper()}] in azione...")
-            print(f"│ Modello: {ai_agent.model_name}")
+            print(f"│ Modello: {_expected_model(ai_agent, difficulty)}")
             print(f"╰──────────────────────────────────────────")
 
             try:
-                result = ai_agent.resolve(user_input, effective_history)
+                result = ai_agent.resolve(user_input, effective_history, difficulty)
             except ResourceExhaustedError as e:
                 print(f"\n⛔ OOM — Esecuzione interrotta: {e}")
                 print("\n" + "_" * 60 + "\n")

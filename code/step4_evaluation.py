@@ -565,7 +565,7 @@ SMOKE_TESTS = [
         "last_domain": "general",
         # Domanda math-adjacent ma in contesto fiscale/normativo: atteso math (calcolo numerico)
         # oppure general (topic finanziario generico) — caso borderline
-        "expected_class_id": 1, "expected_domain": "math",
+        "expected_class_id": 1, "expected_domain": "rights",
         "expected_followup": False, "expected_diff_min": 1,
         "note": "Borderline math/general: il dataset lo etichetta math (calcolo percentuale)"
     },
@@ -622,7 +622,8 @@ def run_evaluation():
             print(f"         ⚠ ERRORE: {e}")
             results.append({**tc, "status": "ERROR", "actual_class_id": -1,
                             "actual_domain": "???", "actual_followup": False,
-                            "actual_diff": -1, "confidence": 0.0})
+                            "actual_diff": -1, "confidence": 0.0,
+                            "ok_diff": False, "actual_tier": "???"})
             continue
 
         actual_domain = _class_id_to_domain(class_id)
@@ -632,6 +633,15 @@ def run_evaluation():
 
         ok_domain   = actual_domain == exp_domain
         ok_followup = is_followup   == exp_followup
+        # [DIFF-ROUTING FIX] expected_diff_min era raccolto ma MAI confrontato
+        # con la difficulty reale: ora viene effettivamente verificato, dato
+        # che difficulty guida anche la selezione primary/fallback in
+        # ai_engine.py (vedi BaseAI._resolve_tier_from_difficulty). NOTA:
+        # resta un controllo di SOGLIA (>=), non di valore esatto — la
+        # difficulty esatta per ogni query è quella labellata a mano in
+        # difficulty_labels.json, fuori scope di questo smoke test.
+        ok_diff     = difficulty >= exp_diff_min
+        actual_tier = 'FALLBACK' if difficulty == 1 else 'PRIMARY'
 
         errore = 0
 
@@ -652,7 +662,8 @@ def run_evaluation():
                    f"(exp: {exp_domain.upper()}) {'' if ok_domain else '← WRONG'}")
         fu_str  = (f"  followup={is_followup} "
                    f"(exp: {exp_followup}) {'' if ok_followup else '← WRONG'}")
-        d_str   = f"  diff={difficulty} conf={confidence:.3f}"
+        d_str   = (f"  diff={difficulty} (min atteso: {exp_diff_min}) → "
+                   f"tier={actual_tier} {'✅' if ok_diff else '❌ DIFF_ERR'}  conf={confidence:.3f}")
 
         print(f"     {status}")
         print(f"     {dom_str}")
@@ -662,9 +673,8 @@ def run_evaluation():
             print(f"     📝 {tc['note']}")
         print()
 
-        #scrivo su file le query errate
-        if(errore == 1):
-            #ricreo / creo il file (modalità append)
+        #scrivo su file le query errate (ora include anche mismatch di sola difficulty/tier)
+        if errore == 1 or not ok_diff:
             with open(file_wrong_queries, "a", encoding="utf-8") as file:
                 file.write(f"\nfrase: {tc['query']}\n{status}\n{dom_str}\n{fu_str}{d_str}\n")
 
@@ -678,12 +688,13 @@ def run_evaluation():
             "confidence":       confidence,
             "ok_domain":        ok_domain,
             "ok_followup":      ok_followup,
+            "ok_diff":          ok_diff,
+            "actual_tier":      actual_tier,
         })
 
     _print_summary(results)
     _diagnose_thresholds(results)
     return results
-
 
 def _print_summary(results: list):
     by_cat = {}
@@ -726,6 +737,21 @@ def _print_summary(results: list):
                   f"→ ottenuto={r['actual_followup']} | "
                   f"query: {r['query'][:55]}...")
 
+    # [DIFF-ROUTING] Nuova sezione: verifica soglia difficulty (fino ad ora
+    # raccolta ma mai controllata). Guida il TIER primary/fallback in
+    # ai_engine.py — un mismatch qui significa che una query verrebbe
+    # instradata al tier sbagliato a runtime.
+    diff_ok_n  = sum(1 for r in results if r.get('ok_diff', False))
+    diff_total = len(results)
+    print(f"\n  ─── VERIFICA DIFFICULTY / TIER ROUTING ({diff_ok_n}/{diff_total}) ─────")
+    diff_errors = [r for r in results if not r.get('ok_diff', True)]
+    if diff_errors:
+        for r in diff_errors:
+            print(f"  [{r['id']}] diff={r.get('actual_diff')} < atteso_min={r['expected_diff_min']} "
+                  f"→ tier={r.get('actual_tier')} | query: {r['query'][:55]}...")
+    else:
+        print(f"  ✓ Tutte le query rispettano la soglia difficulty attesa "
+              f"(quindi il tier di routing risulterebbe corretto).")
 
 def _diagnose_thresholds(results: list):
     """

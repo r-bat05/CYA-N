@@ -1,5 +1,22 @@
 """
-    MOTORE AI IBRIDO V6.7.0
+    MOTORE AI IBRIDO V6.8.0
+
+    Novita' V6.8.0 (Difficulty-based Tier Routing):
+    - [DIFF-ROUTING] Nuovo BaseAI._resolve_tier_from_difficulty(difficulty).
+      Va chiamato da ciascun metodo pubblico (resolve/resolve_pipeline_a/
+      resolve_pipeline_b/execute_critic_pass) PRIMA di generate(): imposta
+      self.is_using_fallback = (difficulty <= config.TIER_ROUTING_SETTINGS
+      ['fallback_max_difficulty']) AND fallback_model configurato.
+    - [DIFF-ROUTING] check_resources() NON è stato toccato: legge sempre
+      self.is_using_fallback come stato di ingresso. Se diff=1 -> entra
+      direttamente nel ramo fallback (verifica comunque fallback_ram_req,
+      la rete di sicurezza RAM resta attiva). Se diff>=2 -> entra nel ramo
+      primary, con downgrade automatico su RAM insufficiente (invariato).
+    - [DIFF-ROUTING] Tutti e 12 i call-site (3 classi x 4 metodi) accettano
+      ora `difficulty: int = 2` (default = tier primary, comportamento
+      preesistente se il chiamante non specifica nulla).
+    - Difensivo: se fallback_model non è configurato per il dominio, la
+      forzatura diff==1 viene ignorata (resta primary + normale check RAM).
 
     Novita' V6.7.0 (Prompt Tiering — patch_prompt_LLM):
     - [TIER] BaseAI.__init__ legge self.prompt_tier da
@@ -77,6 +94,27 @@ class BaseAI(ABC):
             self.fallback_ram_req = config.RAM_THRESHOLDS[self.cfg['fallback_ram_threshold']]
         self.is_using_fallback = False
         self._last_used_model = None   # [DIFETTO2] Traccia il modello realmente usato
+
+    def _resolve_tier_from_difficulty(self, difficulty: int) -> None:
+        """
+        [DIFF-ROUTING] Imposta is_using_fallback in base alla difficolta'
+        della query (calcolata dal NN classifier), PRIMA della chiamata a
+        check_resources()/generate(). Va invocato a inizio di ciascun
+        metodo pubblico (resolve/resolve_pipeline_a/resolve_pipeline_b/
+        execute_critic_pass), cosi' che check_resources() legga questo
+        stato come punto di partenza (e applichi comunque il proprio
+        downgrade di sicurezza su RAM insufficiente, invariato).
+
+        Politica (config.TIER_ROUTING_SETTINGS):
+          - difficulty <= fallback_max_difficulty -> fallback SEMPRE,
+            indipendentemente dalla RAM disponibile.
+          - altrimenti -> primary (soggetto al normale check RAM).
+
+        Se il dominio non ha un fallback_model configurato, la forzatura
+        viene ignorata: non ha senso forzare un tier che non esiste.
+        """
+        threshold = config.TIER_ROUTING_SETTINGS.get('fallback_max_difficulty', 1)
+        self.is_using_fallback = bool(difficulty <= threshold and self.fallback_model)
 
     def _truncate_context(self, text: str) -> str:
         """
@@ -260,23 +298,24 @@ class BaseAI(ABC):
         return clean_response(full_response)
 
     @abstractmethod
-    def resolve(self, prompt: str, history: list = None): pass
+    def resolve(self, prompt: str, history: list = None, difficulty: int = 2): pass
 
     @abstractmethod
-    def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None): pass
+    def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None, difficulty: int = 2): pass
 
     @abstractmethod
-    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None): pass
+    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None, difficulty: int = 2): pass
 
     @abstractmethod
-    def execute_critic_pass(self, draft_b: str, original_prompt: str): pass
+    def execute_critic_pass(self, draft_b: str, original_prompt: str, difficulty: int = 2): pass
 
 
 class CodeLlamaAI(BaseAI):
     def __init__(self):
         super().__init__('coding')
 
-    def resolve(self, prompt: str, history: list = None):
+    def resolve(self, prompt: str, history: list = None, difficulty: int = 2):
+        self._resolve_tier_from_difficulty(difficulty)
         history = history or []
         sys_prompt, few_shot, _ = get_prompts('coding', self.prompt_tier)
         combined_sys = self._merge_few_shot(sys_prompt, few_shot)
@@ -289,7 +328,8 @@ class CodeLlamaAI(BaseAI):
         ]
         return self.generate(messages)
 
-    def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None):
+    def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None, difficulty: int = 2):
+        self._resolve_tier_from_difficulty(difficulty)
         history = history or []
         sys_prompt, few_shot, _ = get_prompts('coding', self.prompt_tier)
         combined_sys = self._merge_few_shot(sys_prompt, few_shot)
@@ -302,7 +342,8 @@ class CodeLlamaAI(BaseAI):
         ]
         return self.generate(messages, stream_output=False, force_unload=True)
 
-    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None):
+    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None, difficulty: int = 2):
+        self._resolve_tier_from_difficulty(difficulty)
         output_a = self._truncate_context(output_a)
         history  = history or []
         sys_prompt, _, _ = get_prompts('coding', self.prompt_tier)
@@ -319,7 +360,8 @@ class CodeLlamaAI(BaseAI):
         ]
         return self.generate(messages, stream_output=False, force_unload=False)
 
-    def execute_critic_pass(self, draft_b: str, original_prompt: str):
+    def execute_critic_pass(self, draft_b: str, original_prompt: str, difficulty: int = 2):
+        self._resolve_tier_from_difficulty(difficulty)
         draft_b    = self._truncate_context(draft_b)
         sys_prompt, _, _ = get_prompts('coding', self.prompt_tier)
         critic_template  = PIPELINE_PROMPTS['critic']
@@ -339,7 +381,8 @@ class DeepSeekAI(BaseAI):
     def __init__(self):
         super().__init__('math')
 
-    def resolve(self, prompt: str, history: list = None):
+    def resolve(self, prompt: str, history: list = None, difficulty: int = 2):
+        self._resolve_tier_from_difficulty(difficulty)
         history = history or []
         sys_prompt, few_shot, enforcement = get_prompts('math', self.prompt_tier)
         combined_sys = self._merge_few_shot(sys_prompt, few_shot)
@@ -350,7 +393,8 @@ class DeepSeekAI(BaseAI):
         ]
         return self.generate(messages)
 
-    def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None):
+    def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None, difficulty: int = 2):
+        self._resolve_tier_from_difficulty(difficulty)
         history = history or []
         sys_prompt, few_shot, enforcement = get_prompts('math', self.prompt_tier)
         combined_sys = self._merge_few_shot(sys_prompt, few_shot)
@@ -362,7 +406,8 @@ class DeepSeekAI(BaseAI):
         ]
         return self.generate(messages, stream_output=False, force_unload=True)
 
-    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None):
+    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None, difficulty: int = 2):
+        self._resolve_tier_from_difficulty(difficulty)
         output_a = self._truncate_context(output_a)
         history  = history or []
         sys_prompt, _, enforcement = get_prompts('math', self.prompt_tier)
@@ -379,7 +424,8 @@ class DeepSeekAI(BaseAI):
         ]
         return self.generate(messages, stream_output=False, force_unload=False)
 
-    def execute_critic_pass(self, draft_b: str, original_prompt: str):
+    def execute_critic_pass(self, draft_b: str, original_prompt: str, difficulty: int = 2):
+        self._resolve_tier_from_difficulty(difficulty)
         draft_b = self._truncate_context(draft_b)
         sys_prompt, _, _ = get_prompts('math', self.prompt_tier)
         critic_template = PIPELINE_PROMPTS['critic']
@@ -398,7 +444,8 @@ class GptOssAI(BaseAI):
     def __init__(self, category='general'):
         super().__init__(category)
 
-    def resolve(self, prompt: str, history: list = None):
+    def resolve(self, prompt: str, history: list = None, difficulty: int = 2):
+        self._resolve_tier_from_difficulty(difficulty)
         history = history or []
         sys_prompt, few_shot, _ = get_prompts(self.category, self.prompt_tier)
         combined_sys      = self._merge_few_shot(sys_prompt, few_shot)
@@ -415,7 +462,8 @@ class GptOssAI(BaseAI):
         ]
         return self.generate(messages)
 
-    def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None):
+    def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None, difficulty: int = 2):
+        self._resolve_tier_from_difficulty(difficulty)
         history = history or []
         sys_prompt, few_shot, _ = get_prompts(self.category, self.prompt_tier)
         combined_sys      = self._merge_few_shot(sys_prompt, few_shot)
@@ -428,7 +476,8 @@ class GptOssAI(BaseAI):
         ]
         return self.generate(messages, stream_output=False, force_unload=True)
 
-    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None):
+    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None, difficulty: int = 2):
+        self._resolve_tier_from_difficulty(difficulty)
         output_a = self._truncate_context(output_a)
         history  = history or []
         sys_prompt, _, _ = get_prompts(self.category, self.prompt_tier)
@@ -445,7 +494,8 @@ class GptOssAI(BaseAI):
         ]
         return self.generate(messages, stream_output=False, force_unload=False)
 
-    def execute_critic_pass(self, draft_b: str, original_prompt: str):
+    def execute_critic_pass(self, draft_b: str, original_prompt: str, difficulty: int = 2):
+        self._resolve_tier_from_difficulty(difficulty)
         draft_b         = self._truncate_context(draft_b)
         sys_prompt, _, _ = get_prompts(self.category, self.prompt_tier)
         critic_template  = PIPELINE_PROMPTS['critic']

@@ -232,6 +232,9 @@ def train():
         # TRAIN
         model.train()
         total_loss = 0.0
+
+        #variante SGD: update parametri per ogni input 
+        '''Viene scelto il SGD perchè è ridotto il rumore'''
         for X_b, y_dom_b, y_dif_b, y_fu_b in train_dl:
             optimizer.zero_grad()
 

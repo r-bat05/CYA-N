@@ -1,6 +1,8 @@
 """
     CONFIGURAZIONE CENTRALE (CYA N)
 
+    Novità V7.2.0 (Difficulty Tier Routing): vedi TIER_ROUTING_SETTINGS
+
     Novità V7.1.0 (Prompt Tiering — patch_prompt_LLM):
     - [TIER] Aggiunto il campo 'prompt_tier' ('compact' | 'extended') a
       ciascuna voce di MODELS_CONFIG. Statico, letto una sola volta da
@@ -21,11 +23,6 @@
       sono usati DENTRO nn_classifier.py per derivare class_id dai domain_probs
       grezzi — fanno parte del meccanismo con cui la NN produce il proprio
       output, non sono un file esterno che lo altera a posteriori.
-
-    Novità V6.9.0 (Cleanup post-branch build_classifier_NN):
-    - [CLEANUP] Rimossi BASE_DIR, KEYWORDS_DIR e il relativo import os:
-      residuo del vecchio dispatcher a keyword, sostituito interamente
-      dal NN Classifier (nn_classifier.py).
 """
 
 # --- 1. COSTANTI HARDWARE ---
@@ -135,4 +132,20 @@ PIPELINE_SETTINGS = {
     'pipeline_max_context_chars': 9000,
     'ram_sync_timeout':           20.0,
     'ram_unload_wait':            3,
+}
+
+# --- 6. TIER ROUTING (Difficulty-based Primary/Fallback) ---
+# [DIFF-ROUTING] La difficolta' calcolata dal NN Classifier determina ora
+# quale TIER di modello (primary/fallback) viene usato nel dominio già
+# instradato da class_id. Politica ORTOGONALE al routing di dominio (che
+# resta esclusivamente class_id, vedi Routing Purity V7.0-V7.4): qui si
+# decide solo QUALE modello dentro il dominio, mai QUALE dominio.
+# difficulty <= fallback_max_difficulty -> fallback SEMPRE, indipendente
+# dalla RAM disponibile (query semplice, non serve il modello pesante).
+# difficulty >  fallback_max_difficulty -> primary di default, ma
+# check_resources() in ai_engine.py mantiene INVARIATO il downgrade di
+# sicurezza se la RAM è insufficiente (rete di sicurezza hardware, non
+# rimossa).
+TIER_ROUTING_SETTINGS = {
+    'fallback_max_difficulty': 1,
 }
