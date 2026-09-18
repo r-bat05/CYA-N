@@ -1,56 +1,16 @@
 """
-    MOTORE AI IBRIDO V6.8.0
+    MOTORE AI IBRIDO V6.9.0
 
-    Novita' V6.8.0 (Difficulty-based Tier Routing):
-    - [DIFF-ROUTING] Nuovo BaseAI._resolve_tier_from_difficulty(difficulty).
-      Va chiamato da ciascun metodo pubblico (resolve/resolve_pipeline_a/
-      resolve_pipeline_b/execute_critic_pass) PRIMA di generate(): imposta
-      self.is_using_fallback = (difficulty <= config.TIER_ROUTING_SETTINGS
-      ['fallback_max_difficulty']) AND fallback_model configurato.
-    - [DIFF-ROUTING] check_resources() NON è stato toccato: legge sempre
-      self.is_using_fallback come stato di ingresso. Se diff=1 -> entra
-      direttamente nel ramo fallback (verifica comunque fallback_ram_req,
-      la rete di sicurezza RAM resta attiva). Se diff>=2 -> entra nel ramo
-      primary, con downgrade automatico su RAM insufficiente (invariato).
-    - [DIFF-ROUTING] Tutti e 12 i call-site (3 classi x 4 metodi) accettano
-      ora `difficulty: int = 2` (default = tier primary, comportamento
-      preesistente se il chiamante non specifica nulla).
-    - Difensivo: se fallback_model non è configurato per il dominio, la
-      forzatura diff==1 viene ignorata (resta primary + normale check RAM).
+    Novita' V6.9.0 (Refactor — report_patch.md):
+    - [DUP-4 / Opzione B] CodeLlamaAI/DeepSeekAI/GptOssAI unificate in
+      un'unica classe DomainAI, guidata dalla tabella dati
+      prompts_templates.DOMAIN_AI_CONFIG. get_ai_model() restituisce
+      sempre DomainAI(category). Comportamento equivalente byte-per-byte
+      ai messages generati dalle 3 classi precedenti.
+    - [DUP-5] would_use_fallback(difficulty, fallback_model): unica
+      formula per la decisione di tier, usata sia da
+      _resolve_tier_from_difficulty() sia da main.py::_expected_model().
 
-    Novita' V6.7.0 (Prompt Tiering — patch_prompt_LLM):
-    - [TIER] BaseAI.__init__ legge self.prompt_tier da
-      config.MODELS_CONFIG[category]['prompt_tier'] (default 'compact' se
-      assente). Statico per tutta la vita dell'istanza, indipendente da
-      is_using_fallback (asimmetria di rischio: vedi report_prompt_tiering.md).
-    - [TIER] Tutti i 12 call-site di get_prompts() (3 classi x 4 metodi)
-      passano ora self.prompt_tier come secondo argomento. Nessun'altra
-      logica del file (generate/_merge_few_shot/_truncate_context/
-      check_resources/explicit_unload) è coinvolta.
-
-    Novita' V6.6.2:
-    - [BUG1] Stringa di fallback per output vuoto modificata da "ATTENZIONE: ..."
-      a "__SYS_WARN__: ...". Il vecchio prefisso coincideva con l'output legittimo
-      dei modelli (es. "ATTENZIONE: questo codice e' pericoloso"), causando
-      un falso positivo in _is_error() di main.py che spezzava silenziosamente
-      la Chat History e lo Sticky Routing.
-
-    Novita' V6.6.1:
-    - [BUG4] _GUARD calcolato su max(len(_OPEN_TAG), len(_CLOSE_TAG)) - 1.
-    - [BUGA] execute_critic_pass() ora chiama _truncate_context(draft_b).
-
-    Novita' V6.6.0:
-    - [CHAT] Chat History integrata in resolve(), resolve_pipeline_a(),
-      resolve_pipeline_b().
-    - [CHAT] few_shot fuso nel system prompt.
-    - [CHAT] execute_critic_pass() invariato nel design (no history).
-
-    Novita' V6.5.0:
-    - [P2] Rimossi magic numbers. Aggiunto BaseAI._truncate_context().
-
-    Novita' V6.2.3:
-    - [FIX CRITICO] generate() solleva ResourceExhaustedError invece di
-      restituire stringa senza prefisso emoji.
 """
 
 import ollama
@@ -58,20 +18,28 @@ import time
 import psutil
 from abc import ABC, abstractmethod
 from helper import clean_response, SpinnerContext, print_time_elapsed
-from prompts_templates import get_prompts, PIPELINE_PROMPTS
+from prompts_templates import get_prompts, PIPELINE_PROMPTS, DOMAIN_AI_CONFIG
 import config
 
-# --- Tag di ragionamento (configurabili via config.SYSTEM_SETTINGS) ---
 _OPEN_TAG  = config.SYSTEM_SETTINGS.get('think_open_tag',  '<think>')
 _CLOSE_TAG = config.SYSTEM_SETTINGS.get('think_close_tag', '</think>')
-
-# [BUG4 FIX] La guardia deve essere profonda quanto il tag PIU' LUNGO.
 _GUARD = max(len(_OPEN_TAG), len(_CLOSE_TAG)) - 1
 
 
 class ResourceExhaustedError(Exception):
     """Sollevata da generate() quando check_resources() fallisce."""
     pass
+
+
+def would_use_fallback(difficulty: int, fallback_model) -> bool:
+    """
+    [DUP-5 FIX] Unica formula per "userà il tier fallback dato questo
+    difficulty e questo fallback_model". Usata sia dal comportamento
+    reale (_resolve_tier_from_difficulty) sia dall'anteprima di log
+    (main.py::_expected_model).
+    """
+    threshold = config.TIER_ROUTING_SETTINGS.get('fallback_max_difficulty', 1)
+    return bool(difficulty <= threshold and fallback_model)
 
 
 class BaseAI(ABC):
@@ -85,41 +53,19 @@ class BaseAI(ABC):
         self.model_name       = self.cfg['primary']
         self.fallback_model   = self.cfg['fallback']
         self.temperature      = self.cfg['temperature']
-        # [TIER] Statico, letto una sola volta. Default 'compact' = direzione
-        # sicura (meno elaborazione) se un dominio futuro non specifica il tier.
         self.prompt_tier      = self.cfg.get('prompt_tier', 'compact')
         self.primary_ram_req  = config.RAM_THRESHOLDS[self.cfg['ram_threshold']]
         self.fallback_ram_req = 0
         if self.cfg['fallback_ram_threshold']:
             self.fallback_ram_req = config.RAM_THRESHOLDS[self.cfg['fallback_ram_threshold']]
         self.is_using_fallback = False
-        self._last_used_model = None   # [DIFETTO2] Traccia il modello realmente usato
+        self._last_used_model = None
 
     def _resolve_tier_from_difficulty(self, difficulty: int) -> None:
-        """
-        [DIFF-ROUTING] Imposta is_using_fallback in base alla difficolta'
-        della query (calcolata dal NN classifier), PRIMA della chiamata a
-        check_resources()/generate(). Va invocato a inizio di ciascun
-        metodo pubblico (resolve/resolve_pipeline_a/resolve_pipeline_b/
-        execute_critic_pass), cosi' che check_resources() legga questo
-        stato come punto di partenza (e applichi comunque il proprio
-        downgrade di sicurezza su RAM insufficiente, invariato).
-
-        Politica (config.TIER_ROUTING_SETTINGS):
-          - difficulty <= fallback_max_difficulty -> fallback SEMPRE,
-            indipendentemente dalla RAM disponibile.
-          - altrimenti -> primary (soggetto al normale check RAM).
-
-        Se il dominio non ha un fallback_model configurato, la forzatura
-        viene ignorata: non ha senso forzare un tier che non esiste.
-        """
-        threshold = config.TIER_ROUTING_SETTINGS.get('fallback_max_difficulty', 1)
-        self.is_using_fallback = bool(difficulty <= threshold and self.fallback_model)
+        """Imposta is_using_fallback PRIMA di check_resources()/generate()."""
+        self.is_using_fallback = would_use_fallback(difficulty, self.fallback_model)
 
     def _truncate_context(self, text: str) -> str:
-        """
-        [P2] Tronca il contesto passato tra agenti al limite configurato.
-        """
         limit = config.PIPELINE_SETTINGS.get('pipeline_max_context_chars', 6000)
         if len(text) > limit:
             return text[:limit] + "\n...[ARCO INFORMATIVO TRONCATO PER LIMITI DI CONTESTO]..."
@@ -127,26 +73,11 @@ class BaseAI(ABC):
 
     @staticmethod
     def _merge_few_shot(sys_prompt: str, few_shot: str) -> str:
-        """
-        [CHAT] Fonde il few-shot nel system prompt.
-        """
         if few_shot and few_shot.strip():
             return f"{sys_prompt}\n\n{few_shot.strip()}"
         return sys_prompt
-    
+
     def explicit_unload(self):
-        """
-        [DIFETTO2 FIX] Forza lo scaricamento esplicito del modello da Ollama.
-
-        generate() invia keep_alive=0 nel body della request, ma su Linux il
-        rilascio del mmap dei tensori avviene in modo asincrono: il processo
-        Ollama può impiegare secondi prima di restituire le pagine fisiche all'OS.
-        Una seconda chiamata separata con prompt vuoto forza Ollama a processare
-        il comando di unload immediatamente, prima che main.py avvii il polling RAM.
-
-        Usa _last_used_model (tracciato in generate()) per evitare di caricare
-        accidentalmente un modello non attivo solo per scaricarlo.
-        """
         target = self._last_used_model or self.model_name
         try:
             ollama.generate(model=target, prompt="", keep_alive=0)
@@ -194,7 +125,7 @@ class BaseAI(ABC):
         full_response = ""
         start_time    = time.time()
         target_model  = self.fallback_model if self.is_using_fallback else self.model_name
-        self._last_used_model = target_model  # [DIFETTO2] Salva prima che finally resetti lo stato
+        self._last_used_model = target_model
 
         options = {
             'temperature': self.temperature,
@@ -222,7 +153,6 @@ class BaseAI(ABC):
             for chunk in stream:
                 stream_buf += chunk['message']['content']
 
-                # --- DRAIN LOOP ---
                 keep_draining = True
                 while keep_draining:
                     keep_draining = False
@@ -267,7 +197,6 @@ class BaseAI(ABC):
                                     print(display_content, end="", flush=True)
                                 full_response += safe
 
-            # --- FLUSH FINALE ---
             if stream_buf and not is_thinking:
                 display_content = clean_response(stream_buf)
                 if display_content and stream_output:
@@ -275,9 +204,6 @@ class BaseAI(ABC):
                     print(display_content, end="", flush=True)
                 full_response += stream_buf
 
-            # [BUG1 FIX] Prefisso univoco __SYS_WARN__: invece di ATTENZIONE:
-            # per evitare falsi positivi in _is_error() di main.py quando il
-            # modello inizia legittimamente una risposta con "ATTENZIONE:".
             if not full_response:
                 return "__SYS_WARN__: Il modello non ha generato output."
 
@@ -310,35 +236,47 @@ class BaseAI(ABC):
     def execute_critic_pass(self, draft_b: str, original_prompt: str, difficulty: int = 2): pass
 
 
-class CodeLlamaAI(BaseAI):
-    def __init__(self):
-        super().__init__('coding')
+class DomainAI(BaseAI):
+    """
+    [Opzione B — report_patch.md §5] Unica classe concreta per tutti e 4
+    i domini: sostituisce CodeLlamaAI/DeepSeekAI/GptOssAI (stesso
+    scheletro di 4 metodi, differenza solo nel template del "content"
+    finale). Le differenze sono dati (DOMAIN_AI_CONFIG), non codice.
+    """
+    def __init__(self, category):
+        super().__init__(category)
+        self._behavior = DOMAIN_AI_CONFIG[self.category]
 
     def resolve(self, prompt: str, history: list = None, difficulty: int = 2):
         self._resolve_tier_from_difficulty(difficulty)
         history = history or []
-        sys_prompt, few_shot, _ = get_prompts('coding', self.prompt_tier)
+        sys_prompt, few_shot, enforcement = get_prompts(self.category, self.prompt_tier)
         combined_sys = self._merge_few_shot(sys_prompt, few_shot)
-        final_prompt = (f"[RICHIESTA]: {prompt}\n\n"
-                        f"[IMPORTANTE]: Spiega il codice e i concetti ESCLUSIVAMENTE IN INGLESE.")
+        content = self._behavior['resolve_template'].format(
+            prompt=prompt, enforcement=enforcement, directional='',
+            lang_note=self._behavior['lang_note'] or ''
+        )
         messages = [
             {'role': 'system', 'content': combined_sys},
             *history,
-            {'role': 'user',   'content': final_prompt}
+            {'role': 'user',   'content': content}
         ]
         return self.generate(messages)
 
     def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None, difficulty: int = 2):
         self._resolve_tier_from_difficulty(difficulty)
         history = history or []
-        sys_prompt, few_shot, _ = get_prompts('coding', self.prompt_tier)
+        sys_prompt, few_shot, enforcement = get_prompts(self.category, self.prompt_tier)
         combined_sys = self._merge_few_shot(sys_prompt, few_shot)
         directional  = PIPELINE_PROMPTS['directional'].format(domain_b=domain_b.upper())
-        final_prompt = f"[RICHIESTA]: {prompt}\n{directional}"
+        content = self._behavior['pipeline_a_template'].format(
+            prompt=prompt, enforcement=enforcement, directional=directional,
+            lang_note=self._behavior['lang_note'] or ''
+        )
         messages = [
             {'role': 'system', 'content': combined_sys},
             *history,
-            {'role': 'user',   'content': final_prompt}
+            {'role': 'user',   'content': content}
         ]
         return self.generate(messages, stream_output=False, force_unload=True)
 
@@ -346,157 +284,24 @@ class CodeLlamaAI(BaseAI):
         self._resolve_tier_from_difficulty(difficulty)
         output_a = self._truncate_context(output_a)
         history  = history or []
-        sys_prompt, _, _ = get_prompts('coding', self.prompt_tier)
+        sys_prompt, _, enforcement = get_prompts(self.category, self.prompt_tier)
         handoff = PIPELINE_PROMPTS['handoff'].format(
             original_query=original_prompt,
             domain_a=domain_a.upper(),
             output_a=output_a,
             domain_b=self.category.upper()
         )
+        content = self._behavior['pipeline_b_template'].format(handoff=handoff, enforcement=enforcement)
         messages = [
             {'role': 'system', 'content': sys_prompt},
             *history,
-            {'role': 'user',   'content': handoff}
-        ]
-        return self.generate(messages, stream_output=False, force_unload=False)
-
-    def execute_critic_pass(self, draft_b: str, original_prompt: str, difficulty: int = 2):
-        self._resolve_tier_from_difficulty(difficulty)
-        draft_b    = self._truncate_context(draft_b)
-        sys_prompt, _, _ = get_prompts('coding', self.prompt_tier)
-        critic_template  = PIPELINE_PROMPTS['critic']
-        if "{original_query}" in critic_template:
-            critic = critic_template.format(original_query=original_prompt)
-        else:
-            critic = f"{critic_template}\n\n[DOMANDA ORIGINALE DELL'UTENTE]:\n\"{original_prompt}\""
-        messages = [
-            {'role': 'system',    'content': sys_prompt},
-            {'role': 'assistant', 'content': draft_b},
-            {'role': 'user',      'content': critic}
-        ]
-        return self.generate(messages, stream_output=True, force_unload=False)
-
-
-class DeepSeekAI(BaseAI):
-    def __init__(self):
-        super().__init__('math')
-
-    def resolve(self, prompt: str, history: list = None, difficulty: int = 2):
-        self._resolve_tier_from_difficulty(difficulty)
-        history = history or []
-        sys_prompt, few_shot, enforcement = get_prompts('math', self.prompt_tier)
-        combined_sys = self._merge_few_shot(sys_prompt, few_shot)
-        messages = [
-            {'role': 'system', 'content': combined_sys},
-            *history,
-            {'role': 'user', 'content': f"{prompt}{enforcement}"}
-        ]
-        return self.generate(messages)
-
-    def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None, difficulty: int = 2):
-        self._resolve_tier_from_difficulty(difficulty)
-        history = history or []
-        sys_prompt, few_shot, enforcement = get_prompts('math', self.prompt_tier)
-        combined_sys = self._merge_few_shot(sys_prompt, few_shot)
-        directional = PIPELINE_PROMPTS['directional'].format(domain_b=domain_b.upper())
-        messages = [
-            {'role': 'system', 'content': combined_sys},
-            *history,
-            {'role': 'user', 'content': f"{prompt}{enforcement}{directional}"}
-        ]
-        return self.generate(messages, stream_output=False, force_unload=True)
-
-    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None, difficulty: int = 2):
-        self._resolve_tier_from_difficulty(difficulty)
-        output_a = self._truncate_context(output_a)
-        history  = history or []
-        sys_prompt, _, enforcement = get_prompts('math', self.prompt_tier)
-        handoff = PIPELINE_PROMPTS['handoff'].format(
-            original_query=original_prompt,
-            domain_a=domain_a.upper(),
-            output_a=output_a,
-            domain_b=self.category.upper()
-        )
-        messages = [
-            {'role': 'system', 'content': sys_prompt},
-            *history,
-            {'role': 'user', 'content': f"{handoff}{enforcement}"}
+            {'role': 'user',   'content': content}
         ]
         return self.generate(messages, stream_output=False, force_unload=False)
 
     def execute_critic_pass(self, draft_b: str, original_prompt: str, difficulty: int = 2):
         self._resolve_tier_from_difficulty(difficulty)
         draft_b = self._truncate_context(draft_b)
-        sys_prompt, _, _ = get_prompts('math', self.prompt_tier)
-        critic_template = PIPELINE_PROMPTS['critic']
-        if "{original_query}" in critic_template:
-            critic = critic_template.format(original_query=original_prompt)
-        else:
-            critic = f"{critic_template}\n\n[DOMANDA ORIGINALE DELL'UTENTE]:\n\"{original_prompt}\""
-        messages = [
-            {'role': 'system', 'content': sys_prompt},
-            {'role': 'assistant', 'content': draft_b},
-            {'role': 'user', 'content': critic}
-        ]
-        return self.generate(messages, stream_output=True, force_unload=False)
-
-class GptOssAI(BaseAI):
-    def __init__(self, category='general'):
-        super().__init__(category)
-
-    def resolve(self, prompt: str, history: list = None, difficulty: int = 2):
-        self._resolve_tier_from_difficulty(difficulty)
-        history = history or []
-        sys_prompt, few_shot, _ = get_prompts(self.category, self.prompt_tier)
-        combined_sys      = self._merge_few_shot(sys_prompt, few_shot)
-        # [LANG] 'rights' resta in italiano (dominio giuridico italiano);
-        # 'general' passa a inglese. GptOssAI è condivisa da entrambe le
-        # categorie (vedi get_ai_model()), quindi il branch è necessario.
-        lang_note = "Rispondi IN ITALIANO." if self.category == 'rights' else "Rispondi IN INGLESE."
-        full_user_content = (f"[RICHIESTA UTENTE]: {prompt}\n\n"
-                             f"[IMPORTANTE]: {lang_note}")
-        messages = [
-            {'role': 'system', 'content': combined_sys},
-            *history,
-            {'role': 'user',   'content': full_user_content}
-        ]
-        return self.generate(messages)
-
-    def resolve_pipeline_a(self, prompt: str, domain_b: str, history: list = None, difficulty: int = 2):
-        self._resolve_tier_from_difficulty(difficulty)
-        history = history or []
-        sys_prompt, few_shot, _ = get_prompts(self.category, self.prompt_tier)
-        combined_sys      = self._merge_few_shot(sys_prompt, few_shot)
-        directional       = PIPELINE_PROMPTS['directional'].format(domain_b=domain_b.upper())
-        full_user_content = f"[RICHIESTA UTENTE]: {prompt}\n{directional}"
-        messages = [
-            {'role': 'system', 'content': combined_sys},
-            *history,
-            {'role': 'user',   'content': full_user_content}
-        ]
-        return self.generate(messages, stream_output=False, force_unload=True)
-
-    def resolve_pipeline_b(self, original_prompt: str, output_a: str, domain_a: str, history: list = None, difficulty: int = 2):
-        self._resolve_tier_from_difficulty(difficulty)
-        output_a = self._truncate_context(output_a)
-        history  = history or []
-        sys_prompt, _, _ = get_prompts(self.category, self.prompt_tier)
-        handoff = PIPELINE_PROMPTS['handoff'].format(
-            original_query=original_prompt,
-            domain_a=domain_a.upper(),
-            output_a=output_a,
-            domain_b=self.category.upper()
-        )
-        messages = [
-            {'role': 'system', 'content': sys_prompt},
-            *history,
-            {'role': 'user',   'content': handoff}
-        ]
-        return self.generate(messages, stream_output=False, force_unload=False)
-
-    def execute_critic_pass(self, draft_b: str, original_prompt: str, difficulty: int = 2):
-        self._resolve_tier_from_difficulty(difficulty)
-        draft_b         = self._truncate_context(draft_b)
         sys_prompt, _, _ = get_prompts(self.category, self.prompt_tier)
         critic_template  = PIPELINE_PROMPTS['critic']
         if "{original_query}" in critic_template:
@@ -512,12 +317,4 @@ class GptOssAI(BaseAI):
 
 
 def get_ai_model(category: str):
-    match category:
-        case 'coding':
-            return CodeLlamaAI()
-        case 'math':
-            return DeepSeekAI()
-        case 'rights':
-            return GptOssAI(category='rights')
-        case _:
-            return GptOssAI(category='general')
+    return DomainAI(category)

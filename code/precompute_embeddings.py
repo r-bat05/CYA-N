@@ -4,23 +4,15 @@ precompute_embeddings.py — CYA N | Step 2: Pre-calcolo Embedding
 Legge dataset_v2.jsonl, codifica ogni query+history con MiniLM-L12-v2,
 salva embeddings + label in embeddings_v2.pkl.
 
-Path attesi (dalla root del progetto):
-  INPUT  → code/dataset_v2.jsonl
-  OUTPUT → code/classifier/embeddings_v2.pkl
+[REFACTOR — report_patch.md] Path (CFG-2/3) da classifier_config.py,
+lista domini (DUP-2) da domains.py.
 
-NOTA is_followup [AGGIORNATO — Report Gemini punto 2]
-  Il campo is_followup è presente nel JSONL e viene letto DIRETTAMENTE dal
-  record (r.get('is_followup')), NON derivato da keyword o dalla presenza
-  della history. È assegnato strutturalmente in build_dataset_v2.py tramite
-  i costruttori _fu() (True) e _cd()/_r() (False), all'atto stesso della
-  creazione del record. Questo vincolo architetturale è intenzionale e va
-  protetto: non reintrodurre MAI derivazioni testuali/euristiche qui.
-  Il controllo sotto fa fallire lo script se un record ne è privo, per
-  intercettare subito eventuali regressioni nel generatore del dataset.
+NOTA is_followup: letto DIRETTAMENTE dal record (r.get('is_followup')),
+mai derivato da keyword/history — assegnato in build_dataset_v2.py da
+_fu()/_cd()/_r(). Fail-fast se un record ne è privo.
 
-NOTA history [FIX — Report Gemini punto 3]
-  build_input_str() non è più locale: importata da history_utils.py, unica
-  fonte di verità condivisa anche con nn_classifier.py in fase di inferenza.
+NOTA history: build_input_str() importata da history_utils.py, stessa
+funzione usata da nn_classifier.py in inferenza.
 """
 
 import json
@@ -31,21 +23,10 @@ import torch
 from sentence_transformers import SentenceTransformer
 
 from history_utils import build_input_str, HISTORY_MAX_TURNS
+from domains import MONO_DOMAINS
+from classifier_config import DATASET_PATH, EMBEDDINGS_PATH, ENCODER_MODEL_NAME
 
-# ─── CONFIG ───────────────────────────────────────────────────────────────────
-ENCODER_MODEL = 'paraphrase-multilingual-MiniLM-L12-v2'
-# [M4 FIX] Path relativi alla cwd ('code/...') funzionavano solo se lo
-# script veniva eseguito dalla root del repo, incoerente con
-# nn_classifier.py (già Path(__file__).resolve().parent) e build_dataset_v2.py
-# (idem). Eseguire da una cwd diversa produceva un FileNotFoundError
-# silenziosamente incoerente col resto del sistema. Ora ancorato alla
-# posizione del file stesso: lo script vive in code/, quindi dataset_v2.jsonl
-# è nella stessa directory e classifier/ è una sua sottocartella.
-_BASE_DIR     = Path(__file__).resolve().parent
-DATASET_PATH  = _BASE_DIR / 'dataset_v2.jsonl'
-OUTPUT_PATH   = _BASE_DIR / 'classifier' / 'embeddings_v2.pkl'
-BATCH_SIZE    = 64
-# ──────────────────────────────────────────────────────────────────────────────
+BATCH_SIZE = 64
 
 
 def load_dataset(path: Path) -> list[dict]:
@@ -56,49 +37,42 @@ def load_dataset(path: Path) -> list[dict]:
             if not line:
                 continue
             record = json.loads(line)
-            # [FIX Gemini #2] Guardia difensiva: il campo is_followup DEVE
-            # esistere ed essere strutturale (bool), mai assente/derivato.
             if 'is_followup' not in record:
                 raise ValueError(
                     f"Record senza campo 'is_followup' alla riga {line_num}: "
                     f"{record.get('query', '???')!r}. "
-                    f"Il campo va assegnato in build_dataset_v2.py tramite "
-                    f"_fu()/_cd()/_r(), mai omesso."
+                    f"Il campo va assegnato in build_dataset_v2.py tramite _fu()/_cd()/_r()."
                 )
             records.append(record)
     return records
 
 
-def precompute(dataset_path: Path = DATASET_PATH, output_path: Path = OUTPUT_PATH):
+def precompute(dataset_path: Path = DATASET_PATH, output_path: Path = EMBEDDINGS_PATH):
 
-    # ── 1. Caricamento dataset ───────────────────────────────────────────────
     print(f"[1/5] Caricamento dataset: {dataset_path}")
     records = load_dataset(dataset_path)
     n = len(records)
     print(f"      {n} record trovati.")
 
-    # ── 2. Build input strings ───────────────────────────────────────────────
     print(f"[2/5] Costruzione input strings (history_max_turns={HISTORY_MAX_TURNS})...")
     input_strings = [
         build_input_str(r['query'], r.get('history', []))
         for r in records
     ]
 
-    # ── 3. Encoding ─────────────────────────────────────────────────────────
-    print(f"[3/5] Caricamento encoder: {ENCODER_MODEL}")
-    encoder = SentenceTransformer(ENCODER_MODEL)
+    print(f"[3/5] Caricamento encoder: {ENCODER_MODEL_NAME}")
+    encoder = SentenceTransformer(ENCODER_MODEL_NAME)
 
     print(f"      Encoding {n} stringhe (batch_size={BATCH_SIZE})...")
     embeddings_np = encoder.encode(
         input_strings,
         batch_size=BATCH_SIZE,
         show_progress_bar=True,
-        normalize_embeddings=True,   # L2-normalizzazione in-encoder
+        normalize_embeddings=True,
     )
-    embeddings = torch.from_numpy(embeddings_np).float()   # [N, 384]
+    embeddings = torch.from_numpy(embeddings_np).float()
     print(f"      Shape: {embeddings.shape}")
 
-    # ── 4. Costruzione tensori label ─────────────────────────────────────────
     print(f"[4/5] Costruzione tensori label...")
 
     domain_labels = torch.tensor(
@@ -112,30 +86,19 @@ def precompute(dataset_path: Path = DATASET_PATH, output_path: Path = OUTPUT_PAT
             for r in records
         ],
         dtype=torch.float32,
-    )  # [N, 4]
+    )
 
-    difficulty_labels = torch.tensor(
-        [r['difficulty'] - 1 for r in records],
-        dtype=torch.long,
-    )  # [N]
-
-    # [FIX Gemini #2] letto direttamente dal record, non derivato.
+    difficulty_labels = torch.tensor([r['difficulty'] - 1 for r in records], dtype=torch.long)
     is_followup_labels = torch.tensor(
-        [1.0 if r.get('is_followup') else 0.0 for r in records],
-        dtype=torch.float32,
-    )  # [N]
+        [1.0 if r.get('is_followup') else 0.0 for r in records], dtype=torch.float32
+    )
 
-    # ── 5. Indici di split ───────────────────────────────────────────────────
     split_indices = {'train': [], 'val': [], 'test': []}
     for i, r in enumerate(records):
         split_indices[r['split']].append(i)
 
-    splits = {
-        k: torch.tensor(v, dtype=torch.long)
-        for k, v in split_indices.items()
-    }
+    splits = {k: torch.tensor(v, dtype=torch.long) for k, v in split_indices.items()}
 
-    # ── 6. Salvataggio ───────────────────────────────────────────────────────
     print(f"[5/5] Salvataggio: {output_path}")
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -147,11 +110,11 @@ def precompute(dataset_path: Path = DATASET_PATH, output_path: Path = OUTPUT_PAT
         'splits': splits,
         'input_strings': input_strings,
         'meta': {
-            'encoder_model':      ENCODER_MODEL,
+            'encoder_model':      ENCODER_MODEL_NAME,
             'n_records':          n,
             'history_max_turns':  HISTORY_MAX_TURNS,
             'normalized':         True,
-            'is_followup_source': 'structural_field_in_jsonl',  # [FIX doc]
+            'is_followup_source': 'structural_field_in_jsonl',
             'is_followup_positives': int(is_followup_labels.sum()),
             'split_sizes': {k: len(v) for k, v in split_indices.items()},
         },
@@ -167,11 +130,10 @@ def precompute(dataset_path: Path = DATASET_PATH, output_path: Path = OUTPUT_PAT
     print(f"{'='*50}")
     print(f"  Record totali    : {n}")
     print(f"  Embedding shape  : {list(embeddings.shape)}")
-    print(f"  Split train/val/test: "
-          f"{len(splits['train'])} / {len(splits['val'])} / {len(splits['test'])}")
+    print(f"  Split train/val/test: {len(splits['train'])} / {len(splits['val'])} / {len(splits['test'])}")
 
     print(f"\n  --- DOMAIN LABELS ---")
-    for i, name in enumerate(['coding', 'math', 'rights', 'general']):
+    for i, name in enumerate(MONO_DOMAINS):   # [DUP-2 FIX]
         cnt = int(domain_labels[:, i].sum())
         print(f"  {name:8s}: {cnt:4d}  ({cnt/n*100:.1f}%)")
 

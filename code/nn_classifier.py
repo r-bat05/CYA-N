@@ -6,115 +6,55 @@ Stessa interfaccia pubblica:
     predict(text, history) → (class_id, conf, domain_scores, diff, is_followup)
     unload_router()
 
+[REFACTOR — report_patch.md] DOMAIN_NAMES, PIPELINE_CLASSES,
+PIPELINE_ORDER (DUP-2, DUP-3) importati da domains.py; path pesi/encoder
+(CFG-1, CFG-3) da classifier_config.py; MultiTaskMLP e chiavi checkpoint
+(DUP-1, CFG-5) da model_architecture.py. Nessun impatto comportamentale.
+
 [FIX Criticità 3 — Report Gemini] Rimosso il parametro last_domain da
-predict(): non era mai letto nel body della funzione, residuo
-dell'euristica sticky routing (_should_sticky_route) già eliminata da
-main.py in V7.4.0. La NN non ha alcun neurone addestrato su questa
-stringa: passarla era dead code silenzioso.
+predict(): mai letto nel body, residuo del vecchio sticky routing.
 
-[FIX Criticità 2 — Report Gemini] unload_router() ora libera davvero
-encoder MiniLM (~470MB) e pesi MLP dalla RAM Python (del + gc.collect()),
-invece di essere un pass. Necessario sul vincolo hardware di sviluppo
-(8GB RAM): senza unload reale, il classificatore resta caricato mentre
-Ollama tenta di allocare il modello generativo dell'agente.
+[FIX Criticità 2 — Report Gemini] unload_router() libera davvero encoder
+MiniLM (~470MB) e pesi MLP (del + gc.collect()) — necessario sul vincolo
+hardware di sviluppo (8GB RAM).
 
-Dipendenze:
-  - code/classifier/nn_weights.pt    (prodotto da train_nn.py)
-  - paraphrase-multilingual-MiniLM-L12-v2  (sentence-transformers, frozen)
+[FIX Bug A] DOMAIN_THRESHOLD/PIPELINE_PAIR_THRESHOLD lette da
+config.NEURAL_CLASSIFIER_SETTINGS (logica a due stadi, vedi _derive_class_id).
 
-[FIX — Bug A] Le soglie DOMAIN_THRESHOLD e PIPELINE_PAIR_THRESHOLD erano
-hardcoded a 0.50 ENTRAMBE, ignorando config.NEURAL_CLASSIFIER_SETTINGS
-(valori correnti in config.py — vedi NEURAL_CLASSIFIER_SETTINGS) già definito ma mai
-importato. DOMAIN_THRESHOLD era inoltre dead code: no   n referenziata in
-nessuna funzione. La doppia soglia "candidatura permissiva / conferma
-severa" descritta nei commenti originali non esisteva mai a runtime.
-Ora entrambe sono lette da config.py e usate in due stadi distinti in
-_derive_class_id().
-
-[FIX — Report Gemini punto 3] _build_input_str() ora delega la
-formattazione della stringa a history_utils.build_input_str(), la stessa
-funzione usata in fase di training da precompute_embeddings.py.
+[FIX Report Gemini punto 3] _build_input_str() delega a
+history_utils.build_input_str(), stessa funzione usata in training.
 """
 
 import time
 import gc
 import torch
-import torch.nn as nn
 from sentence_transformers import SentenceTransformer
 from typing import Tuple, Optional
-from pathlib import Path
 
 import config
 from history_utils import build_input_str, HISTORY_MAX_TURNS
-
-# ─── COSTANTI PUBBLICHE (identiche a llm_router.py) ──────────────────────────
-DOMAIN_NAMES: list = [
-    'coding', 'math', 'rights', 'general',   # class_id 0-3
-    'math->coding',                            # class_id 4
-    'rights->coding',                          # class_id 5
-    'rights->math',                            # class_id 6
-]
-
-PIPELINE_CLASSES: dict = {
-    4: ('math',   'coding'),
-    5: ('rights', 'coding'),
-    6: ('rights', 'math'),
-}
+from domains import DOMAIN_NAMES, PIPELINE_CLASSES, PIPELINE_ORDER
+from classifier_config import WEIGHTS_PATH, ENCODER_MODEL_NAME
+from model_architecture import (
+    MultiTaskMLP,
+    CKPT_STATE_DICT_KEY,
+    CKPT_TEST_F1_DOMAIN_KEY,
+    CKPT_TEST_DIFF_ACC_KEY,
+    CKPT_TEST_FOLLOWUP_F1_KEY,
+)
 
 _CLASS_TO_NAME = {i: n for i, n in enumerate(DOMAIN_NAMES)}
 
-# ─── CONFIG ───────────────────────────────────────────────────────────────────
-_BASE_DIR      = Path(__file__).resolve().parent
-_WEIGHTS_PATH  = _BASE_DIR / 'classifier' / 'nn_weights.pt'
-_ENCODER_MODEL = 'paraphrase-multilingual-MiniLM-L12-v2'
-_HISTORY_TURNS = HISTORY_MAX_TURNS   # unica fonte di verità: history_utils.py
-
-# [FIX Bug A] Soglie lette da config.py — DOMAIN_THRESHOLD è la soglia
-# PERMISSIVA di stadio 1 (un dominio tecnico "entra in lizza" per la
-# pipeline), PIPELINE_PAIR_THRESHOLD è la soglia SEVERA di stadio 2 (la
-# coppia va confermata pipeline solo se ENTRAMBI i domini la superano).
 DOMAIN_THRESHOLD        = config.NEURAL_CLASSIFIER_SETTINGS.get('threshold_mono',     0.35)
 PIPELINE_PAIR_THRESHOLD = config.NEURAL_CLASSIFIER_SETTINGS.get('threshold_pipeline', 0.60)
 
-# Ordine canonico delle pipeline (deve coincidere con config.py)
-_PIPELINE_ORDER = {
-    frozenset({'math',   'coding'}): 4,   # math->coding
-    frozenset({'rights', 'coding'}): 5,   # rights->coding
-    frozenset({'rights', 'math'}):   6,   # rights->math
-}
-
-# ─── ARCHITETTURA (identica a train_nn.py) ───────────────────────────────────
-class MultiTaskMLP(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.backbone = nn.Sequential(
-            nn.Linear(384, 256), nn.LayerNorm(256), nn.ReLU(), nn.Dropout(0.3),
-            nn.Linear(256, 128), nn.LayerNorm(128), nn.ReLU(), nn.Dropout(0.2),
-        )
-        self.domain_head     = nn.Sequential(nn.Linear(128, 64), nn.ReLU(), nn.Linear(64, 4))
-        self.difficulty_head = nn.Sequential(nn.Linear(128, 32), nn.ReLU(), nn.Linear(32, 3))
-        self.followup_head   = nn.Linear(128, 1)
-
-    def forward(self, x: torch.Tensor):
-        h = self.backbone(x)
-        return self.domain_head(h), self.difficulty_head(h), self.followup_head(h)
-
-
-# ─── STATO GLOBALE (singleton) ───────────────────────────────────────────────
 _model:   Optional[MultiTaskMLP]        = None
 _encoder: Optional[SentenceTransformer] = None
 _loaded:  bool                          = False
 
 
 def _fmt_metric(value) -> str:
-    """
-    [M6 FIX] ckpt.get(key, 'N/A') seguito da un format :.4f} sollevava
-    ValueError/TypeError ("Unknown format code 'f' for object of type
-    'str'") quando la chiave mancava dal checkpoint. L'eccezione veniva
-    comunque intercettata dal try/except in predict() (l'app non crashava),
-    ma il messaggio mostrato ("Errore caricamento (...)") era criptico e
-    non indicava la vera causa (checkpoint incompleto/vecchio).
-    """
+    """[M6 FIX] Evita ValueError/TypeError quando la chiave manca dal checkpoint."""
     return f"{value:.4f}" if isinstance(value, (int, float)) else "N/A"
 
 
@@ -124,77 +64,54 @@ def _load_model():
     if _loaded:
         return
 
-    if not _WEIGHTS_PATH.exists():
+    if not WEIGHTS_PATH.exists():
         raise FileNotFoundError(
-            f"Pesi NN non trovati: {_WEIGHTS_PATH}\n"
+            f"Pesi NN non trovati: {WEIGHTS_PATH}\n"
             "Eseguire prima train_nn.py per generarli."
         )
 
-    print(f"[NN_CLASSIFIER] Caricamento encoder: {_ENCODER_MODEL}")
-    _encoder = SentenceTransformer(_ENCODER_MODEL)
+    print(f"[NN_CLASSIFIER] Caricamento encoder: {ENCODER_MODEL_NAME}")
+    _encoder = SentenceTransformer(ENCODER_MODEL_NAME)
     _encoder.eval()
 
-    print(f"[NN_CLASSIFIER] Caricamento pesi: {_WEIGHTS_PATH}")
-    ckpt = torch.load(str(_WEIGHTS_PATH), map_location='cpu', weights_only=False)
+    print(f"[NN_CLASSIFIER] Caricamento pesi: {WEIGHTS_PATH}")
+    ckpt = torch.load(str(WEIGHTS_PATH), map_location='cpu', weights_only=False)
 
     _model = MultiTaskMLP()
-    _model.load_state_dict(ckpt['model_state_dict'])
+    _model.load_state_dict(ckpt[CKPT_STATE_DICT_KEY])
     _model.eval()
 
-    print(f"[NN_CLASSIFIER] Test F1-macro domain : {_fmt_metric(ckpt.get('test_f1_domain'))}")
-    print(f"[NN_CLASSIFIER] Test difficulty acc  : {_fmt_metric(ckpt.get('test_diff_acc'))}")
-    print(f"[NN_CLASSIFIER] Test is_followup F1  : {_fmt_metric(ckpt.get('test_followup_f1'))}")
+    print(f"[NN_CLASSIFIER] Test F1-macro domain : {_fmt_metric(ckpt.get(CKPT_TEST_F1_DOMAIN_KEY))}")
+    print(f"[NN_CLASSIFIER] Test difficulty acc  : {_fmt_metric(ckpt.get(CKPT_TEST_DIFF_ACC_KEY))}")
+    print(f"[NN_CLASSIFIER] Test is_followup F1  : {_fmt_metric(ckpt.get(CKPT_TEST_FOLLOWUP_F1_KEY))}")
 
     _loaded = True
 
 
 def _build_input_str(query: str, history: list) -> str:
-    """
-    Estrae le query utente da chat_history (lista di dict {role, content})
-    e delega la formattazione a history_utils.build_input_str — la STESSA
-    funzione usata in fase di training. [Fix Report Gemini punto 3]
-    """
+    """Estrae le query utente dalla history e delega a history_utils.build_input_str."""
     user_turns = [
         m['content'] for m in history
         if m.get('role') == 'user'
-    ][-_HISTORY_TURNS:]
+    ][-HISTORY_MAX_TURNS:]   # [ARCH-3 FIX] uso diretto, rimosso alias _HISTORY_TURNS
     return build_input_str(query, user_turns)
 
 
 def _derive_class_id(
-    domain_probs: torch.Tensor,          # shape [4], sigmoid applicata
+    domain_probs: torch.Tensor,
     candidate_threshold: float = DOMAIN_THRESHOLD,
     pipeline_threshold: float = PIPELINE_PAIR_THRESHOLD,
 ) -> Tuple[int, float]:
     """
-    Da domain_probs [coding, math, rights, general] → (class_id, confidence).
-
-    LOGICA A DUE STADI [FIX Bug A]:
-      Stadio 1 (candidate_threshold, letto da
-        config.NEURAL_CLASSIFIER_SETTINGS['threshold_mono'] — attualmente
-        0.50, NON 0.35: il default 0.35 nella firma della funzione è solo
-        un fallback difensivo del .get(), mai raggiunto a runtime perché
-        config.py definisce sempre 'threshold_mono' esplicitamente, vedi
-        DOMAIN_THRESHOLD sopra): quali domini tecnici superano la soglia
-        minima per essere "in lizza" per una pipeline.
-      Stadio 2 (pipeline_threshold, letto da
-        config.NEURAL_CLASSIFIER_SETTINGS['threshold_pipeline'] —
-        attualmente 0.75, NON 0.60, stesso discorso del default difensivo):
-        la coppia top-2 viene CONFERMATA pipeline solo se ENTRAMBI i probs
-        superano questa soglia più alta. Altrimenti si scende a
-        mono-domain (argmax sui 4).
-
-      Questo impedisce che un dominio tecnico "debole" (es. math=0.40 dovuto
-      a parole matematiche di contorno in una query di puro coding) faccia
-      scattare una pipeline fantasma — serve una confidenza alta su ENTRAMBI
-      i domini, non solo il minimo storico di 0.50.
-
-    CONFIDENCE:
-      - Pipeline:    min(prob_a, prob_b)
-      - Mono-domain: prob del dominio vincente
+    LOGICA A DUE STADI:
+      Stadio 1 (candidate_threshold): domini "in lizza" per una pipeline.
+      Stadio 2 (pipeline_threshold): coppia top-2 CONFERMATA pipeline solo
+      se ENTRAMBI i probs superano questa soglia più alta; altrimenti
+      mono-domain (argmax sui 4).
+    CONFIDENCE: pipeline = min(prob_a, prob_b); mono-domain = prob vincente.
     """
     probs_np = domain_probs.cpu().numpy()
-    names_4  = ['coding', 'math', 'rights', 'general']
+    names_4  = DOMAIN_NAMES[:4]   # [DUP-2 FIX]
 
     tech_candidates = [
         (names_4[i], float(probs_np[i]))
@@ -207,8 +124,8 @@ def _derive_class_id(
         top2 = tech_sorted[:2]
         pair = frozenset({top2[0][0], top2[1][0]})
 
-        if pair in _PIPELINE_ORDER and min(top2[0][1], top2[1][1]) >= pipeline_threshold:
-            class_id   = _PIPELINE_ORDER[pair]
+        if pair in PIPELINE_ORDER and min(top2[0][1], top2[1][1]) >= pipeline_threshold:
+            class_id   = PIPELINE_ORDER[pair]
             confidence = min(top2[0][1], top2[1][1])
             return class_id, confidence
 
@@ -216,8 +133,6 @@ def _derive_class_id(
     confidence = float(probs_np[class_id])
     return class_id, confidence
 
-
-# ─── INTERFACCIA PUBBLICA ────────────────────────────────────────────────────
 
 def predict(
     text: str,
@@ -257,11 +172,9 @@ def predict(
 
         class_id, confidence = _derive_class_id(domain_probs)
 
-        domain_scores = {
-            'coding':  round(float(domain_probs[0]), 4),
-            'math':    round(float(domain_probs[1]), 4),
-            'rights':  round(float(domain_probs[2]), 4),
-            'general': round(float(domain_probs[3]), 4),
+        domain_scores = {   # [DUP-2 FIX]
+            name: round(float(prob), 4)
+            for name, prob in zip(DOMAIN_NAMES[:4], domain_probs)
         }
 
         difficulty  = int(diff_probs.argmax().item()) + 1
@@ -282,13 +195,7 @@ def predict(
 
 
 def unload_router():
-    """
-    [FIX Criticità 2] Libera esplicitamente encoder MiniLM (~470MB) e pesi
-    MLP dalla RAM Python. Va chiamata subito dopo la classificazione,
-    PRIMA che Ollama carichi il modello generativo dell'agente. Costo:
-    ricaricamento (encoder + pesi) al turno successivo (~1-3s), accettabile
-    sul vincolo hardware di sviluppo (8GB RAM).
-    """
+    """Libera esplicitamente encoder MiniLM e pesi MLP dalla RAM Python."""
     global _model, _encoder, _loaded
     if _model is None and _encoder is None:
         return

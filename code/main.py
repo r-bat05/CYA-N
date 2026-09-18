@@ -7,7 +7,7 @@ import sys
 import time
 import psutil
 import config
-from ai_engine import get_ai_model, ResourceExhaustedError
+from ai_engine import get_ai_model, ResourceExhaustedError, would_use_fallback
 from nn_classifier import predict as router_predict, PIPELINE_CLASSES, DOMAIN_NAMES, unload_router
 
 _ERROR_PREFIXES  = ("Errore Ollama:", "Errore Generico:", "__SYS_WARN__:")
@@ -61,14 +61,14 @@ def _expected_model(agent, difficulty: int) -> str:
     """
     [DIFF-ROUTING] Anteprima informativa (SOLO log) del modello che verrà
     selezionato dato `difficulty`. Il valore REALE resta deciso a runtime
-    da check_resources() in ai_engine.py, che può forzare il downgrade a
-    fallback anche per difficulty>=2 se la RAM è insufficiente: questa
-    funzione non anticipa quel controllo, mostra solo l'intenzione.
+    da check_resources() in ai_engine.py.
+    [DUP-5 FIX] Usa ai_engine.would_use_fallback(), stessa formula del
+    comportamento reale — prima duplicata qui a mano.
     """
-    threshold = config.TIER_ROUTING_SETTINGS.get('fallback_max_difficulty', 1)
-    if difficulty <= threshold and agent.fallback_model:
+    if would_use_fallback(difficulty, agent.fallback_model):
         return f"{agent.fallback_model} (fallback, diff={difficulty})"
     return f"{agent.model_name} (primary, diff={difficulty})"
+
 
 
 def main():

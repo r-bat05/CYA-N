@@ -247,3 +247,40 @@ def get_prompts(category: str, tier: str = 'compact'):
     shot = FEW_SHOT_EXAMPLES.get(category, "")
     force = ENFORCEMENT_PROMPTS.get(category, "")
     return sys, shot, force
+
+
+
+# --- 5. DOMAIN AI BEHAVIOR CONFIG (Opzione B — report_patch.md §5) ---
+# Tabella dati che sostituisce le 3 classi quasi-identiche di ai_engine.py
+# (CodeLlamaAI/DeepSeekAI/GptOssAI). execute_critic_pass() non è qui: era
+# già identico in tutte e 3 le classi precedenti. I template usano
+# str.format() con placeholder {prompt}, {enforcement}, {directional},
+# {handoff}, {lang_note} — le chiavi non usate da un template vengono
+# ignorate da .format().
+DOMAIN_AI_CONFIG = {
+    'coding': {
+        'lang_note': None,
+        'resolve_template':    "[RICHIESTA]: {prompt}\n\n[IMPORTANTE]: Spiega il codice e i concetti ESCLUSIVAMENTE IN INGLESE.",
+        'pipeline_a_template': "[RICHIESTA]: {prompt}\n{directional}",
+        'pipeline_b_template': "{handoff}",
+    },
+    'math': {
+        'lang_note': None,
+        'resolve_template':    "{prompt}{enforcement}",
+        'pipeline_a_template': "{prompt}{enforcement}{directional}",
+        'pipeline_b_template': "{handoff}{enforcement}",
+    },
+    'rights': {
+        # [LANG] 'rights' resta in italiano (dominio giuridico italiano).
+        'lang_note': "Rispondi IN ITALIANO.",
+        'resolve_template':    "[RICHIESTA UTENTE]: {prompt}\n\n[IMPORTANTE]: {lang_note}",
+        'pipeline_a_template': "[RICHIESTA UTENTE]: {prompt}\n{directional}",
+        'pipeline_b_template': "{handoff}",
+    },
+    'general': {
+        'lang_note': "Rispondi IN INGLESE.",
+        'resolve_template':    "[RICHIESTA UTENTE]: {prompt}\n\n[IMPORTANTE]: {lang_note}",
+        'pipeline_a_template': "[RICHIESTA UTENTE]: {prompt}\n{directional}",
+        'pipeline_b_template': "{handoff}",
+    },
+}

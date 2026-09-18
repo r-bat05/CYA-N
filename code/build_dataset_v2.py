@@ -43,10 +43,11 @@ Novità (Fix da report_bugs.md):
   val e/o test vuoto.
 """
 
-import json, random, re
+import json, random
 from collections import defaultdict, Counter
 from db_query import INTENT_SENTENCES, BRIDGE_SENTENCES
-from pathlib import Path
+from domains import BRIDGE_MAP
+from classifier_config import DATASET_PATH, DIFFICULTY_LABELS_PATH
 
 random.seed(42)
 
@@ -62,20 +63,10 @@ TARGET_PIPE = 80    # min esempi per ogni tipo pipeline
 # Valore intermedio (non TARGET_PIPE: sono esempi negativi, non pattern
 # positivi da massimizzare quanto le pipeline vere).
 TARGET_BRIDGE_NEG = 40
-OUTPUT_PATH = Path(__file__).resolve().parent / 'dataset_v2.jsonl'
+OUTPUT_PATH = DATASET_PATH   # [CFG-2 FIX] condiviso con precompute_embeddings.py
 
-BRIDGE_MAP = {
-    ('coding', 'rights'):  ('rights->coding', True),
-    ('rights', 'coding'):  ('rights->coding', True),
-    ('coding', 'math'):    ('math->coding',   True),
-    ('math', 'coding'):    ('math->coding',   True),
-    ('math', 'rights'):    ('rights->math',   True),
-    ('rights', 'math'):    ('rights->math',   True),
-    ('general', 'math'):   (None, False),
-    ('math', 'general'):   (None, False),
-    ('general', 'rights'): (None, False),
-    ('rights', 'general'): (None, False),
-}
+# [DUP-3 FIX] BRIDGE_MAP importato da domains.py: unica fonte di verità
+# derivata da PIPELINE_CLASSES, non più mantenuto a mano qui.
 
 SYNONYMS = {
     'implementa': ['sviluppa', 'crea', 'realizza', 'costruisci'],
@@ -400,6 +391,21 @@ MANUAL_RECORDS = [
     _r("spiegami la normativa sui contratti di lavoro", _R, 2),
     _r("qual è il codice penale per il furto?",         _R, 1),
     _r("cos'è la media geometrica?",                    _M, 1),
+     # ── [FIX A-C1] Rinforzo negative-class pipeline: "calcola/computa X in
+    #    Python" su operazioni CS elementari — contrastano lo sbilanciamento
+    #    lessicale verso il bridge ('coding','math') (~40 esempi "calcola X
+    #    Python" → pipeline) che causava falsi positivi su compiti didattici
+    #    banali (vedi A-C1 in wrong_query_TESTING.md) ──
+    _r("Scrivi una funzione Python che calcola il fattoriale di un numero in modo ricorsivo.", _C, 1),
+    _r("Calcola la somma dei numeri di Fibonacci fino all'ennesimo termine in Python.", _C, 1),
+    _r("Scrivi una funzione Python che calcola se un numero è primo.", _C, 1),
+    _r("Calcola il massimo comun divisore tra due numeri in Python.", _C, 1),
+    _r("Scrivi il codice Python che calcola la somma delle cifre di un numero.", _C, 1),
+    _r("Calcola se una stringa è palindroma con una funzione Python.", _C, 1),
+    _r("Scrivi una funzione Python che calcola il massimo e il minimo di una lista.", _C, 1),
+    _r("Calcola la somma dei numeri pari in una lista usando Python.", _C, 1),
+    _r("Scrivi il codice per calcolare quante vocali ci sono in una stringa Python.", _C, 1),
+    _r("Calcola il numero di occorrenze di un elemento in una lista Python.", _C, 1),
 
     # ── TRUE pipeline ESPLICITE (segnale diretto) ──
     _r("scrivi codice C++ per Pitagora con dimostrazione matematica completa",
@@ -483,13 +489,9 @@ MANUAL_RECORDS = [
 ]
 
 # ── Difficulty Labels (manuale) ──────────────────────────────────────────────
-# [DIFFICULTY MANUALE] Sostituisce l'euristica estimate_difficulty() rimossa
-# (vedi Novità in testa al file e report_difficulty_manual.md §1). La
-# difficoltà è ora un'etichetta manuale per query ESATTA, mantenuta in un
-# JSON esterno dal Coordinatore. Caricato a import-time: se il file manca,
-# fallisce subito con un errore chiaro invece di un FileNotFoundError
-# generico più a valle.
-DIFFICULTY_LABELS_PATH = Path(__file__).resolve().parent / 'difficulty_labels.json'
+# [DIFFICULTY MANUALE] Sostituisce l'euristica estimate_difficulty() rimossa.
+# [CFG-2 FIX] DIFFICULTY_LABELS_PATH importato da classifier_config.py
+# (era definito qui in modo indipendente).
 
 
 def _load_difficulty_labels() -> dict:
