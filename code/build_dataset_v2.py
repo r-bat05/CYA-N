@@ -9,8 +9,39 @@ Sorgenti:
   1. code/old_files/db_query.py  → INTENT_SENTENCES + BRIDGE_SENTENCES
   2. EDGE_CASES manuali          → follow-up, switch dominio, false/true pipeline
   3. Augmentation lessicale      → sinonimi per bilanciare le classi
+  4. Augmentation di rumore      → framing narrativo / stile-risposta (Opzione A)
 
 Output: code/dataset_v2.jsonl
+
+Novità (Query Noise Augmentation — Opzione A, report_query_noise_augmentation.md):
+- [NOISE-AUG] Nuova augment_noise(): contrasta il bias di diluizione per
+  mean-pooling di MiniLM (media aritmetica di tutti i token embeddings,
+  pesata solo dall'attention mask, mai dalla rilevanza semantica). Frasi
+  tecniche terse "annegate" in testo di contorno narrativo/motivazionale/di
+  specifica-stile venivano spinte verso GENERAL con alta confidence, perché
+  la rete aveva imparato la scorciatoia "registro lungo/discorsivo →
+  GENERAL" (GENERAL nel dataset contiene nativamente molte frasi lunghe).
+  Caso riprodotto: "risolvi le equazioni di Navier-Stokes" → MATH (1.000)
+  vs stessa frase con contorno storico-filosofico → GENERAL (1.000).
+  Stesso pattern architetturale di augment_class()/augment_query() (wrapping
+  di frase intera anziché sostituzione di singola parola), chiamata in
+  FASE 2bis, SEMPRE dopo stratified_split() (ogni variante eredita lo split
+  del sorgente — mai splittata indipendentemente, altrimenti si reintroduce
+  esattamente il leakage train/test già risolto per l'augmentation a
+  sinonimi, vedi [FIX LEAKAGE] più sotto). Applicata SOLO a
+  INTENT_SENTENCES/BRIDGE_SENTENCES (intent+bridge): MANUAL_RECORDS
+  (follow-up/domain-switch/edge-case) ha semantica legata alla brevità e
+  alla history che il wrapping romperebbe, e resta intenzionalmente escluso.
+  Copertura simmetrica sui 4 domini + 3 pipeline + classi bridge
+  non-pipeline (pool di template topic-agnostic, mai un "sapore" di rumore
+  legato a un dominio specifico), diversità di posizione
+  (prefisso/suffisso/wrap) e di sapore (storico-culturale, filosofico,
+  curiosità personale, utilità/motivazionale, specifica di stile risposta),
+  incluse varianti ad alto rapporto rumore/segnale (~80%+) che replicano il
+  caso reale osservato. Validata in sandbox (ast.parse + dry-run funzionale
+  su dataset stub): output JSONL valido riga per riga, split ereditato
+  correttamente dal sorgente, conteggio varianti coerente con
+  NOISE_INJECTION_RATIO per class-key.
 
 Novità (Difficulty Manuale — report_difficulty_manual.md):
 - [DIFFICULTY] Rimossa l'euristica estimate_difficulty() (marker lessicali
@@ -63,6 +94,21 @@ TARGET_PIPE = 80    # min esempi per ogni tipo pipeline
 # Valore intermedio (non TARGET_PIPE: sono esempi negativi, non pattern
 # positivi da massimizzare quanto le pipeline vere).
 TARGET_BRIDGE_NEG = 40
+
+# [HARD-NEG FIX — wrong_query_TESTING.md rev.2] Target dedicati per
+# sottoinsiemi di record "difficili" (hard negatives) che altrimenti NON
+# riceverebbero MAI augmentation dal loop generico per class-key in main():
+# quel loop confronta `len(group) < target` sul BUCKET INTERO della classe
+# mono-dominio (es. 'coding'), che satura TARGET_MONO=250 ben prima che
+# questi pochi record mirati vengano anche solo notati — restano 1:1
+# indipendentemente da quanti se ne aggiungono a mano (bug diagnosticato
+# su A-C1: 10 record "calcola X in Python" rimasti verbatim, fix
+# precedente inefficace anche dopo retrain). Ogni sottoinsieme riceve
+# quindi un rinforzo ESPLICITO in FASE 2ter, fuori dal loop generico.
+TARGET_FALSE_PIPELINE_NEG     = 70  # "calcola/implementa X in Python" mono-coding
+FALSE_PIPELINE_NOISE_VARIANTS = 2   # varianti wrapping narrativo per record base
+KEYWORD_TRAP_NOISE_VARIANTS   = 3   # varianti wrapping narrativo per record base
+
 OUTPUT_PATH = DATASET_PATH   # [CFG-2 FIX] condiviso con precompute_embeddings.py
 
 # [DUP-3 FIX] BRIDGE_MAP importato da domains.py: unica fonte di verità
@@ -339,7 +385,12 @@ MANUAL_RECORDS = [
     _cd("scrivi un programma che simula il lancio di una moneta", _C, 2, ["Spiega la teoria della probabilità."]),
     _cd("qual è la formula per calcolare gli interessi composti?", _M, 2, ["Cosa mi consigli per risparmiare?"]),
     _cd("quali norme regolano il telelavoro in Italia?", _R, 2, ["Cosa cambierà nel mondo del lavoro con l'AI?"]),
-    _cd("come si calcola l'IVA su una fattura?", _M, 1, ["Come funziona la partita IVA?"]),
+    # [FIX label-consistency] Era _M (mono-math): contraddiceva
+    # expected_domain="rights" in eval_dataset.jsonl (F-EC7), causando un
+    # test case auto-contraddittorio. Query bridge fiscale genuina
+    # (calcolo + normativa IVA): ora rights->math esplicito.
+    _r("come si calcola l'IVA su una fattura?", _RM, 1, is_pipe=True, pipe_type="rights->math",
+       hist=["Come funziona la partita IVA?"], is_followup=False),
     _cd("scrivi una funzione Python per la validazione dell'email", _C, 1, ["Cosa prevede il GDPR sul consenso?"]),
     _cd("implementa il login con JWT in Flask", _C, 2, ["Come funziona l'autenticazione a due fattori?"]),
     _cd("è legale vendere dati statistici anonimi?", _R, 2, ["Come funziona l'analisi della varianza ANOVA?"]),
@@ -391,21 +442,12 @@ MANUAL_RECORDS = [
     _r("spiegami la normativa sui contratti di lavoro", _R, 2),
     _r("qual è il codice penale per il furto?",         _R, 1),
     _r("cos'è la media geometrica?",                    _M, 1),
-     # ── [FIX A-C1] Rinforzo negative-class pipeline: "calcola/computa X in
-    #    Python" su operazioni CS elementari — contrastano lo sbilanciamento
-    #    lessicale verso il bridge ('coding','math') (~40 esempi "calcola X
-    #    Python" → pipeline) che causava falsi positivi su compiti didattici
-    #    banali (vedi A-C1 in wrong_query_TESTING.md) ──
-    _r("Scrivi una funzione Python che calcola il fattoriale di un numero in modo ricorsivo.", _C, 1),
-    _r("Calcola la somma dei numeri di Fibonacci fino all'ennesimo termine in Python.", _C, 1),
-    _r("Scrivi una funzione Python che calcola se un numero è primo.", _C, 1),
-    _r("Calcola il massimo comun divisore tra due numeri in Python.", _C, 1),
-    _r("Scrivi il codice Python che calcola la somma delle cifre di un numero.", _C, 1),
-    _r("Calcola se una stringa è palindroma con una funzione Python.", _C, 1),
-    _r("Scrivi una funzione Python che calcola il massimo e il minimo di una lista.", _C, 1),
-    _r("Calcola la somma dei numeri pari in una lista usando Python.", _C, 1),
-    _r("Scrivi il codice per calcolare quante vocali ci sono in una stringa Python.", _C, 1),
-    _r("Calcola il numero di occorrenze di un elemento in una lista Python.", _C, 1),
+    # [FIX A-C1 rev.2] Il vecchio blocco di 10 record "calcola X in Python"
+    # è stato spostato in FALSE_PIPELINE_HARD_NEGATIVES (fuori da
+    # MANUAL_RECORDS, sotto): qui restava sommerso nel bucket 'coding' già
+    # saturo (TARGET_MONO raggiunto solo da INTENT_SENTENCES/BRIDGE_SENTENCES)
+    # e non riceveva MAI augmentation — retest post-retrain ha confermato il
+    # fallimento persistente (conf 0.831/0.918 verso MATH->CODING).
 
     # ── TRUE pipeline ESPLICITE (segnale diretto) ──
     _r("scrivi codice C++ per Pitagora con dimostrazione matematica completa",
@@ -486,6 +528,86 @@ MANUAL_RECORDS = [
     _cd("mi dai qualche consiglio per un colloquio da remoto?",    _G, 1, ["Quali sono le tutele per il whistleblowing aziendale?"]),
     _cd("qual è il modo migliore per fare amicizia in una nuova città?", _G, 1, ["Cosa prevede la Costituzione sul referendum abrogativo?"]),
     _cd("come si fa a togliere una macchia di grasso da una giacca?",    _G, 1, ["Spiega la differenza tra dolo e colpa nel diritto penale."]),
+]
+
+# ── False-Pipeline Hard Negatives (ex-FIX A-C1, ampliato) ────────────────────
+# [FIX A-C1 rev.2] "calcola/implementa X in Python" su operazioni CS
+# elementari con vocabolario numerico/matematico (fattoriale, primo, MCD,
+# permutazioni, ecc.): il rischio è l'attivazione della testa MATH per
+# associazione lessicale pura, che porta il classificatore a due stadi a
+# promuovere erroneamente a pipeline math->coding. Isolato in una lista
+# dedicata (fuori da MANUAL_RECORDS) per ricevere un rinforzo di
+# augmentation ESPLICITO in FASE 2ter — vedi TARGET_FALSE_PIPELINE_NEG.
+# Ogni riga inizia con un verbo imperativo presente in SYNONYMS
+# (scrivi/calcola/implementa), condizione necessaria perché
+# augment_hard_negatives_synonyms() possa generare varianti.
+FALSE_PIPELINE_HARD_NEGATIVES = [
+    _r("Scrivi una funzione Python che calcola il fattoriale di un numero in modo ricorsivo.", _C, 1),
+    _r("Calcola la somma dei numeri di Fibonacci fino all'ennesimo termine in Python.", _C, 1),
+    _r("Scrivi una funzione Python che calcola se un numero è primo.", _C, 1),
+    _r("Calcola il massimo comun divisore tra due numeri in Python.", _C, 1),
+    _r("Scrivi il codice Python che calcola la somma delle cifre di un numero.", _C, 1),
+    _r("Calcola se una stringa è palindroma con una funzione Python.", _C, 1),
+    _r("Scrivi una funzione Python che calcola il massimo e il minimo di una lista.", _C, 1),
+    _r("Calcola la somma dei numeri pari in una lista usando Python.", _C, 1),
+    _r("Scrivi il codice per calcolare quante vocali ci sono in una stringa Python.", _C, 1),
+    _r("Calcola il numero di occorrenze di un elemento in una lista Python.", _C, 1),
+    _r("Scrivi una funzione Python che verifica se un numero è pari o dispari.", _C, 1),
+    _r("Calcola la mediana di una lista di numeri usando Python.", _C, 1),
+    _r("Scrivi il codice Python per calcolare la potenza n-esima di un numero senza usare l'operatore **.", _C, 1),
+    _r("Implementa in Python un controllo che verifichi se un numero è un quadrato perfetto.", _C, 1),
+    _r("Scrivi una funzione Python che calcola la somma dei divisori propri di un numero.", _C, 1),
+    _r("Calcola il numero di permutazioni possibili di una stringa usando Python.", _C, 2),
+    _r("Implementa in Python la Torre di Hanoi con ricorsione.", _C, 2),
+    _r("Scrivi una funzione Python che genera i numeri triangolari fino a un limite dato.", _C, 1),
+    _r("Calcola la radice quadrata intera di un numero senza usare la libreria math in Python.", _C, 1),
+    _r("Scrivi il codice Python che verifica la validità di una carta di credito con l'algoritmo di Luhn.", _C, 2),
+    _r("Implementa in Python una funzione che conta le combinazioni possibili di k elementi presi da n.", _C, 2),
+    _r("Scrivi una funzione Python che ordina una lista di numeri in ordine decrescente senza usare sorted().", _C, 1),
+    _r("Calcola il fattoriale di un numero in Python usando un ciclo invece della ricorsione.", _C, 1),
+    _r("Scrivi il codice Python che trova il numero primo successivo a un intero dato.", _C, 1),
+    _r("Implementa in Python il calcolo iterativo della sequenza di Fibonacci fino all'n-esimo termine.", _C, 1),
+]
+
+# ── Keyword-Trap Negatives ────────────────────────────────────────────────────
+# [FIX keyword-trap — wrong_query_TESTING.md rev.2] Token isolati fortemente
+# associati a un dominio tecnico nel corpus (VAR→rights->math/"Value at
+# Risk", lancio→coding/math/"lancio moneta o dadi", equazione/debug/
+# informatica/algoritmo/ottimizza/formula→coding o math) usati qui in
+# contesto general/rights genuino, non tecnico. Zero copertura precedente
+# di questi token fuori dal loro dominio "nativo" — la rete non ha mai
+# visto un controesempio. Fraseggio discorsivo/interrogativo (NESSUN verbo
+# imperativo): augment_query() non trova match in SYNONYMS per queste frasi
+# (stesso fenomeno già noto per general+math/general+rights, M1 WARNING),
+# quindi il rinforzo in FASE 2ter usa SOLO augment_hard_negatives_noise()
+# (wrapping narrativo, non dipende da SYNONYMS).
+KEYWORD_TRAP_NEGATIVES = [
+    # VAR (calcistico) — vs "VAR (Value at Risk)" in rights->math
+    _r("Il VAR è stato introdotto nel calcio per ridurre gli errori arbitrali, ma continua a far discutere i tifosi.", _G, 1),
+    _r("Quanto tempo impiega mediamente il VAR a controllare un episodio dubbio durante una partita di Serie A?", _G, 1),
+    _r("Secondo te il VAR ha reso il calcio più giusto o ha solo rallentato troppo il gioco?", _G, 1),
+    # lancio — vs "lancio di una moneta/dadi" in coding/math (probabilità)
+    _r("Qual è il record mondiale nel lancio del giavellotto e chi lo detiene attualmente?", _G, 1),
+    _r("Mentre giocavamo a freccette in giardino un lancio è finito sulla macchina del vicino, chi deve pagare i danni?", _R, 2),
+    _r("Durante un allenamento di atletica il lancio del peso di un compagno mi ha colpito per errore, posso fare causa?", _R, 2),
+    _r("Quali sono le tecniche di base per migliorare la precisione nel lancio a canestro nella pallacanestro?", _G, 1),
+    # equazione figurativa — vs uso matematico letterale
+    _r("Qual è l'equazione giusta tra vita privata e carriera per essere davvero felici?", _G, 1),
+    _r("Gli chef dicono che la cucina perfetta è un'equazione tra tecnica, ingredienti freschi e un pizzico di fantasia.", _G, 1),
+    _r("C'è un'equazione emotiva dietro ogni grande amicizia, fatta di fiducia e tempo condiviso?", _G, 2),
+    # debug / informatica figurativi — vs uso tecnico letterale
+    _r("Ho passato la serata a fare debug della mia giornata storta, cercando di capire dove avevo sbagliato con i colleghi.", _G, 1),
+    _r("Non ho mai studiato informatica, ma stasera vorrei solo rilassarmi guardando una serie tv leggera.", _G, 1),
+    _r("Mio nonno lavorava in un'azienda di informatica negli anni '80, mi racconti come si viveva la vita d'ufficio in quell'epoca?", _G, 2),
+    _r("A volte serve fare debug dei propri pensieri prima di dormire per non portarsi dietro lo stress della giornata.", _G, 1),
+    # algoritmo / ottimizzare figurativi
+    _r("Qual è l'algoritmo segreto per convincere un bambino a mangiare le verdure senza fare i capricci?", _G, 1),
+    _r("Come posso ottimizzare le mie serate per leggere di più senza rinunciare al sonno?", _G, 1),
+    _r("Esiste un algoritmo infallibile per scegliere il regalo di compleanno perfetto per un amico?", _G, 1),
+    _r("Vorrei ottimizzare il mio armadio per avere più spazio senza buttare via i vestiti a cui tengo.", _G, 1),
+    # formula figurativa
+    _r("Qual è la formula segreta per un matrimonio felice e duraturo secondo gli psicologi?", _G, 1),
+    _r("C'è una formula magica per superare la timidezza durante un colloquio di lavoro?", _G, 1),
 ]
 
 # ── Difficulty Labels (manuale) ──────────────────────────────────────────────
@@ -670,6 +792,244 @@ def stratified_split(records: list) -> list:
 
     return result
 
+
+# ── [NOISE-AUG] Query Noise Augmentation — Opzione A ─────────────────────────
+# (report_query_noise_augmentation.md §4)
+#
+# Contrasta il bias di diluizione per mean-pooling: MiniLM fa la media
+# aritmetica di tutti i token embeddings (pesata solo da attention mask, mai
+# da rilevanza semantica). Frasi tecniche terse "annegate" in testo di
+# contorno narrativo/motivazionale/di specifica-stile vengono spinte verso
+# GENERAL con alta confidence, perché la rete ha imparato la scorciatoia
+# "registro lungo/discorsivo -> GENERAL" (GENERAL nel dataset contiene
+# nativamente molte frasi lunghe/narrative — vedi §2.3 del report).
+#
+# Stessa filosofia di augment_query()/augment_class() ma a livello di frase
+# intera: il record augmentato eredita TUTTI i campi dal sorgente (§4.5),
+# solo 'query' viene sovrascritta — zero nuovo labeling manuale.
+#
+# Decisioni prese sui parametri aperti in §4.8 del report:
+#   - Applicata SOLO a intent+bridge (non a MANUAL_RECORDS: follow-up/
+#     domain-switch hanno semantica legata a brevità/history che il
+#     wrapping romperebbe).
+#   - Selezione per class-key (get_class_key), stessa granularità di
+#     augment_class(), con ratio fisso NOISE_INJECTION_RATIO — non un
+#     target assoluto come TARGET_MONO/TARGET_PIPE, perché il rumore deve
+#     scalare proporzionalmente alla popolazione già esistente di ogni
+#     classe, non colmare un minimo.
+#   - 2 varianti per record selezionato (NOISE_VARIANTS_PER_SEED), a
+#     copertura di posizione/sapore diversi senza esplosione combinatoria.
+
+NOISE_INJECTION_RATIO   = 0.35   # frazione selezionata per ogni class-key (get_class_key)
+NOISE_VARIANTS_PER_SEED = 2      # varianti generate per ogni record selezionato
+
+# Pool "framing narrativo": topic-agnostic per costruzione — nessuna voce
+# menziona coding/math/rights/general, riutilizzabile su qualunque frase base
+# di qualunque dominio (requisito §4.3.1: copertura simmetrica sui 4 domini,
+# mai un "sapore" di rumore legato a un dominio specifico). Sapori coperti:
+# storico/culturale, filosofico, curiosità personale, utilità/motivazionale.
+# Le entry terminano con ": " per agganciarsi alla frase base (minuscolizzata).
+NOISE_FRAME_PREFIXES = [
+    "Ci penso spesso ultimamente, quindi ti chiedo: ",
+    "Una delle cose che trovo più affascinanti nella storia umana è come si sia arrivati a capire certe cose, quindi vorrei sapere: ",
+    "Ne parlavo proprio ieri con un amico di quanto certe scoperte abbiano un che di filosofico, e mi chiedevo: ",
+    "Sono sempre stato incuriosito da come nel corso dei secoli si siano affrontati problemi come questo, quindi: ",
+    "Al di là dell'utilità pratica, trovo ci sia qualcosa di profondamente umano dietro domande come questa, quindi: ",
+    "Mi capita spesso di riflettere su come si sia evoluto il sapere nel tempo, e mi chiedo: ",
+    "Premesso che non è urgente, ma mi piacerebbe capire meglio una cosa che mi frulla in testa da un po': ",
+    "Diciamo che è più curiosità personale che necessità reale, ma vorrei approfondire: ",
+    "Ho letto qualcosa che parlava di come certi argomenti abbiano cambiato il corso della storia, quindi mi chiedo: ",
+    "Per motivi che non sto qui a spiegare per intero, mi servirebbe capire bene una cosa: ",
+]
+
+# Continuazioni a virgola (stessa frase, non frase a sé): riproducono
+# fedelmente il pattern del caso reale osservato in §1 del report
+# ("risolvi le equazioni di Navier stokes, una delle più importanti
+# scoperte fatte nella storia dell'umanità..."). Nel codice viene aggiunto
+# un punto finale.
+NOISE_FRAME_SUFFIXES = [
+    ", una delle scoperte più importanti mai fatte nella storia dell'umanità, con un che di filosofico nel suo significato ancora oggi",
+    ", argomento che trovo affascinante dal punto di vista storico e culturale, al di là della pura utilità pratica",
+    ", tema a cui penso spesso perché ha quasi un che di filosofico",
+    ", cosa che secondo me racconta molto di come ragiona la mente umana quando affronta problemi complessi",
+    ", questione che mi interessa più per curiosità personale che per reale necessità",
+    ", tema su cui vorrei tornare perché lo trovo rilevante anche nella vita di tutti i giorni",
+    ", cosa che può sembrare strana da chiedere ma per me ha un valore che va oltre il puro tecnicismo",
+    ", argomento che secondo me meriterebbe più attenzione di quella che gli diamo di solito",
+]
+
+# Coppie (prefisso, suffisso) per il wrapping "spezzato attorno" al nucleo
+# tecnico (requisito §4.3.5: il rumore va variato in posizione, non solo
+# appeso in coda, altrimenti si copre solo il caso opposto a quello per cui
+# l'Opzione B è stata scartata in §3.2).
+NOISE_WRAP_PAIRS = [
+    ("Da tempo mi affascina come nel corso della storia si sia arrivati a soluzioni per problemi come questo, quindi vorrei capire bene: ",
+     ", perché credo che dietro ci sia qualcosa di più profondo della semplice utilità pratica"),
+    ("Non so se è la domanda giusta da fare qui, ma da un po' mi frulla in testa e vorrei togliermi il dubbio: ",
+     ", diciamo che è più curiosità che reale necessità immediata"),
+    ("Parto un po' alla lontana, scusami, ma trovo ci sia un legame interessante tra come affrontiamo certe domande e la nostra cultura, quindi: ",
+     ", argomento su cui rifletto spesso anche fuori da un contesto puramente tecnico"),
+    ("Premessa lunga, portami pazienza: sono sempre stato convinto che capire certe cose ci renda persone migliori, quindi ",
+     ", cosa che per me ha un peso che va oltre la semplice risposta tecnica"),
+]
+
+# Pool "specifica di stile risposta": separato dal pool narrativo,
+# componibile insieme ad esso (requisito §4.4). Frasi a sé stanti
+# (spazio + maiuscola iniziale), appese dopo la punteggiatura originale
+# della frase base.
+NOISE_STYLE_SUFFIXES = [
+    " Spiegamelo in modo semplice, come se lo spiegassi a un bambino.",
+    " Rispondimi in modo super sintetico, senza fronzoli.",
+    " Se puoi, aggiungi anche un po' di contesto in più, mi piace capire il quadro generale.",
+    " Cerca di non essere troppo tecnico nella risposta, per favore.",
+    " Vorrei una risposta bella dettagliata, con tutti i passaggi spiegati per bene.",
+    " Fammi un riassunto breve, tanto per farmi un'idea.",
+    " Scrivimi la risposta come se dovessi spiegarla a qualcuno alle prime armi.",
+]
+
+
+def _lowered(text: str) -> str:
+    return text[0].lower() + text[1:] if text else text
+
+
+def _stripped(text: str) -> str:
+    return text.rstrip('?.! ')
+
+
+def _compose_noise_variant(base_query: str, rng: random.Random) -> str:
+    """
+    Compone una singola variante rumorosa pescando a random posizione
+    (prefisso / suffisso-continuazione / wrap / suffisso ad alto rumore /
+    solo specifica di stile) e sapore dai pool topic-agnostic sopra.
+    'suffix_heavy' combina framing narrativo + stile risposta per coprire
+    varianti ad alto rapporto rumore/segnale (~80%+, requisito §4.3.6),
+    replicando il caso reale osservato in §1 del report.
+    """
+    mode = rng.choice(['prefix', 'suffix', 'wrap', 'suffix_heavy', 'style'])
+
+    if mode == 'prefix':
+        frame = rng.choice(NOISE_FRAME_PREFIXES)
+        return f"{frame}{_lowered(base_query)}"
+
+    if mode == 'wrap':
+        pre, post = rng.choice(NOISE_WRAP_PAIRS)
+        core = _lowered(_stripped(base_query))
+        return f"{pre}{core}{post}."
+
+    if mode == 'suffix_heavy':
+        core  = _stripped(base_query)
+        frame = rng.choice(NOISE_FRAME_SUFFIXES)
+        style = rng.choice(NOISE_STYLE_SUFFIXES)
+        return f"{core}{frame}.{style}"
+
+    if mode == 'style':
+        style = rng.choice(NOISE_STYLE_SUFFIXES)
+        return f"{base_query}{style}"
+
+    # suffix (continuazione a virgola, pattern del caso reale osservato)
+    core  = _stripped(base_query)
+    frame = rng.choice(NOISE_FRAME_SUFFIXES)
+    return f"{core}{frame}."
+
+
+def augment_noise(records: list, ratio: float = NOISE_INJECTION_RATIO,
+                   variants_per_seed: int = NOISE_VARIANTS_PER_SEED) -> list:
+    """
+    Genera varianti "rumorose" di record già etichettati, per insegnare
+    alla rete l'invarianza al registro/lunghezza della query (vedi §1-2 del
+    report: mean pooling di MiniLM diluisce il nucleo tecnico
+    proporzionalmente al volume di testo di contorno).
+
+    Va chiamata SEMPRE dopo stratified_split() sui record passati: ogni
+    variante eredita `split` dal sorgente — se un sorgente non ha ancora
+    `split` assegnato (es. rimosso da dedup_records() prima dello split)
+    va escluso dal chiamante PRIMA di passarlo qui (vedi filtro in main()),
+    altrimenti si reintroduce esattamente il leakage train/test già
+    risolto per l'augmentation a sinonimi, vedi [FIX LEAKAGE] in main().
+
+    Selezione: `ratio` di record per ogni class-key (get_class_key) — stessa
+    granularità di augment_class(), a garanzia di copertura simmetrica sui
+    4 domini/3 pipeline/classi bridge non-pipeline (requisito §4.3.1). Ogni
+    record selezionato genera `variants_per_seed` varianti indipendenti
+    (posizione e sapore pescati a random) per coprire diversità di
+    posizione senza esplosione combinatoria (requisito §4.3.5).
+
+    Rng dedicato e deterministico (seed fisso, indipendente dallo stato
+    globale di `random` già usato da augment_class()/stratified_split()):
+    single responsibility, nessun effetto collaterale sull'ordine di
+    generazione delle altre augmentation.
+    """
+    by_class = defaultdict(list)
+    for r in records:
+        by_class[get_class_key(r)].append(r)
+
+    rng = random.Random(1337)
+    extra = []
+    seen_queries = {r['query'] for r in records}
+
+    for group in by_class.values():
+        if not group:
+            continue
+        n_select = max(1, round(len(group) * ratio))
+        selected = rng.sample(group, min(n_select, len(group)))
+
+        for src in selected:
+            for _ in range(variants_per_seed):
+                new_q = _compose_noise_variant(src['query'], rng)
+                if new_q in seen_queries:
+                    continue
+                seen_queries.add(new_q)
+                new_r = {k: (dict(v) if isinstance(v, dict) else v) for k, v in src.items()}
+                new_r['query'] = new_q
+                # Tutti gli altri campi (domain_labels, is_pipeline,
+                # pipeline_type, difficulty, is_followup, split) ereditati
+                # invariati dal sorgente (§4.5 del report).
+                extra.append(new_r)
+
+    return extra
+
+
+def augment_hard_negatives_synonyms(records: list, target: int, label: str) -> list:
+    """
+    [HARD-NEG FIX] Rinforzo via augment_class()/SYNONYMS per sottoinsiemi di
+    record "difficili" che il loop generico per class-key in main() non
+    raggiungerebbe mai (dominio mono già saturo prima che l'augmentation
+    parta). Richiede un verbo imperativo matchabile in SYNONYMS come prima
+    parola utile della query — adatta a FALSE_PIPELINE_HARD_NEGATIVES.
+    """
+    aug = augment_class(records, target)
+    total = len(records) + len(aug)
+    print(f"  {label:28s}: base={len(records):3d} +{len(aug):3d} augmentati (tot={total}/{target})")
+    return aug
+
+
+def augment_hard_negatives_noise(records: list, variants_per_record: int,
+                                  label: str, rng_seed: int) -> list:
+    """
+    [HARD-NEG FIX] Rinforzo via wrapping narrativo (riusa
+    _compose_noise_variant(), stesso meccanismo di augment_noise()) per
+    sottoinsiemi con fraseggio discorsivo/interrogativo privo di verbi
+    imperativi, dove augment_query() non trova mai un match in SYNONYMS
+    (stesso fenomeno già osservato per general+math/general+rights, vedi
+    M1 WARNING). A differenza di augment_noise() non è vincolata a
+    intent+bridge: qui il wrapping narrativo È la robustezza da insegnare.
+    """
+    rng = random.Random(rng_seed)
+    seen = {r['query'] for r in records}
+    extra = []
+    for src in records:
+        for _ in range(variants_per_record):
+            new_q = _compose_noise_variant(src['query'], rng)
+            if new_q in seen:
+                continue
+            seen.add(new_q)
+            new_r = {k: (dict(v) if isinstance(v, dict) else v) for k, v in src.items()}
+            new_r['query'] = new_q
+            extra.append(new_r)
+    print(f"  {label:28s}: base={len(records):3d} +{len(extra):3d} (noise-wrap x{variants_per_record})")
+    return extra
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
@@ -679,16 +1039,24 @@ def main():
 
     intent  = build_intent_records()
     bridge  = build_bridge_records()
-    all_rec = intent + bridge + MANUAL_RECORDS
+    # [HARD-NEG FIX] I due pool entrano in all_rec fin da subito (stesso
+    # trattamento di dedup/split di tutto il resto): la loro augmentation
+    # dedicata avviene però FUORI dal loop generico per class-key, in
+    # FASE 2ter — vedi commento sopra TARGET_FALSE_PIPELINE_NEG. Sono gli
+    # STESSI oggetti dict referenziati più sotto: dopo stratified_split()
+    # avranno già 'split' popolato, nessuna ricerca per id/contenuto serve.
+    all_rec = intent + bridge + MANUAL_RECORDS + FALSE_PIPELINE_HARD_NEGATIVES + KEYWORD_TRAP_NEGATIVES
 
     # [A2 FIX] Dedup PRIMA di split/augmentation: vedi dedup_records().
     all_rec = dedup_records(all_rec)
 
     print(f"\n[FASE 1] Dati base unificati:")
-    print(f"  INTENT_SENTENCES : {len(intent)}")
-    print(f"  BRIDGE_SENTENCES : {len(bridge)}")
-    print(f"  Manual Cases     : {len(MANUAL_RECORDS)}")
-    print(f"  TOTALE           : {len(all_rec)}")
+    print(f"  INTENT_SENTENCES         : {len(intent)}")
+    print(f"  BRIDGE_SENTENCES         : {len(bridge)}")
+    print(f"  Manual Cases             : {len(MANUAL_RECORDS)}")
+    print(f"  False-Pipeline Hard Neg  : {len(FALSE_PIPELINE_HARD_NEGATIVES)}")
+    print(f"  Keyword-Trap Hard Neg    : {len(KEYWORD_TRAP_NEGATIVES)}")
+    print(f"  TOTALE                   : {len(all_rec)}")
 
     # [FIX LEAKAGE] Split PRIMA dell'augmentation: augment_class() genera
     # varianti quasi-identiche (un solo sinonimo sostituito) della stessa
@@ -698,14 +1066,15 @@ def main():
     # training, gonfiando artificialmente le metriche. Ogni record
     # sintetico eredita ora lo split del proprio record sorgente (già
     # avviene gratis: augment_class() copia tutti i campi di r, incluso
-    # 'split', prima di sovrascrivere solo 'query').
+    # 'split', prima di sovrascrivere solo 'query'). Stesso principio vale
+    # per augment_noise() più sotto (vedi [NOISE-AUG]).
     all_rec = stratified_split(all_rec)
 
     class_map = defaultdict(list)
     for r in all_rec:
         class_map[get_class_key(r)].append(r)
 
-    print(f"\n[FASE 2] Augmentation:")
+    print(f"\n[FASE 2] Augmentation (sinonimi):")
     extra = []
     below_target = []  # [M1 FIX] classi che restano sotto il target richiesto
     for k, group in class_map.items():
@@ -716,7 +1085,7 @@ def main():
             # prima escluse del tutto dall'augmentation (`continue`), ora
             # portate a un target esplicito e più basso di TARGET_PIPE
             # (sono esempi negativi che insegnano il NO-pipeline, non
-            # pattern positivi da massimizzare).
+            # pattern positivi da massimizzare quanto le pipeline vere).
             target = TARGET_BRIDGE_NEG
         else:
             target = TARGET_MONO
@@ -743,7 +1112,42 @@ def main():
             print(f"     {k:25s}: {got}/{target}  (mancano {target - got})")
 
     all_rec = all_rec + extra
-    print(f"  Totale dopo augmentation: {len(all_rec)}")
+    print(f"  Totale dopo augmentation sinonimi: {len(all_rec)}")
+
+    # [NOISE-AUG] FASE 2bis — Opzione A (report_query_noise_augmentation.md).
+    # Solo su intent+bridge (MANUAL_RECORDS esclusi di proposito, vedi
+    # docstring di augment_noise()); filtro su split già assegnato per
+    # sicurezza (record eventualmente rimossi da dedup_records() non hanno
+    # mai attraversato stratified_split() e non avrebbero uno split valido
+    # da ereditare).
+    noise_source = [r for r in (intent + bridge) if r.get('split')]
+    noise_extra  = augment_noise(noise_source)
+    all_rec = all_rec + noise_extra
+    print(f"\n[FASE 2bis] Query Noise Augmentation (Opzione A):")
+    print(f"  Record sorgente eleggibili (intent+bridge, con split) : {len(noise_source)}")
+    print(f"  Varianti rumorose generate                            : {len(noise_extra)}")
+    print(f"  Totale dopo noise augmentation                        : {len(all_rec)}")
+
+    # [HARD-NEG FIX] FASE 2ter — Rinforzo mirato hard-negatives,
+    # INDIPENDENTE dalla saturazione del dominio mono genitore (vedi
+    # commento sopra TARGET_FALSE_PIPELINE_NEG). Due meccanismi distinti
+    # per motivi empirici precisi (vedi docstring dei due helper):
+    #   - FALSE_PIPELINE_HARD_NEGATIVES: verbo imperativo garantito →
+    #     augment_class()/SYNONYMS funziona; riceve ANCHE un passaggio
+    #     noise-wrap perché la query di test fallita restava errata pure
+    #     nella sua variante con suffisso di stile (wrong_query_TESTING.md).
+    #   - KEYWORD_TRAP_NEGATIVES: fraseggio discorsivo, zero match SYNONYMS
+    #     → solo noise-wrap, che non dipende da SYNONYMS.
+    print(f"\n[FASE 2ter] Rinforzo mirato hard-negatives (bypassano la saturazione del dominio mono):")
+    hard_neg_extra = []
+    hard_neg_extra += augment_hard_negatives_synonyms(
+        FALSE_PIPELINE_HARD_NEGATIVES, TARGET_FALSE_PIPELINE_NEG, "false_pipeline [synonyms]")
+    hard_neg_extra += augment_hard_negatives_noise(
+        FALSE_PIPELINE_HARD_NEGATIVES, FALSE_PIPELINE_NOISE_VARIANTS, "false_pipeline [noise-wrap]", rng_seed=4201)
+    hard_neg_extra += augment_hard_negatives_noise(
+        KEYWORD_TRAP_NEGATIVES, KEYWORD_TRAP_NOISE_VARIANTS, "keyword_trap [noise-wrap]", rng_seed=4242)
+    all_rec = all_rec + hard_neg_extra
+    print(f"  Totale dopo rinforzo hard-negatives: {len(all_rec)}")
 
     # [FIX LEAKAGE] Split già assegnato in FASE 1, prima dell'augmentation.
     # Questo shuffle è solo per l'ordine di scrittura nel file JSONL — NON

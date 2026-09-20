@@ -1,1 +1,3 @@
-1. Fare un confronto tra i pesi di backup e quelli nuovi per verificare le differenze e capire quale tenere (da chiedere quali file toccare) --> aprire su due terminali
+1. risolvere il problema delle query prolisse --> vedi Claude
+2. sistemare i file della cartella code/
+3. generare documentazione aggiornata

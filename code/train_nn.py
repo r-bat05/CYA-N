@@ -191,8 +191,8 @@ def train():
                   f"vl_f1={val_f1:.4f} | best={best_f1:.4f} | "
                   f"no_impr={no_improve}/{PATIENCE} | lr={current_lr:.2e}{marker}")
 
-        if no_improve >= PATIENCE:
-            print(f"\n  ⏹  Early stopping a epoca {epoch} (nessun miglioramento per {PATIENCE} epoche consecutive)")
+        if no_improve >= PATIENCE and val_f1 > 0.85:
+            print(f"\n  ⏹  Early stopping a epoca {epoch} (nessun miglioramento per {PATIENCE} epoche consecutive) con valore f1 accettabile ({val_f1})")
             break
 
     print(f"\n[3/4] Training completato. Miglior F1-macro val (domain): {best_f1:.4f}")
