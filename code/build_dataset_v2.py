@@ -432,6 +432,9 @@ MANUAL_RECORDS = [
     _r("chi ti ha creato?",_G, 1),
     _r("cosa sai fare?",   _G, 1),
     _r("aiuto",            _G, 1),
+    _r("mi fai un esempio pratico?",         _G, 1),
+    _r("puoi spiegarmelo più semplice?",     _G, 1),
+    _r("quindi qual è la conclusione?",      _G, 1),
 
     # ── FALSE pipeline (sembrano multi-domain ma sono mono) ──
     _r("codice Python per sommare una lista di numeri", _C, 1),
@@ -442,6 +445,9 @@ MANUAL_RECORDS = [
     _r("spiegami la normativa sui contratti di lavoro", _R, 2),
     _r("qual è il codice penale per il furto?",         _R, 1),
     _r("cos'è la media geometrica?",                    _M, 1),
+    _r("Quali sono gli obblighi di notifica al Garante Privacy in caso di violazione dei dati personali secondo il GDPR?", _R, 2),
+    _r("Entro quanto tempo un'azienda deve segnalare una fuga di dati personali secondo la normativa europea?", _R, 1),
+    _r("Premetto che tendo a essere prolisso quando scrivo, quindi abbi pazienza: sto scrivendo un piccolo tool per uso personale e mi sono impantanato in una parte dove devo gestire in modo sicuro l'apertura di un file che potrebbe non esistere sul disco, come si struttura correttamente il blocco try except in Python in questo caso?", _C, 2),
     # [FIX A-C1 rev.2] Il vecchio blocco di 10 record "calcola X in Python"
     # è stato spostato in FALSE_PIPELINE_HARD_NEGATIVES (fuori da
     # MANUAL_RECORDS, sotto): qui restava sommerso nel bucket 'coding' già
@@ -457,6 +463,8 @@ MANUAL_RECORDS = [
     _r("implementa regressione lineare multipla in Python e dimostra teoria minimi quadrati",
        _CM, 3, True, "math->coding"),
     _r("scrivi codice Python che implementa FFT e dimostra il teorema di Nyquist-Shannon",
+       _CM, 3, True, "math->coding"),
+     _r("Fin da ragazzo trovavo affascinante il modo in cui la matematica pura finisce per nascondersi dentro le tecnologie che usiamo ogni giorno, dalla musica in streaming alle videochiamate: partendo da questa curiosità, dimostra il teorema di Nyquist-Shannon e poi implementa in Python la trasformata di Fourier veloce per campionare correttamente un segnale audio.",
        _CM, 3, True, "math->coding"),
     _r("scrivi script Python per TFR rispettando D.Lgs. 66/2003 con calcolo normativo",
        _RC, 3, True, "rights->coding"),
@@ -528,6 +536,90 @@ MANUAL_RECORDS = [
     _cd("mi dai qualche consiglio per un colloquio da remoto?",    _G, 1, ["Quali sono le tutele per il whistleblowing aziendale?"]),
     _cd("qual è il modo migliore per fare amicizia in una nuova città?", _G, 1, ["Cosa prevede la Costituzione sul referendum abrogativo?"]),
     _cd("come si fa a togliere una macchia di grasso da una giacca?",    _G, 1, ["Spiega la differenza tra dolo e colpa nel diritto penale."]),
+
+    # ── [FIX report_16errors] Domain-switch corto dopo history tecnica ──
+    _cd("che giorno è oggi?",                _G, 1, ["Implementa la ricerca binaria ricorsiva in C++."]),
+    _cd("a che ora chiude il supermercato?", _G, 1, ["Dimostra il teorema di Talete con la relativa costruzione geometrica."]),
+    _cd("grazie di tutto, alla prossima",    _G, 1, ["Quali sono gli obblighi del titolare del trattamento secondo il GDPR?"]),
+
+    # ── [T1 report_espansione §9.2-P1] Domain-switch verso GENERAL: query brevissime/varie dopo history tecnica ──
+    # 60 record = 20 per dominio della history (coding / math / rights), query TUTTE uniche (nessun near-duplicate
+    # tra split), tutte con: general=1, is_followup=False, difficulty=1, history di 1 query utente.
+    # Categorie query per blocco: cortesia/chiusura/saluto, esistenziali, sull'assistente, vita quotidiana, giochi/creativo.
+    # History mescolate lunghe (>=14 parole) e corte: il fallimento osservato e' "query corta + history tecnica lunga".
+
+    # -- history CODING -> general --
+    _cd("buonanotte",                                    _G, 1, ["Come si struttura un progetto Django con più app e un database PostgreSQL condiviso tra tutti i servizi?"]),
+    _cd("ti ringrazio, a presto",                        _G, 1, ["Scrivi una funzione in Rust che legge un file di log riga per riga e conta le occorrenze di ogni messaggio di errore."]),
+    _cd("ciao ciao, a dopo",                             _G, 1, ["Come si configura un cluster Redis con replica e failover automatico usando Sentinel in un ambiente Docker?"]),
+    _cd("cos'è la felicità?",                            _G, 1, ["Implementa in TypeScript un sistema di eventi con tipi generici e sottoscrizioni che si annullano automaticamente."]),
+    _cd("come ti chiami?",                               _G, 1, ["Spiegami la differenza tra stack e heap nella gestione della memoria in C e quando conviene usare malloc."]),
+    _cd("siamo soli nell'universo?",                     _G, 1, ["Scrivi un workflow GitHub Actions che esegue i test, costruisce l'immagine Docker e la pubblica su un registry privato."]),
+    _cd("dimmi una battuta sui gatti",                   _G, 1, ["Come si inverte una stringa in Java?"]),
+    _cd("qual è la montagna più alta d'Europa?",         _G, 1, ["Come si usa async/await in C#?"]),
+    _cd("mi consigli una canzone per correre?",          _G, 1, ["Come funziona il pattern Repository?"]),
+    _cd("sei un robot?",                                 _G, 1, ["Come si crea un array di oggetti in JavaScript?"]),
+    _cd("che colore sta bene con il blu?",               _G, 1, ["Differenza tra INNER JOIN e LEFT JOIN?"]),
+    _cd("buon weekend!",                                 _G, 1, ["Come si scrive un unit test per una funzione che chiama un'API esterna?"]),
+    _cd("come si fa il bucato a mano?",                  _G, 1, ["Come faccio a debuggare un segmentation fault in un programma C++?"]),
+    _cd("quanti anni hai?",                              _G, 1, ["Come si implementa una lista doppiamente concatenata in C?"]),
+    _cd("dove si può vedere l'aurora boreale?",          _G, 1, ["Scrivi un endpoint FastAPI che restituisce una lista paginata di utenti."]),
+    _cd("salve, ci sei?",                                _G, 1, ["Come si gestisce l'autenticazione con refresh token in un'applicazione React che parla con un backend Node.js?"]),
+    _cd("esiste il libero arbitrio?",                    _G, 1, ["Vorrei capire come funziona il meccanismo di ereditarietà multipla in Python e come viene risolto l'ordine dei metodi."]),
+    _cd("hai un indovinello per me?",                    _G, 1, ["Come si fa il rollback di un commit già pubblicato su un branch condiviso?"]),
+    _cd("come si prepara il tè freddo in casa?",         _G, 1, ["Cos'è un semaforo in programmazione concorrente?"]),
+    _cd("sei stato molto gentile",                       _G, 1, ["Scrivi uno script Bash che scorre tutte le cartelle di un progetto e sostituisce una stringa in ogni file di configurazione."]),
+
+    # -- history MATH -> general --
+    _cd("buona serata a te!",                            _G, 1, ["Calcola l'integrale definito di x al quadrato per il seno di x tra zero e pi greco usando l'integrazione per parti."]),
+    _cd("grazie per la pazienza",                        _G, 1, ["Dimostra che la successione definita per ricorrenza converge alla radice quadrata di due partendo da un valore positivo."]),
+    _cd("ora vado a fare una pausa",                     _G, 1, ["Determina la forma canonica di Jordan di una matrice 4x4 con un autovalore triplo e uno semplice."]),
+    _cd("il destino esiste o ce lo costruiamo?",         _G, 1, ["Risolvi il sistema di equazioni differenziali lineari a coefficienti costanti usando la matrice esponenziale."]),
+    _cd("che lingue sai parlare?",                       _G, 1, ["Enuncia e dimostra il teorema di Bolzano-Weierstrass per successioni limitate in R^n."]),
+    _cd("qual è il piatto tipico della Sicilia?",        _G, 1, ["Spiega come si costruisce un intervallo di confidenza per la proporzione di una popolazione con un campione grande."]),
+    _cd("raccontami una favola breve",                   _G, 1, ["Come si calcola il prodotto vettoriale?"]),
+    _cd("come si allevia il mal di schiena da scrivania?", _G, 1, ["Cos'è un autovalore?"]),
+    _cd("buon pranzo!",                                  _G, 1, ["Derivata di ln(x^2+1)"]),
+    _cd("ottima giornata!",                              _G, 1, ["Come si risolve una disequazione di secondo grado?"]),
+    _cd("cosa succede dopo la morte?",                   _G, 1, ["Trova il dominio e gli asintoti della funzione f(x) = (x^2 - 1)/(x - 2)."]),
+    _cd("come si tiene in ordine un armadio piccolo?",   _G, 1, ["Calcola la probabilità di estrarre due carte rosse consecutive da un mazzo da 52 carte."]),
+    _cd("ti annoi mai?",                                 _G, 1, ["Come si dimostra che la radice quadrata di tre è irrazionale?"]),
+    _cd("mi dai un'idea per un regalo di nozze?",        _G, 1, ["Qual è la differenza tra convergenza puntuale e convergenza uniforme?"]),
+    _cd("fammi ridere",                                  _G, 1, ["Cos'è il rango di una matrice?"]),
+    _cd("l'amore esiste davvero?",                       _G, 1, ["Studia il segno della derivata seconda per determinare la concavità e i punti di flesso della funzione."]),
+    _cd("torno più tardi, ciao",                         _G, 1, ["Applica la disuguaglianza di Cauchy-Schwarz per dimostrare la disuguaglianza triangolare in uno spazio euclideo."]),
+    _cd("in che stagione conviene visitare Lisbona?",    _G, 1, ["Come si calcola la somma di una serie geometrica?"]),
+    _cd("cantami una ninna nanna",                       _G, 1, ["Trova la distribuzione della somma di due variabili aleatorie normali indipendenti."]),
+    _cd("come faccio a svegliarmi presto la mattina?",   _G, 1, ["Calcola la trasformata di Fourier della funzione gaussiana e spiega perché resta una gaussiana."]),
+
+    # -- history RIGHTS -> general --
+    _cd("ci sentiamo domani",                            _G, 1, ["Quali sono i requisiti per impugnare un licenziamento per giusta causa e quali sono i termini di decadenza?"]),
+    _cd("arrivederci e grazie ancora",                   _G, 1, ["Come funziona la successione legittima in assenza di testamento quando ci sono figli e coniuge superstite?"]),
+    _cd("che cos'è la coscienza?",                       _G, 1, ["Quali obblighi ha il titolare di un sito web che utilizza cookie di profilazione secondo la normativa europea?"]),
+    _cd("hai mai sognato?",                              _G, 1, ["Spiega la differenza tra dolo eventuale e colpa cosciente nei reati commessi alla guida di un veicolo."]),
+    _cd("che fiori si piantano a primavera sul balcone?", _G, 1, ["Come si presenta un ricorso al giudice di pace contro una sanzione amministrativa per divieto di sosta?"]),
+    _cd("cosa fai quando nessuno ti scrive?",            _G, 1, ["Cosa prevede il codice civile sulla responsabilità del condominio per i danni causati dalle infiltrazioni d'acqua?"]),
+    _cd("quanto tempo ci vuole in treno da Milano a Venezia?", _G, 1, ["Cos'è la prescrizione in ambito civile?"]),
+    _cd("qual è il gelato più venduto in Italia?",       _G, 1, ["Come funziona il patto di non concorrenza?"]),
+    _cd("vale la pena essere gentili con tutti?",        _G, 1, ["Quando scatta il reato di stalking?"]),
+    _cd("chi ha dipinto la Cappella Sistina?",           _G, 1, ["Come si registra un contratto di locazione?"]),
+    _cd("come si impara a nuotare da adulti?",           _G, 1, ["Quali diritti ha il consumatore in caso di ritardo nella consegna di un acquisto online?"]),
+    _cd("ti piace la musica?",                           _G, 1, ["Come si dividono i beni in caso di separazione con comunione legale?"]),
+    _cd("inventa un nome per un gattino nero",           _G, 1, ["Chi risponde civilmente dei danni causati da un minore a scuola?"]),
+    _cd("che animale domestico è più adatto a un appartamento piccolo?", _G, 1, ["Cosa rischia un datore di lavoro che non versa i contributi previdenziali?"]),
+    _cd("dimmi una frase motivante per iniziare la giornata", _G, 1, ["Cos'è il diritto di prelazione?"]),
+    _cd("buonasera",                                     _G, 1, ["Quali sono le tutele previste per una lavoratrice madre durante la gravidanza e nei primi mesi di vita del bambino?"]),
+    _cd("scrivimi una poesia sul mare",                  _G, 1, ["Come funziona la mediazione obbligatoria prima di una causa civile?"]),
+    _cd("qual è il paese più grande del mondo?",         _G, 1, ["Come si impugna un testamento?"]),
+    _cd("per oggi può bastare, grazie",                  _G, 1, ["Quali sono le pene previste per il reato di truffa aggravata?"]),
+    _cd("come si cura un basilico che ingiallisce?",     _G, 1, ["Come funziona la caparra confirmatoria in un preliminare di compravendita immobiliare?"]),
+
+    # ── [FIX report_16errors] Diluizione estrema (~90%+ rumore) — CODING/MATH ──
+    _r("Ripenso spesso a quanto il sapere umano sia il risultato di secoli di tentativi ed errori, di persone che hanno dedicato la vita intera a capire meccanismi che oggi diamo per scontati, ed è proprio con questo spirito di gratitudine verso chi è venuto prima di noi che oggi ti volevo chiedere una cosa piccola ma per me significativa: merge sort complessità O(n log n)", _C, 1),
+    _r("Non so se hai presente quella sensazione quando leggi un romanzo storico e ti accorgi che i grandi passi avanti della civiltà sono spesso partiti da domande semplici fatte da persone curiose che non si accontentavano delle risposte facili, ed è un po' con questo spirito che ti scrivo oggi, senza fretta e senza un vero motivo pratico: determinante matrice 3x3", _M, 1),
+
+    # ── [FIX report_16errors] Code-switch IT/EN — CODING ──
+    _r("Il mio professore di ingegneria del software vuole il deployment del progetto su un cloud provider entro venerdì e onestamente non ho la più pallida idea di come iniziare, mi aiuti a capire i primi passi?", _C, 2),
 ]
 
 # ── False-Pipeline Hard Negatives (ex-FIX A-C1, ampliato) ────────────────────
@@ -608,6 +700,12 @@ KEYWORD_TRAP_NEGATIVES = [
     # formula figurativa
     _r("Qual è la formula segreta per un matrimonio felice e duraturo secondo gli psicologi?", _G, 1),
     _r("C'è una formula magica per superare la timidezza durante un colloquio di lavoro?", _G, 1),
+
+    # diritto/scienza/economia in contesto divulgativo — [FIX N-CONF/G-NOISE4]
+    _r("Studiando la storia della pittura fiamminga mi sono imbattuto nel concetto di equazione compositiva tra luce e ombra, cosa intendevano gli artisti rinascimentali con questo termine?", _G, 2),
+    _r("Sto leggendo un saggio di divulgazione che parla spesso di reti neurali, gradiente e backpropagation, argomenti affascinanti ma ostici: mi consigli altri saggi di divulgazione scientifica scritti in modo semplice?", _G, 2),
+    _r("Il professore di microeconomia ha riempito la lavagna di formule e integrali per spiegare l'equilibrio di mercato, ma io vorrei solo capire il concetto base senza tutta quella matematica, come funziona in parole semplici?", _G, 2),
+    _r("Frequento un corso serale di storia del diritto per pura passione, senza alcun fine professionale, e mi affascina scoprire come nacquero le prime codificazioni: mi racconti brevemente le origini del diritto romano?", _G, 2),
 ]
 
 # ── Difficulty Labels (manuale) ──────────────────────────────────────────────
@@ -997,6 +1095,13 @@ def augment_hard_negatives_synonyms(records: list, target: int, label: str) -> l
     parta). Richiede un verbo imperativo matchabile in SYNONYMS come prima
     parola utile della query — adatta a FALSE_PIPELINE_HARD_NEGATIVES.
     """
+    for r in records:
+        if r.get('split') is None:
+            raise ValueError(
+                f"[FASE 2ter] Record senza split assegnato (probabile duplicato "
+                f"scartato da dedup_records prima dello split): {r['query']!r}"
+            )
+    
     aug = augment_class(records, target)
     total = len(records) + len(aug)
     print(f"  {label:28s}: base={len(records):3d} +{len(aug):3d} augmentati (tot={total}/{target})")
@@ -1014,6 +1119,13 @@ def augment_hard_negatives_noise(records: list, variants_per_record: int,
     M1 WARNING). A differenza di augment_noise() non è vincolata a
     intent+bridge: qui il wrapping narrativo È la robustezza da insegnare.
     """
+    for r in records:
+        if r.get('split') is None:
+            raise ValueError(
+                f"[FASE 2ter] Record senza split assegnato (probabile duplicato "
+                f"scartato da dedup_records prima dello split): {r['query']!r}"
+            )
+    
     rng = random.Random(rng_seed)
     seen = {r['query'] for r in records}
     extra = []
