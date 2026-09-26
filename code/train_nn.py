@@ -72,7 +72,7 @@ ep=   1 | tr_loss=1.1595 | vl_loss=1.1463 | vl_f1=0.3325 | best=0.3325 | no_impr
 Con lr = 1e-2 la rete va subito in overfitting
 
 '''
-LR               = 0.0025
+LR               = 0.00025
 WEIGHT_DECAY     = 1e-4
 EPOCHS           = 200
 BATCH_SIZE       = 64
