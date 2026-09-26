@@ -74,7 +74,7 @@ Novità (Fix da report_bugs.md):
   val e/o test vuoto.
 """
 
-import json, random
+import json, random, hashlib
 from collections import defaultdict, Counter
 from db_query import INTENT_SENTENCES, BRIDGE_SENTENCES
 from domains import BRIDGE_MAP
@@ -620,6 +620,190 @@ MANUAL_RECORDS = [
 
     # ── [FIX report_16errors] Code-switch IT/EN — CODING ──
     _r("Il mio professore di ingegneria del software vuole il deployment del progetto su un cloud provider entro venerdì e onestamente non ho la più pallida idea di come iniziare, mi aiuti a capire i primi passi?", _C, 2),
+
+    # ══════════════════════════════════════════════════════════════════════
+    # [T2 — report_espansione §9.3 / piano_lavoro T2] Espansione is_followup
+    # ------------------------------------------------------------------------
+    # Applicata la decisione D1-C (HISTORY_MAX_TURNS=1 in history_utils.py):
+    # ogni nuovo record qui sotto usa al massimo 1 query di history, coerente
+    # col mismatch training/inferenza descritto nel piano di lavoro §2.6.
+    # Tre blocchi, ciascuno mirato a una causa di errore specifica già
+    # diagnosticata (mai bulk generico):
+    #   T2-A: follow-up verbosi/lunghi con history (oggi 1 solo → D-FU7-verbose)
+    #   T2-B: marcatori brevi diversificati dopo history general/varia (D-FU4)
+    #   T2-C: negativi ellittici SENZA history (A-M5: falso positivo a vuoto)
+    # ══════════════════════════════════════════════════════════════════════
+
+    # ── T2-A: Follow-up verbosi/lunghi (8 per dominio) ──
+    _fu("Scusami se te lo richiedo in un altro modo, ma la spiegazione di prima non mi è entrata bene in testa: potresti rifare lo stesso ragionamento con parole più semplici, magari con un esempio concreto?", _C, 2, ["Come funziona il garbage collector in Java?"]),
+    _fu("Capito il concetto generale, però mi manca ancora un pezzo: cosa succede esattamente nello stack di chiamate quando la funzione richiama se stessa più volte di seguito?", _C, 2, ["Come funziona il pattern Iterator in programmazione a oggetti?"]),
+    _fu("Va bene, funziona, ma prima di segnarmelo da qualche parte vorrei capire il rovescio della medaglia: in quali situazioni questo approccio smette di essere la scelta migliore rispetto alle alternative?", _C, 2, ["Come funziona il pattern Singleton?"]),
+    _fu("Prima di andare avanti volevo essere sicuro di aver capito questo passaggio: perché serve proprio quella condizione di uscita e cosa succederebbe in pratica se la togliessi?", _C, 2, ["Implementa DFS su un albero binario."]),
+    _fu("C'è una cosa che mi lascia perplesso nella soluzione che mi hai proposto: non rischia di comportarsi in modo strano se in input arriva una lista vuota o con un solo elemento?", _C, 2, ["Scrivi una funzione Python che ordina una lista di numeri."]),
+    _fu("Mi rendo conto solo adesso di non aver capito un dettaglio importante: quando dici che l'operazione è veloce, intendi sempre, anche nel caso peggiore possibile?", _C, 2, ["Qual è la complessità di inserimento in una tabella hash?"]),
+    _fu("Grazie, ci sono quasi, ma vorrei un ultimo chiarimento pratico prima di applicarlo davvero: come mi comporto se due elementi finiscono per avere esattamente la stessa priorità?", _C, 2, ["Implementa una coda con priorità in Python."]),
+    _fu("Rileggendo con calma quello che mi hai scritto mi è venuto un dubbio che non avevo considerato prima: cosa cambierebbe se dovessi far girare questo stesso codice su più thread contemporaneamente?", _C, 3, ["Scrivi una classe orientata agli oggetti con ereditarietà e polimorfismo."]),
+
+    _fu("Ho riletto due volte il passaggio ma continuo a perdermi in un punto preciso: come si giustifica il fatto che si possa scambiare l'ordine tra limite e sommatoria proprio in quel punto della dimostrazione?", _M, 3, ["Dimostra la convergenza dell'integrale improprio utilizzando i criteri del confronto."]),
+    _fu("Va bene il risultato finale, ma vorrei capire meglio il ragionamento intermedio: perché a un certo punto hai potuto trascurare quel termine senza che cambiasse il risultato complessivo?", _M, 2, ["Calcola il limite per x che tende a infinito di questa funzione razionale."]),
+    _fu("Mi rendo conto solo ora di non aver capito una cosa di base che probabilmente davi per scontata: quando applichi quella sostituzione, come cambiano di conseguenza anche gli estremi di integrazione?", _M, 2, ["Usa il metodo di sostituzione per risolvere questo integrale irrazionale."]),
+    _fu("Scusa se insisto proprio su questo punto, ma prima di proseguire con l'esercizio successivo vorrei essere sicuro: quella condizione sugli autovalori vale sempre o solo nel caso di matrici simmetriche?", _M, 2, ["Verifica se la matrice è diagonalizzabile confrontando la molteplicità algebrica e geometrica."]),
+    _fu("C'è un dettaglio che non mi torna proprio nel passaggio dove applichi quel criterio: cosa cambierebbe nella conclusione se la serie non fosse a termini tutti positivi?", _M, 2, ["Determina la convergenza di una serie a termini positivi tramite il criterio del confronto asintotico."]),
+    _fu("Prima di passare all'esercizio successivo vorrei un chiarimento su un'ipotesi che hai usato: il teorema richiede che la funzione sia definita su tutto l'intervallo o basta che lo sia quasi ovunque?", _M, 2, ["Applica il teorema di Rolle, Lagrange o Cauchy per dimostrare l'enunciato."]),
+    _fu("Mi era sembrato tutto chiaro finché non ho provato a rifarlo da solo: nel passaggio in cui isoli la variabile, perché è lecito dividere per quel termine senza discutere il caso in cui sia nullo?", _M, 2, ["Risolvi il seguente sistema di equazioni lineari a tre incognite."]),
+    _fu("Avrei bisogno di un chiarimento su un'assunzione implicita del ragionamento: questa proprietà vale solo nello spazio euclideo oppure si generalizza anche a spazi vettoriali qualsiasi?", _M, 3, ["Dimostra che questi vettori formano una base ortogonale per lo spazio vettoriale R3."]),
+
+    _fu("Ti seguo fin qui, ma resta un dubbio molto pratico che mi interessa parecchio: cosa cambia concretamente se il rapporto di lavoro è a tempo determinato invece che indeterminato?", _R, 2, ["Spiega la differenza tra licenziamento per giusta causa e giustificato motivo oggettivo."]),
+    _fu("Va bene la regola generale, ma vorrei capire anche un caso limite che mi riguarda piuttosto da vicino: cosa succede se il preavviso non viene rispettato da nessuna delle due parti coinvolte?", _R, 2, ["Come funziona la disciplina del contratto a tempo determinato e le causali di rinnovo."]),
+    _fu("C'è un aspetto che non avevo considerato e che invece adesso mi sta particolarmente a cuore: questa tutela vale anche per chi lavora part-time oppure cambia qualcosa nel calcolo?", _R, 2, ["Quali sono i diritti del lavoratore subordinato in tema di ferie, malattia e permessi retribuiti?"]),
+    _fu("Grazie, molto chiaro, ma vorrei capire meglio anche un passaggio più procedurale che mi serve per davvero: entro quanto tempo dalla notifica bisogna muoversi per non perdere questo diritto?", _R, 2, ["Come funziona il ricorso gerarchico e il ricorso al TAR nel diritto amministrativo?"]),
+    _fu("Mi è tornato in mente solo ora un dettaglio del mio caso specifico che potrebbe cambiare tutto: la regola che mi hai spiegato cambia se una delle parti coinvolte è minorenne?", _R, 2, ["Spiega le differenze tra risoluzione per inadempimento, impossibilità sopravvenuta ed eccessiva onerosità."]),
+    _fu("Prima di chiudere l'argomento vorrei un ultimo chiarimento molto concreto: chi si occupa materialmente di far rispettare questa norma, e cosa succede se in pratica nessuno interviene?", _R, 2, ["Quali sono gli obblighi di sicurezza sul lavoro previsti dal D.Lgs. 81/08?"]),
+    _fu("Capisco il principio generale, ma nella pratica di tutti i giorni mi resta un dubbio che vorrei toglierti: chi deve dimostrare che le cose sono andate davvero in quel modo, io o l'altra parte?", _R, 2, ["Quali sono le tutele per il consumatore contro le clausole vessatorie secondo il Codice del Consumo?"]),
+    _fu("Riflettendoci meglio dopo la tua risposta mi è venuto un dubbio che riguarda proprio il mio caso: questa procedura cambia in qualche modo se una delle parti si trova all'estero?", _R, 3, ["Come si articola il contenzioso tributario e quali sono i gradi di giudizio delle Commissioni Tributarie?"]),
+
+    _fu("Mi hai incuriosito parecchio con questa cosa, quindi vorrei approfondire ancora un po': come mai proprio in quel periodo storico è successo tutto questo e non prima o dopo?", _G, 1, ["Come si è evoluto il ruolo della donna nella società europea del dopoguerra?"]),
+    _fu("Ok, buono a sapersi, ma mi resta una curiosità collegata a quello che mi hai appena detto: funziona allo stesso modo anche negli altri animali o è una cosa tipicamente umana?", _G, 1, ["Spiega il meccanismo dell'evoluzione darwiniana, la genetica e la selezione naturale."]),
+    _fu("Interessante, non lo sapevo affatto, ma mi chiedo se c'entri qualcosa anche con quello che si sente dire spesso online: è collegato in qualche modo oppure sono in realtà due cose distinte?", _G, 1, ["Spiegami il fenomeno della globalizzazione e l'impatto dei social media sulla comunicazione di massa."]),
+    _fu("Grazie, adesso è più chiaro, però mi resta un dubbio molto pratico che vorrei toglierti volentieri: nella vita di tutti i giorni come faccio a riconoscere quando succede davvero?", _G, 1, ["Come si riconosce la manipolazione psicologica?"]),
+    _fu("Bella questa cosa che mi hai appena raccontato, mi fa venire in mente una domanda collegata: c'entra qualcosa col motivo per cui certe usanze sono rimaste praticamente uguali nei secoli?", _G, 1, ["Come ci si comporta a tavola in Giappone e quali sono le usanze del galateo locale?"]),
+    _fu("Non ci avevo mai pensato in questi termini, quindi mi lasci con una curiosità in più: cambia qualcosa se si applica la stessa logica su una scala molto più piccola, tipo dentro una famiglia?", _G, 1, ["Come funziona il mercato azionario e quali sono i concetti base per chi vuole iniziare a investire?"]),
+    _fu("Molto utile, grazie, ma mi resta un dubbio pratico legato al mio caso specifico: cambia qualcosa se lo faccio in un appartamento piccolo invece che in una casa con giardino?", _G, 1, ["Come si coltivano le piante da appartamento e quanto spesso vanno annaffiate?"]),
+    _fu("Riflettendoci un attimo dopo aver letto la tua risposta mi è venuto un dubbio più ampio che mi incuriosisce parecchio: si può dire che sia successo qualcosa di simile anche in altre epoche storiche?", _G, 2, ["Come è cambiata la televisione con l'avvento delle piattaforme di streaming come Netflix?"]),
+
+    # ── T2-B: Marcatori brevi diversificati dopo history general/varia (D-FU4) ──
+    _fu("ah ok, e poi?", _G, 1, ["Come è cambiata la televisione con l'avvento delle piattaforme di streaming come Netflix?"]),
+    _fu("davvero? raccontami di più", _G, 1, ["Quali sono i generi musicali più popolari del ventesimo secolo e come sono nati?"]),
+    _fu("capito, e come si fa in pratica?", _G, 1, ["Quali sono i principi di una dieta equilibrata per chi pratica sport a livello amatoriale?"]),
+    _fu("interessante, continua pure", _G, 1, ["Quali sono le principali disparità economiche nel mondo e le loro radici storiche?"]),
+    _fu("ok ma perché proprio così?", _G, 1, ["Come funziona il ciclo dell'acqua sulla Terra e quali sono le sue fasi meteorologiche?"]),
+    _fu("e se invece fosse il contrario?", _G, 1, ["Quali sono i pro e i contro psicologici e culturali di vivere in una grande metropoli rispetto alla campagna?"]),
+    _fu("aspetta, quindi come funziona esattamente?", _G, 1, ["Cosa sono gli esopianeti e quali sono i metodi attuali per scoprirli nello spazio?"]),
+    _fu("wow, e quindi cosa comporta?", _G, 1, ["Come influisce il cambiamento climatico sugli ecosistemi globali e sull'economia moderna?"]),
+    _fu("giusto, e dopo cosa succede?", _G, 1, ["Quali furono le trasformazioni politiche, i movimenti sociali e i personaggi storici legati all'introduzione del suffragio universale in Italia?"]),
+    _fu("ah, non lo sapevo, e quindi?", _G, 1, ["Qual è l'impatto della musica streaming sull'industria discografica?"]),
+    _fu("ok, ma nella pratica?", _G, 1, ["Quali sono i benefici della meditazione mindfulness per la salute mentale a lungo termine?"]),
+    _fu("e come mai proprio così?", _G, 1, ["Come funziona il sistema immunitario umano in risposta a un'infezione batterica o virale?"]),
+    _fu("davvero, in che senso?", _G, 1, ["Cosa sono le cellule staminali e come vengono utilizzate nella medicina moderna rigenerativa?"]),
+    _fu("ah interessante, e in Italia?", _G, 1, ["Quali sono le principali catene montuose del mondo, come si sono formate geologicamente e come influenzano il clima locale?"]),
+    _fu("e quanto ci vuole di solito?", _G, 1, ["Come faccio a organizzare un viaggio economico di due settimane in Giappone?"]),
+    _fu("capito, e se sbaglio?", _G, 1, ["Spiegami come strutturare un curriculum vitae efficace per trovare lavoro rapidamente."]),
+    _fu("ok, ma è sempre vero?", _G, 1, ["Quali sono le differenze tra le varie generazioni sociologiche come Boomer, Millennial e Gen Z?"]),
+    _fu("e come si nota dall'esterno?", _G, 1, ["Qual è il linguaggio del corpo e come si possono interpretare le microespressioni facciali umane?"]),
+    _fu("interessante, e da cosa dipende?", _G, 1, ["Quali sono i principali festival culturali e musicali nel mondo che vale la pena visitare?"]),
+    _fu("ah ecco, e quindi conviene farlo?", _G, 1, ["Qual è il processo decisionale migliore per scegliere lo stile e l'arredamento di un piccolo soggiorno?"]),
+    _fu("giusto, ma quanto costa in media?", _G, 1, ["Quali sono le usanze e le buone maniere da rispettare durante una cena di gala formale?"]),
+    _fu("capito, e vale per tutti?", _G, 1, ["Come influisce lo stile di vita sedentario sulla salute a lungo termine?"]),
+    _fu("ah davvero, e chi lo decide?", _G, 1, ["Come funziona il sistema di punteggio nel bowling e come si calcola il risultato finale?"]),
+    _fu("ok, e a cosa serve realmente?", _G, 1, ["Illustrami il concetto danese dell'Hygge e come applicarlo nella vita quotidiana e in casa."]),
+    _fu("interessante, e quanto è diffuso?", _G, 1, ["Quali sono le differenze tra lo yoga Hatha e lo yoga Vinyasa?"]),
+    _fu("ah capito, e nel resto del mondo?", _G, 1, ["Come ci si organizza per affrontare un trasloco senza stressarsi?"]),
+    _fu("e succede spesso una cosa così?", _G, 1, ["Qual è il significato allegorico del romanzo 1984 di George Orwell?"]),
+    _fu("ok, ma è una regola fissa?", _G, 1, ["Come funziona il vantaggio e il fuorigioco nel rugby moderno?"]),
+    _fu("davvero interessante, e da dove nasce?", _G, 1, ["Come si crea una palette cromatica e qual è il metodo visivo per abbinare i vestiti in modo elegante?"]),
+    _fu("giusto, e chi se ne accorge di solito?", _G, 1, ["Come si addestra efficacemente un cucciolo di cane nei primi mesi di vita?"]),
+    _fu("ah, e in che modo cambia le cose?", _G, 1, ["Spiegami il concetto di economia circolare e come può ridurre l'impatto ambientale dei rifiuti."]),
+    _fu("capito, ma è consigliato per tutti?", _G, 1, ["Dammi una routine di esercizi di stretching da fare a casa per migliorare la flessibilità."]),
+    _fu("interessante, e i risultati si vedono subito?", _G, 1, ["In cosa consiste il protocollo di allenamento Tabata e come si implementa a corpo libero?"]),
+    _fu("ok, e serve un'attrezzatura particolare?", _G, 1, ["Come si organizza un allenamento funzionale a corpo libero per aumentare la forza?"]),
+    _fu("ah ok, e quanto dura in genere?", _G, 1, ["Qual è il processo creativo che usa un regista per decidere il montaggio di un film?"]),
+    _fu("giusto, e con che criterio si sceglie?", _G, 1, ["Quali sono i principi estetici fondamentali per scattare una fotografia di ritratto con luce naturale?"]),
+    _fu("davvero, e come si spiega il fenomeno?", _G, 1, ["Come si formano i terremoti e i vulcani secondo la teoria della tettonica a placche?"]),
+    _fu("ok, e vale anche di notte?", _G, 1, ["Quali sono le caratteristiche fisiche della Luna e come influenzano le maree terrestri?"]),
+    _fu("interessante, ma è recente come scoperta?", _G, 1, ["Spiegami la formazione dei buchi neri supermassicci e i concetti base dell'astronomia moderna."]),
+    _fu("ah capito, e a chi conviene di più?", _G, 1, ["Cosa sono i titoli di stato, le obbligazioni e come funziona il mercato obbligazionario?"]),
+    _fu("giusto, e la differenza si sente davvero?", _G, 1, ["Come si legge un bilancio aziendale di base e qual è la differenza tra stato patrimoniale e conto economico?"]),
+    _fu("ok, e cosa comporta nel concreto?", _G, 1, ["Spiegami le cause e le conseguenze dell'inflazione e come le banche centrali usano i tassi d'interesse."]),
+    _fu("davvero, e come me ne accorgo?", _G, 1, ["Quali sono le dinamiche psicologiche e i fattori chiave per mantenere viva l'intesa in un matrimonio?"]),
+    _fu("interessante, e cambia da paese a paese?", _G, 1, ["Quali sono le differenze stilistiche tra la musica classica di Mozart e quella di Beethoven?"]),
+    _fu("ah, e questo cosa spiega esattamente?", _G, 1, ["Spiega il paradosso del gatto di Schrödinger e le sue implicazioni base per capire i quanti."]),
+    _fu("ok, ma è un fenomeno raro?", _G, 1, ["Cosa intendeva Platone con la sua teoria delle idee e il mito della caverna?"]),
+    _fu("giusto, e serve tanta pratica?", _G, 1, ["Quali sono le tecniche migliori per imparare a suonare la chitarra classica da autodidatta?"]),
+    _fu("capito, e conviene farlo da soli o in gruppo?", _G, 1, ["Come si organizza un torneo di tennis a eliminazione diretta e il calcolo delle teste di serie?"]),
+    _fu("interessante, e c'è un modo per allenarsi?", _G, 1, ["Qual è il linguaggio dei fiori e qual è il significato storico di regalare una rosa gialla?"]),
+
+    _fu("ok, e in pratica come lo scrivo?", _C, 2, ["Come si gestisce lo stato in un'app Flutter usando Riverpod o il pattern BLoC?"]),
+    _fu("capito il senso, ma quanto pesa sulle prestazioni?", _C, 2, ["Come si ottimizza un'app Android nativa per ridurre il consumo di batteria in background?"]),
+    _fu("ah ok, e se il file è molto grande?", _C, 2, ["Scrivi uno script Node.js per elaborare stream di dati binari e salvarli su file."]),
+    _fu("giusto, e come lo testo prima di andare in produzione?", _C, 2, ["Configura un reverse proxy con Nginx per gestire il traffico SSL/TLS."]),
+    _fu("interessante, ma cambia qualcosa su Windows?", _C, 1, ["Come faccio un rebase interattivo dei miei commit in un repository Git?"]),
+    _fu("ok, e quanto è sicuro davvero?", _C, 2, ["Scrivi il codice per generare un hash sicuro di una password usando bcrypt o argon2."]),
+
+    _fu("ok, ma vale anche fuori da quell'intervallo?", _M, 2, ["Trova gli asintoti obliqui, orizzontali e verticali di questa funzione iperbolica."]),
+    _fu("capito, e cambia qualcosa se il dominio è discreto?", _M, 2, ["Enuncia e spiega il teorema del limite centrale e la legge dei grandi numeri."]),
+    _fu("giusto, e questo vale in ogni dimensione?", _M, 2, ["Trova i massimi e minimi vincolati della funzione utilizzando il metodo dei moltiplicatori di Lagrange."]),
+    _fu("ah ok, e se i coefficienti non sono costanti?", _M, 2, ["Risolvi l'equazione differenziale lineare del secondo ordine a coefficienti costanti."]),
+    _fu("interessante, ma è sempre univoca la soluzione?", _M, 2, ["Risolvi il problema di Cauchy determinando la soluzione particolare dell'equazione."]),
+    _fu("ok, e come cambia se la matrice non è quadrata?", _M, 2, ["Calcola il prodotto matriciale tra matrici non quadrate e verificane la compatibilità dimensionale."]),
+
+    _fu("capito, ma vale anche per i contratti già firmati?", _R, 2, ["Cosa prevede la normativa civile per l'acquisto della proprietà tramite usucapione?"]),
+    _fu("ok, e se una delle parti non risponde più?", _R, 2, ["Spiega il funzionamento della caparra confirmatoria e della clausola penale nei contratti."]),
+    _fu("giusto, e cambia qualcosa se siamo parenti?", _R, 2, ["Come funziona l'azione di rivendicazione a tutela della proprietà privata?"]),
+    _fu("ah ok, e i tempi tecnici quanto sono lunghi di solito?", _R, 2, ["Quali sono le fasi del procedimento amministrativo e l'obbligo di motivazione."]),
+    _fu("interessante, ma serve sempre un avvocato per questo?", _R, 1, ["Come si presenta un ricorso al giudice di pace contro una sanzione amministrativa?"]),
+    _fu("ok, e se il danno è solo economico e non fisico?", _R, 2, ["Quali sono le differenze tra responsabilità contrattuale ed extracontrattuale (art. 2043 c.c.)?"]),
+
+    # ── T2-C: Negativi ellittici SENZA history (A-M5: falso positivo a vuoto) ──
+    # Fraseggio che "suona" da continuazione (rimandi impliciti: "come prima",
+    # "anche qui", "ripeti", "allo stesso modo") ma senza alcuna history
+    # allegata: deve restare is_followup=False. Insegna alla rete che l'assenza
+    # di history è dirimente, non solo un indizio lessicale di superficie.
+    _r("Applica lo stesso ragionamento visto per la convergenza puntuale al caso della convergenza uniforme.", _M, 2),
+    _r("Ripeti il calcolo del determinante ma questa volta con il metodo dei cofattori.", _M, 2),
+    _r("Rifai la dimostrazione di prima usando però il principio di induzione forte.", _M, 2),
+    _r("Come nel caso precedente, calcola anche qui la varianza della distribuzione.", _M, 2),
+    _r("Studia allo stesso modo la convergenza di questa nuova serie numerica.", _M, 2),
+    _r("Anche in questo caso, verifica se la matrice risulta diagonalizzabile.", _M, 2),
+    _r("Procedi come sempre e trova gli autovalori di questa matrice 4x4.", _M, 1),
+    _r("Ancora una volta, applica il teorema di Bayes a questo nuovo problema.", _M, 2),
+    _r("Ripeti il procedimento standard per risolvere questo sistema lineare.", _M, 2),
+    _r("Come al solito, calcola prima la derivata e poi studia il segno.", _M, 1),
+    _r("Fai la stessa cosa di sempre ma questa volta in linguaggio Rust.", _C, 2),
+    _r("Applica lo stesso pattern visto di solito a questo nuovo problema.", _C, 2),
+    _r("Ripeti l'implementazione standard, però gestendo anche gli errori.", _C, 2),
+    _r("Come al solito, ottimizza il codice riducendo la complessità temporale.", _C, 2),
+    _r("Applica lo stesso ragionamento visto di solito anche a questo contratto.", _R, 2),
+    _r("Come nei casi analoghi, verifica se sussiste responsabilità civile.", _R, 2),
+    _r("Ripeti l'analisi standard su questo nuovo caso di licenziamento.", _R, 2),
+    _r("Fammi come sempre un riassunto breve di questo argomento.", _G, 1),
+    _r("Come al solito, dammi qualche consiglio pratico su questo tema.", _G, 1),
+    _r("Ripeti la stessa spiegazione ma con parole più semplici.", _G, 1),
+
+    # ── T2-B (rinforzo) — ulteriori marcatori brevi per portare il rapporto
+    # is_followup train nel range 12-15% richiesto dal piano di lavoro ──
+    _fu("ok, e come si distingue dagli altri casi simili?", _G, 1, ["Come è cambiata la televisione con l'avvento delle piattaforme di streaming come Netflix?"]),
+    _fu("interessante, e da quanto tempo si fa così?", _G, 1, ["Quali sono le principali disparità economiche nel mondo e le loro radici storiche?"]),
+    _fu("ah capito, e nella pratica cosa cambia per me?", _G, 1, ["Quali sono i principi di una dieta equilibrata per chi pratica sport a livello amatoriale?"]),
+    _fu("giusto, e questo vale anche per i principianti?", _G, 1, ["Quali sono le tecniche migliori per imparare a suonare la chitarra classica da autodidatta?"]),
+    _fu("ok, e quanto spesso conviene rifarlo?", _G, 1, ["Come si coltivano le piante da appartamento e quanto spesso vanno annaffiate?"]),
+    _fu("davvero, e questo si può notare a occhio nudo?", _G, 1, ["Come si formano i terremoti e i vulcani secondo la teoria della tettonica a placche?"]),
+    _fu("interessante, e in che occasioni conviene farlo?", _G, 1, ["Come ci si comporta a tavola in Giappone e quali sono le usanze del galateo locale?"]),
+    _fu("ah ok, e serve esperienza per farlo bene?", _G, 1, ["Come si organizza un allenamento funzionale a corpo libero per aumentare la forza?"]),
+    _fu("giusto, e come si spiega ai bambini?", _G, 1, ["Spiega il paradosso del gatto di Schrödinger e le sue implicazioni base per capire i quanti."]),
+    _fu("ok, ma quanto è affidabile questo metodo?", _G, 1, ["Come si legge un bilancio aziendale di base e qual è la differenza tra stato patrimoniale e conto economico?"]),
+    _fu("interessante, e cosa lo rende diverso dagli altri?", _G, 1, ["Quali sono le differenze tra lo yoga Hatha e lo yoga Vinyasa?"]),
+    _fu("ah, e questo succede anche in altre culture?", _G, 1, ["Come si addestra efficacemente un cucciolo di cane nei primi mesi di vita?"]),
+    _fu("ok, e c'è un modo per evitarlo del tutto?", _G, 1, ["Come influisce il cambiamento climatico sugli ecosistemi globali e sull'economia moderna?"]),
+    _fu("giusto, e quanto incide realmente sul risultato finale?", _G, 1, ["Qual è il processo decisionale migliore per scegliere lo stile e l'arredamento di un piccolo soggiorno?"]),
+    _fu("davvero interessante, e come si è arrivati a scoprirlo?", _G, 1, ["Cosa sono gli esopianeti e quali sono i metodi attuali per scoprirli nello spazio?"]),
+    _fu("ok, e conviene farlo la mattina o la sera?", _G, 1, ["Dammi una routine di esercizi di stretching da fare a casa per migliorare la flessibilità."]),
+    _fu("interessante, e quanto è comune come situazione?", _G, 1, ["Quali sono le dinamiche psicologiche e i fattori chiave per mantenere viva l'intesa in un matrimonio?"]),
+    _fu("ah capito, e cosa succede se non lo si fa?", _G, 1, ["Quali sono i benefici della meditazione mindfulness per la salute mentale a lungo termine?"]),
+    _fu("giusto, e da cosa dipende principalmente?", _G, 1, ["Quali sono le principali catene montuose del mondo, come si sono formate geologicamente e come influenzano il clima locale?"]),
+    _fu("ok, e come faccio a sapere se lo sto facendo bene?", _G, 1, ["In cosa consiste il protocollo di allenamento Tabata e come si implementa a corpo libero?"]),
+    _fu("interessante, ma cambia qualcosa se il progetto è grande?", _C, 2, ["Come si gestisce lo stato in un'app Flutter usando Riverpod o il pattern BLoC?"]),
+    _fu("ok, e vale anche per le versioni più vecchie del linguaggio?", _C, 2, ["Come si ottimizza un'app Android nativa per ridurre il consumo di batteria in background?"]),
+    _fu("giusto, e in un ambiente con poca RAM cosa cambia?", _C, 2, ["Configura un reverse proxy con Nginx per gestire il traffico SSL/TLS."]),
+    _fu("ah ok, e come faccio a verificarlo prima del deploy?", _C, 2, ["Come faccio un rebase interattivo dei miei commit in un repository Git?"]),
+    _fu("ok, ma cambia qualcosa se i dati sono in virgola mobile?", _M, 2, ["Calcola il prodotto matriciale tra matrici non quadrate e verificane la compatibilità dimensionale."]),
+    _fu("giusto, e nel caso limite cosa succede esattamente?", _M, 2, ["Trova gli asintoti obliqui, orizzontali e verticali di questa funzione iperbolica."]),
+    _fu("ah ok, e serve verificarlo anche numericamente?", _M, 2, ["Risolvi l'equazione differenziale lineare del secondo ordine a coefficienti costanti."]),
+    _fu("interessante, e cosa cambia se il campione è piccolo?", _M, 2, ["Enuncia e spiega il teorema del limite centrale e la legge dei grandi numeri."]),
+    _fu("ok, e questa procedura vale anche in appello?", _R, 2, ["Come funziona il ricorso gerarchico e il ricorso al TAR nel diritto amministrativo?"]),
+    _fu("giusto, e chi paga le spese in questi casi?", _R, 2, ["Quali sono le fasi del procedimento amministrativo e l'obbligo di motivazione."]),
+    _fu("ah ok, e serve comunque un atto scritto?", _R, 2, ["Come si presenta un ricorso al giudice di pace contro una sanzione amministrativa?"]),
+    _fu("interessante, e vale anche per i contratti verbali?", _R, 2, ["Cosa prevede la normativa civile per l'acquisto della proprietà tramite usucapione?"]),
+
 ]
 
 # ── False-Pipeline Hard Negatives (ex-FIX A-C1, ampliato) ────────────────────
@@ -862,6 +1046,27 @@ def dedup_records(records: list) -> list:
     return deduped
 
 
+# [D2-B FIX — piano_lavoro_espansione_dataset.md §3] Split deterministico.
+# random.shuffle(group) rimescolava l'INTERO gruppo ad ogni rebuild: bastava
+# aggiungere anche solo pochi record altrove nel file (nuovo seed, nuovo
+# MANUAL_RECORDS) per cambiare l'ordine di iterazione dei dict e quindi il
+# punto di partenza dello shuffle, spostando migliaia di record preesistenti
+# tra train/val/test in modo silenzioso — rendendo qualunque confronto tra
+# due run di step4_evaluation.py non affidabile (vedi caso T2: nessun modo
+# di distinguere "regressione causata dal contenuto nuovo" da "record finito
+# per caso in un altro split"). hashlib.sha256 (non il built-in hash(), che
+# è salato per processo da PYTHONHASHSEED e quindi NON deterministico tra
+# run diversi) ordina i record in modo stabile e puramente content-based:
+# la posizione relativa di un record già esistente non cambia quando se ne
+# aggiungono altri altrove nello stesso gruppo, quindi lo split resta stabile
+# tra rebuild successivi (piccoli spostamenti restano possibili solo per i
+# pochissimi record vicini al confine 70/85%, effetto inevitabile di
+# qualunque split percentuale, non un rimescolamento globale).
+def _stable_sort_key(record: dict) -> str:
+    payload = record['query'] + '|' + '|'.join(record.get('history') or [])
+    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+
+
 def stratified_split(records: list) -> list:
     groups = defaultdict(list)
     for r in records:
@@ -870,7 +1075,7 @@ def stratified_split(records: list) -> list:
     result = []
     empty_splits = []  # [M3 FIX] classi con split val/test vuoto (n troppo piccolo)
     for key, group in groups.items():
-        random.shuffle(group)
+        group.sort(key=_stable_sort_key)  # [D2-B FIX] era random.shuffle(group)
         n  = len(group)
         t1 = max(1, int(n * 0.70))
         t2 = max(t1 + 1, int(n * 0.85))

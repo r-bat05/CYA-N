@@ -16,7 +16,12 @@ nativa la lista di stringhe (query utente precedenti, ordine cronologico)
 PRIMA di invocare questa funzione — che non conosce dict, ruoli o JSONL.
 """
 
-HISTORY_MAX_TURNS = 2  # unica fonte di verità: quante query precedenti includere
+HISTORY_MAX_TURNS = 1  # [D1-C] Allineato al training: ogni record del dataset ha al
+# massimo 1 query di history (vedi build_dataset_v2.py). Con MAX_TURNS=2 l'inferenza,
+# dal 3° messaggio di sessione in poi, costruiva un formato "[HISTORY] q1 | q2 [QUERY]"
+# mai visto in training (mismatch train/inference, vedi piano_lavoro_espansione_dataset.md
+# §2.6 e §3-D1). Riportare a 2 solo se in futuro si aggiungono seed con history a 2 turni
+# (opzione B del piano, rimandata alla Fase 2).
 
 
 def build_input_str(query: str, history_queries: list) -> str:
