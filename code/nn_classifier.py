@@ -183,9 +183,9 @@ def predict(
         ms = (time.time() - t0) * 1000
         label = _CLASS_TO_NAME[class_id]
         scores_str = ' | '.join(f"{k}:{v:.3f}" for k, v in domain_scores.items())
-        print(f"[NN_CLASSIFIER] {label.upper()} | conf={confidence:.3f} | "
-              f"diff={difficulty} | followup={is_followup} (fu_prob={fu_prob:.3f}) | "
-              f"scores=[{scores_str}] | {ms:.0f}ms")
+        # print(f"[NN_CLASSIFIER] {label.upper()} | conf={confidence:.3f} | "
+        #      f"diff={difficulty} | followup={is_followup} (fu_prob={fu_prob:.3f}) | "
+        #      f"scores=[{scores_str}] | {ms:.0f}ms")
 
         return class_id, confidence, domain_scores, difficulty, is_followup
 

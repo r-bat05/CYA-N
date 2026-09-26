@@ -89,7 +89,7 @@ def run_evaluation():
         file_wrong_queries.unlink()
 
     for tc in tests:
-        print(f"  [{tc['id']}] {tc['query'][:65]}{'...' if len(tc['query']) > 65 else ''}")
+        # print(f"  [{tc['id']}] {tc['query'][:65]}{'...' if len(tc['query']) > 65 else ''}")
 
         try:
             class_id, confidence, domain_scores, difficulty, is_followup = predict(
@@ -134,13 +134,13 @@ def run_evaluation():
         d_str   = (f"  diff={difficulty} (min atteso: {exp_diff_min}) → "
                    f"tier={actual_tier} {'✅' if ok_diff else '❌ DIFF_ERR'}  conf={confidence:.3f}")
 
-        print(f"     {status}")
+        '''print(f"     {status}")
         print(f"     {dom_str}")
         print(f"     {fu_str}")
         print(f"     {d_str}")
         if 'note' in tc:
             print(f"     📝 {tc['note']}")
-        print()
+        print()'''
 
         if errore == 1 or not ok_diff:
             with open(file_wrong_queries, "a", encoding="utf-8") as file:
