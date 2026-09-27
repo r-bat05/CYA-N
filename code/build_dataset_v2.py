@@ -889,7 +889,73 @@ KEYWORD_TRAP_NEGATIVES = [
     _r("Studiando la storia della pittura fiamminga mi sono imbattuto nel concetto di equazione compositiva tra luce e ombra, cosa intendevano gli artisti rinascimentali con questo termine?", _G, 2),
     _r("Sto leggendo un saggio di divulgazione che parla spesso di reti neurali, gradiente e backpropagation, argomenti affascinanti ma ostici: mi consigli altri saggi di divulgazione scientifica scritti in modo semplice?", _G, 2),
     _r("Il professore di microeconomia ha riempito la lavagna di formule e integrali per spiegare l'equilibrio di mercato, ma io vorrei solo capire il concetto base senza tutta quella matematica, come funziona in parole semplici?", _G, 2),
-    _r("Frequento un corso serale di storia del diritto per pura passione, senza alcun fine professionale, e mi affascina scoprire come nacquero le prime codificazioni: mi racconti brevemente le origini del diritto romano?", _G, 2),
+        _r("Frequento un corso serale di storia del diritto per pura passione, senza alcun fine professionale, e mi affascina scoprire come nacquero le prime codificazioni: mi racconti brevemente le origini del diritto romano?", _G, 2),
+
+    # ===== NUOVI [T3] =====
+    # --- Rinforzo VAR: soglia a 6 fraseggi ---
+    _r("Il portiere ha protestato animatamente contro la decisione del VAR dopo il gol annullato.", _G, 1),
+    _r("Perché in alcuni campionati minori il VAR non viene ancora utilizzato durante le partite?", _G, 1),
+    _r("Il VAR ha rivoluzionato il modo in cui i tifosi vivono le partite in diretta allo stadio.", _G, 1),
+
+    # --- Rinforzo lancio (general): tecniche sportive, soglia a 6 fraseggi ---
+    _r("Qual è la differenza tecnica tra il lancio del disco e il lancio del martello nell'atletica leggera?", _G, 2),
+    _r("Come si allena la forza esplosiva delle gambe per migliorare il lancio del peso?", _G, 1),
+
+    # --- Trap inverso "lancio": rights genuino con infortunio in vari sport ---
+    _r("Durante una partita di baseball tra amici, un lancio sbagliato del lanciatore mi ha colpito in pieno viso: posso chiedere un risarcimento alla squadra?", _R, 2),
+    _r("Un mio compagno di squadra mi ha colpito per sbaglio con un lancio troppo forte durante un allenamento di calcio, chi è responsabile se mi sono fatto male al polso?", _R, 2),
+    _r("Durante una partita di basket, il lancio scorretto di un giocatore ha mandato il pallone contro un'auto parcheggiata rompendo il finestrino: chi paga i danni?", _R, 2),
+    _r("In palestra un compagno mi ha colpito con un lancio maldestro di un disco durante l'allenamento di sollevamento pesi, è responsabile lui o la struttura?", _R, 2),
+
+    # --- Rinforzo equazione (figurativa): soglia a 6 fraseggi ---
+    _r("Non esiste un'equazione universale per la felicità, ognuno trova il proprio equilibrio a modo suo.", _G, 1),
+    _r("Gli allenatori parlano spesso di un'equazione tra talento e disciplina per spiegare il successo di un atleta.", _G, 1),
+
+    # --- Rinforzo debug (figurativo): soglia a 6 fraseggi ---
+    _r("Dopo la lite con mio fratello ho passato un'ora a fare il debug di cosa fosse andato storto tra di noi.", _G, 1),
+    _r("Fare debug delle proprie giornate storte ogni tanto aiuta a capire dove si può migliorare.", _G, 1),
+    _r("Il mio terapeuta mi ha suggerito una sorta di debug mentale della giornata prima di andare a dormire.", _G, 2),
+    _r("Ogni tanto serve fermarsi e fare debug della propria vita per capire cosa non funziona più.", _G, 1),
+
+    # --- Rinforzo informatica (figurativo, contesto personale): soglia a 6 fraseggi ---
+    _r("Mia sorella studia informatica all'università ma il weekend preferisce staccare la spina con un buon romanzo.", _G, 1),
+    _r("Non capisco nulla di informatica, ma mio figlio mi ha convinto a comprare un nuovo laptop per lui.", _G, 1),
+    _r("Ho conosciuto mio marito a una festa organizzata da amici che lavoravano nel settore informatica.", _G, 1),
+    _r("Da piccolo sognavo di lavorare nell'informatica, ma poi ho scoperto la mia vera passione per la cucina.", _G, 1),
+
+    # --- Rinforzo algoritmo (figurativo): soglia a 6 fraseggi ---
+    _r("Non esiste un algoritmo preciso per capire quando è il momento giusto per cambiare lavoro.", _G, 1),
+    _r("Gli chef seguono quasi un algoritmo istintivo quando decidono gli abbinamenti dei sapori in un piatto.", _G, 1),
+    _r("Vorrei trovare l'algoritmo perfetto per organizzare la mia settimana lavorativa senza stress.", _G, 1),
+    _r("Secondo alcuni psicologi esiste un vero e proprio algoritmo emotivo dietro le scelte sentimentali.", _G, 2),
+
+    # --- Rinforzo ottimizzare (figurativo): soglia a 6 fraseggi ---
+    _r("Come posso ottimizzare la mia routine mattutina senza dover svegliarmi troppo presto?", _G, 1),
+    _r("Vorrei ottimizzare i tempi morti della giornata per dedicarmi di più ai miei hobby.", _G, 1),
+    _r("Qual è il modo migliore per ottimizzare le spese mensili senza rinunciare troppo al divertimento?", _G, 1),
+    _r("Come si ottimizza la disposizione dei mobili in un monolocale piuttosto piccolo?", _G, 1),
+
+    # --- Rinforzo formula (figurativa): soglia a 6 fraseggi ---
+    _r("Qual è la formula ideale per bilanciare vita privata e lavoro senza sentirsi sempre in colpa?", _G, 1),
+    _r("Non esiste una formula unica per crescere un figlio felice, ogni famiglia trova la propria strada.", _G, 1),
+    _r("Gli sportivi di successo parlano spesso di una formula fatta di sacrificio, talento e un po' di fortuna.", _G, 1),
+    _r("Qual è la formula perfetta per organizzare una festa di compleanno che i bambini ricorderanno a lungo?", _G, 1),
+
+    # --- Nuovo trap "sezione aurea" (matematica in contesto artistico/divulgativo) ---
+    _r("Il fotografo mi ha spiegato che la sezione aurea aiuta a comporre scatti più armoniosi ed equilibrati.", _G, 2),
+    _r("Perché gli artisti rinascimentali erano così affascinati dalla sezione aurea nelle loro opere?", _G, 2),
+    _r("Ho letto che anche il design di alcuni loghi famosi si ispira alla sezione aurea, è vero?", _G, 1),
+    _r("Qual è la storia della sezione aurea nell'arte antica e come veniva utilizzata dagli scultori greci?", _G, 2),
+    _r("Gli architetti rinascimentali applicavano la sezione aurea per progettare facciate armoniose, mi racconti qualche esempio famoso?", _G, 2),
+    _r("La sezione aurea si trova anche in natura, per esempio nella disposizione dei petali di alcuni fiori: è affascinante scoprirlo.", _G, 1),
+
+    # --- Nuovo trap "lite" (litigio personale, contesto non giuridico) ---
+    _r("Ho avuto una piccola lite con la mia migliore amica per una sciocchezza e ora non so come chiederle scusa.", _G, 1),
+    _r("Dopo la lite di ieri sera con mio marito, oggi ci siamo chiariti davanti a una tazza di caffè.", _G, 1),
+    _r("Come si fa a evitare che una piccola incomprensione si trasformi in una lite furiosa tra fratelli?", _G, 1),
+    _r("Ho avuto una lite con un collega per un malinteso durante una riunione, come gestisco la situazione al meglio?", _G, 2),
+    _r("La lite tra i miei genitori per la scelta del colore delle pareti è durata tutto il weekend.", _G, 1),
+    _r("Mi sono riappacificato con il mio migliore amico dopo una lite che sembrava non finire mai.", _G, 1),
 ]
 
 # ── Difficulty Labels (manuale) ──────────────────────────────────────────────
