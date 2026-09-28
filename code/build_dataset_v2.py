@@ -12,66 +12,6 @@ Sorgenti:
   4. Augmentation di rumore      → framing narrativo / stile-risposta (Opzione A)
 
 Output: code/dataset_v2.jsonl
-
-Novità (Query Noise Augmentation — Opzione A, report_query_noise_augmentation.md):
-- [NOISE-AUG] Nuova augment_noise(): contrasta il bias di diluizione per
-  mean-pooling di MiniLM (media aritmetica di tutti i token embeddings,
-  pesata solo dall'attention mask, mai dalla rilevanza semantica). Frasi
-  tecniche terse "annegate" in testo di contorno narrativo/motivazionale/di
-  specifica-stile venivano spinte verso GENERAL con alta confidence, perché
-  la rete aveva imparato la scorciatoia "registro lungo/discorsivo →
-  GENERAL" (GENERAL nel dataset contiene nativamente molte frasi lunghe).
-  Caso riprodotto: "risolvi le equazioni di Navier-Stokes" → MATH (1.000)
-  vs stessa frase con contorno storico-filosofico → GENERAL (1.000).
-  Stesso pattern architetturale di augment_class()/augment_query() (wrapping
-  di frase intera anziché sostituzione di singola parola), chiamata in
-  FASE 2bis, SEMPRE dopo stratified_split() (ogni variante eredita lo split
-  del sorgente — mai splittata indipendentemente, altrimenti si reintroduce
-  esattamente il leakage train/test già risolto per l'augmentation a
-  sinonimi, vedi [FIX LEAKAGE] più sotto). Applicata SOLO a
-  INTENT_SENTENCES/BRIDGE_SENTENCES (intent+bridge): MANUAL_RECORDS
-  (follow-up/domain-switch/edge-case) ha semantica legata alla brevità e
-  alla history che il wrapping romperebbe, e resta intenzionalmente escluso.
-  Copertura simmetrica sui 4 domini + 3 pipeline + classi bridge
-  non-pipeline (pool di template topic-agnostic, mai un "sapore" di rumore
-  legato a un dominio specifico), diversità di posizione
-  (prefisso/suffisso/wrap) e di sapore (storico-culturale, filosofico,
-  curiosità personale, utilità/motivazionale, specifica di stile risposta),
-  incluse varianti ad alto rapporto rumore/segnale (~80%+) che replicano il
-  caso reale osservato. Validata in sandbox (ast.parse + dry-run funzionale
-  su dataset stub): output JSONL valido riga per riga, split ereditato
-  correttamente dal sorgente, conteggio varianti coerente con
-  NOISE_INJECTION_RATIO per class-key.
-
-Novità (Difficulty Manuale — report_difficulty_manual.md):
-- [DIFFICULTY] Rimossa l'euristica estimate_difficulty() (marker lessicali
-  _HARD_MARKERS + floor fisso per dominio: livello 3/2 per query tecniche,
-  mai validata su larga scala e strutturalmente cieca su casi come
-  "trasformata di Fourier", corta ma concettualmente difficile). Rimossa
-  anche get_dominant_domain(), usata esclusivamente da estimate_difficulty()
-  per calcolare il dominio dominante di un bridge — nessun altro call site.
-- [DIFFICULTY] Sostituita da get_difficulty_label(query): lookup fail-fast
-  su difficulty_labels.json, file esterno con etichetta manuale (1/2/3) per
-  ciascuna delle 1010 query esatte di INTENT_SENTENCES/BRIDGE_SENTENCES
-  (724 + 286, verificato — vedi report §5). Lo script NON gira finché il
-  file non è completo al 100%: get_difficulty_label() solleva ValueError
-  con la query esatta mancante, stesso pattern fail-fast già in uso per
-  is_followup in precompute_embeddings.py::load_dataset(). Comportamento
-  intenzionale: impedisce la generazione silenziosa di un dataset con
-  etichette parziali.
-- [DIFFICULTY] MANUAL_RECORDS invariato e FUORI SCOPE: _r()/_fu()/_cd()
-  prendono già 'diff' come parametro esplicito passato a mano, mai
-  derivato da estimate_difficulty(). Nessuna modifica necessaria.
-
-Novità (Fix da report_bugs.md):
-- [A2] Nuova dedup_records(): rimuove query duplicate verbatim PRIMA dello
-  split stratificato, prevenendo leakage train/val/test da record clonati.
-- [M1] Warning esplicito se augment_class() non raggiunge il target
-  richiesto per una classe (copertura SYNONYMS insufficiente).
-- [M2] Le classi bridge non-pipeline (general+math, general+rights) non
-  sono più escluse dall'augmentation: nuovo target dedicato TARGET_BRIDGE_NEG.
-- [M3] stratified_split() logga un warning per ogni classe con split
-  val e/o test vuoto.
 """
 
 import json, random, hashlib
