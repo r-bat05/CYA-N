@@ -27,6 +27,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.metrics import f1_score
+torch.manual_seed
 
 from domains import MONO_DOMAINS
 from classifier_config import EMBEDDINGS_PATH, WEIGHTS_PATH
@@ -72,9 +73,9 @@ ep=   1 | tr_loss=1.1595 | vl_loss=1.1463 | vl_f1=0.3325 | best=0.3325 | no_impr
 Con lr = 1e-2 la rete va subito in overfitting
 
 '''
-LR               = 0.00025
+LR               = 0.00025 #=2.5 * 1e-4
 WEIGHT_DECAY     = 1e-4
-EPOCHS           = 200
+EPOCHS           = 100
 BATCH_SIZE       = 64
 PATIENCE         = 25
 SCHED_PATIENCE   = 10
@@ -171,7 +172,11 @@ def train():
 
     best_f1    = -1.0
     best_state = None
-    no_improve = 0
+    no_improve = 0 #da quante epoche non migliora f1 del modello 
+    #dati per calcolare la variazione di f1
+    tollerance___vl_loss = 0.12
+    last__vl_loss = 0 
+    counter_steps_increase_loss = 0 #conta in quante epoche si sta verificando un aumento della loss in fase di testing
 
     for epoch in range(1, EPOCHS + 1):
 
@@ -215,15 +220,28 @@ def train():
             no_improve += 1
             marker = ""
 
-        if epoch % 10 == 0 or epoch == 1:
+        if epoch % 5 == 0 or epoch == 1:
             print(f"  ep={epoch:4d} | tr_loss={avg_loss:.4f} | vl_loss={val_loss:.4f} | "
                   f"vl_f1={val_f1:.4f} | best={best_f1:.4f} | "
                   f"no_impr={no_improve}/{PATIENCE} | lr={current_lr:.2e}{marker}")
 
-        #Criteri per la convergenza dell'errore e terminazione del training
-        if no_improve >= PATIENCE and val_f1 > 0.85 and epoch > 50:
+        #Criteri per la convergenza dell'errore e terminazione del training 
+        #no_improve >= PATIENCE per implementare early stopping
+        #val_f1 > 0.85 per avere un valore accettabile
+
+        if (val_loss-last__vl_loss >= tollerance___vl_loss and counter_steps_increase_loss > 2) or (no_improve >= PATIENCE and val_f1 >= 0.85):
             print(f"\n  ⏹  Early stopping a epoca {epoch} (nessun miglioramento per {PATIENCE} epoche consecutive) con valore f1 accettabile ({val_f1})")
             break
+
+
+        if(last__vl_loss != 0 and val_loss > last__vl_loss):
+            counter_steps_increase_loss += 1
+        else:
+            counter_steps_increase_loss = 0
+        
+        #aggiorno l'ultimo valore di loss calcolato dopo il controllo del residuo
+        last__vl_loss = val_loss
+
 
     print(f"\n[3/4] Training completato. Miglior F1-macro val (domain): {best_f1:.4f}")
     print("\n\nVERIFICARE SE CONVIENE AUMENTARE/DIMINUIRE LE EPOCHE, IL LEARNING RATE, E TUTTE LE CONFIGURAZIONI\n\n")

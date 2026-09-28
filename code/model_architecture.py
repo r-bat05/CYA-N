@@ -18,26 +18,33 @@ class MultiTaskMLP(nn.Module):
     def __init__(self):
         super().__init__()
         self.backbone = nn.Sequential(
-            nn.Linear(EMBEDDING_DIM, 256),
-            nn.LayerNorm(256),
+            nn.Linear(EMBEDDING_DIM, 200),
+            nn.LayerNorm(200),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(256, 128),
-            nn.LayerNorm(128),
+            nn.Linear(200, 100),
+            nn.LayerNorm(100),
             nn.ReLU(),
             nn.Dropout(0.2),
         )
         self.domain_head = nn.Sequential(
-            nn.Linear(128, 64),
+            nn.Linear(100, 32),
             nn.ReLU(),
-            nn.Linear(64, 4),
+            nn.Linear(32, 4),
         )
         self.difficulty_head = nn.Sequential(
-            nn.Linear(128, 32),
+            nn.Linear(100, 50),
             nn.ReLU(),
-            nn.Linear(32, 3),
+            nn.Linear(50, 3),
         )
-        self.followup_head = nn.Linear(128, 1)
+        self.followup_head = nn.Sequential(
+            nn.Linear(100, 50),
+            nn.ReLU(),
+            nn.Linear(50, 25),
+            nn.ReLU(),
+            nn.Linear(25, 1)
+        )
+        
 
     def forward(self, x):
         h = self.backbone(x)
