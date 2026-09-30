@@ -848,6 +848,37 @@ FALSE_PIPELINE_HARD_NEGATIVES = [
     _r("Calcola il fattoriale di un numero in Python usando un ciclo invece della ricorsione.", _C, 1),
     _r("Scrivi il codice Python che trova il numero primo successivo a un intero dato.", _C, 1),
     _r("Implementa in Python il calcolo iterativo della sequenza di Fibonacci fino all'n-esimo termine.", _C, 1),
+    # ── [T6 report_espansione §9.2-P5] Algoritmi su grafo: mono-CODING, NESSUNA richiesta di dimostrazione/analisi teorica ──
+    # Contrappeso ai veri math->coding (Kruskal+dimostrazione, Floyd-Warshall+complessita', Tarjan, Ford-Fulkerson in BRIDGE).
+    # Solo implementazione: lessico da grafo ("cammino minimo", "nodi", "archi", "albero di copertura") SENZA dimostra/teorema/complessita'.
+    # Ogni riga inizia con verbo di SYNONYMS (implementa/scrivi/crea/sviluppa/calcola) -> augment_class() genera varianti.
+    # Formulazioni diverse da A-C3 (eval) per non aumentare il leakage seed<->eval.
+    _r("Implementa in Python Dijkstra con una coda di priorità per trovare i cammini minimi da un nodo sorgente.", _C, 2),
+    _r("Scrivi una funzione Python che restituisce il cammino minimo tra due nodi di un grafo pesato usando Dijkstra.", _C, 2),
+    _r("Sviluppa in Java una classe che applica Dijkstra su una mappa stradale rappresentata come grafo con archi pesati.", _C, 2),
+    _r("Implementa Dijkstra in Python per trovare il percorso più breve tra due nodi di un grafo con archi pesati.", _C, 2),
+    _r("Implementa in Python la visita in ampiezza di un grafo non orientato e stampa i nodi nell'ordine di scoperta.", _C, 1),
+    _r("Scrivi una funzione ricorsiva in Python per la visita in profondità di un grafo rappresentato con liste di adiacenza.", _C, 1),
+    _r("Crea in C++ una BFS che calcola la distanza in archi da un nodo di partenza a tutti gli altri nodi del grafo.", _C, 1),
+    _r("Implementa una DFS iterativa con stack esplicito in Python per esplorare un labirinto rappresentato come grafo.", _C, 1),
+    _r("Scrivi il codice Python per una BFS su un grafo con lista di adiacenza.", _C, 1),
+    _r("Calcola le componenti connesse di un grafo non orientato con una funzione Python.", _C, 1),
+    _r("Implementa in Python un algoritmo che conta le componenti connesse di un grafo usando una visita DFS.", _C, 1),
+    _r("Scrivi il codice Java per trovare le componenti fortemente connesse di un grafo orientato con l'algoritmo di Kosaraju.", _C, 2),
+    _r("Implementa in Python l'algoritmo di Bellman-Ford per calcolare le distanze minime da un nodo in un grafo con pesi negativi.", _C, 2),
+    _r("Sviluppa uno script Python che applica Bellman-Ford e stampa il percorso ottimo tra due città di una rete di trasporti.", _C, 2),
+    _r("Implementa in Python l'algoritmo di Kruskal con la struttura union-find su un grafo pesato non orientato.", _C, 2),
+    _r("Scrivi una funzione Python che costruisce l'albero di copertura minimo di un grafo con l'algoritmo di Prim.", _C, 2),
+    _r("Implementa in Python l'ordinamento topologico di un grafo orientato aciclico per pianificare le dipendenze tra task.", _C, 2),
+    _r("Scrivi una funzione Python che rileva la presenza di cicli in un grafo orientato usando una DFS con colorazione dei nodi.", _C, 2),
+    _r("Crea una classe Python Graph con i metodi per aggiungere nodi e archi e per elencare i vicini di un nodo.", _C, 1),
+    _r("Sviluppa in JavaScript una funzione che controlla se esiste un percorso tra due nodi di un grafo non orientato.", _C, 1),
+    _r("Implementa in Python Floyd-Warshall per ottenere la matrice delle distanze minime tra tutte le coppie di nodi.", _C, 2),
+    _r("Scrivi in C++ una funzione che controlla se un grafo è bipartito colorando i nodi con una BFS.", _C, 2),
+    _r("Implementa in Python la ricerca del cammino minimo su una griglia con ostacoli usando una BFS.", _C, 1),
+    _r("Calcola il grado di ogni nodo di un grafo memorizzato come matrice di adiacenza scrivendo una funzione Python.", _C, 1),
+    _r("Crea uno script Python che legge un grafo da un file CSV di archi e trova il cammino minimo tra due nodi con NetworkX.", _C, 1),
+    _r("Implementa in Rust la ricerca dei nodi raggiungibili da un nodo iniziale in un grafo orientato con una visita in profondità.", _C, 2),
 ]
 
 # ── Keyword-Trap Negatives ────────────────────────────────────────────────────

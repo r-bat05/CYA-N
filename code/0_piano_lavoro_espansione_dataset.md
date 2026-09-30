@@ -68,16 +68,26 @@ Aggiornare la checklist §4 prima di ogni nuova chat.
 - [x] Batch 1 · [ ] Batch 2 · [ ] Batch 3 (registri: colloquiale, culturale, pratico quotidiano)
 - [x] Ogni batch = frammento `INTENT_SENTENCES['general']` + frammento JSON con chiavi = query esatte; checker OK
 
-**T5 — Code-switch IT/EN (P4)** · `build_dataset_v2.py`
-- [ ] Coding (struggling, assignment, deadline, refactoring, bug, debugger, help me…)
-- [ ] Math (caso N-CS3-like)
+**T5 — Code-switch IT/EN (P4)** · `build_dataset_v2.py` **✅ COMPLETATO**
+- [x] Coding (struggling, assignment, deadline, refactoring, bug, debugger, help me…)
+- [x] Math (caso N-CS3-like)
 
-**T6 — False pipeline su grafi (P5)** · `build_dataset_v2.py` → `FALSE_PIPELINE_HARD_NEGATIVES`
-- [ ] Dijkstra, BFS, DFS, componenti connesse, Bellman-Ford… solo "implementa", MAI "dimostra/analizza complessità" (sarebbe pipeline vera); verbo imperativo presente in `SYNONYMS`
+**T6 — False pipeline su grafi (P5)** · `build_dataset_v2.py` → `FALSE_PIPELINE_HARD_NEGATIVES` **✅ COMPLETATO**
+- [x] Dijkstra, BFS, DFS, componenti connesse, Bellman-Ford… solo "implementa", MAI "dimostra/analizza complessità" (sarebbe pipeline vera); verbo imperativo presente in `SYNONYMS`
 
 **T7 — Difficulty (§8, §9.4)** · `build_dataset_v2.py`
 - [ ] `augment_noise()` stratificato per difficulty (diff 2/3 ≥ densità di diff 1)
 - [ ] Seed diff 2/3 in forma wrap/slang (stile N-CS3, G-NOISE1)
+
+
+dopo aver eseguito t6. Tre note da portare a T8/T9:
+
+TARGET_FALSE_PIPELINE_NEG=70 ora è saturo. Con 51 record base, l'augmentation sinonimica scende da +45 a +19 e le vecchie famiglie (fattoriale, MCD, ecc.) perdono varianti. In T8 va alzato, ad esempio a 100–110.
+Sbilanciamento grafo-mono vs grafo-pipeline: 99 mono-coding contro circa 5 bridge pipeline su grafi (Floyd-Warshall, Ford-Fulkerson, Tarjan, Bellman-Ford + verifica, più Kruskal+dimostrazione in MANUAL_RECORDS).
+Rischio: la rete impara "vocabolario da grafo ⇒ mai pipeline".
+eval_dataset.jsonl non ha casi di pipeline su grafi, quindi il rischio non sarebbe visibile.
+In T9, dopo il retrain, prova a mano 3-4 query del tipo "implementa Floyd-Warshall e analizza la complessità". Se regrediscono, si riduce il wrap o si aggiungono seed pipeline su grafi.
+Lo split è cambiato di nuovo. I 34 record in più hanno spostato i confini 70/85% della classe coding. Il test set non è confrontabile con i run precedenti, come già previsto in D2.
 
 **T8 — Target Fase 1 (~5.000)** · `build_dataset_v2.py`
 - [ ] Verificare punto §2.7 (pool `augment_class` include `_fu`/`_cd`)
