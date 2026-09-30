@@ -27,7 +27,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.metrics import f1_score
-torch.manual_seed
 
 from domains import MONO_DOMAINS
 from classifier_config import EMBEDDINGS_PATH, WEIGHTS_PATH
@@ -174,15 +173,16 @@ def train():
     best_state = None
     no_improve = 0 #da quante epoche non migliora f1 del modello 
     #dati per calcolare la variazione di f1
-    tollerance___vl_loss = 0.12
+    tollerance___vl_loss = 0.04
     last__vl_loss = 0 
-    counter_steps_increase_loss = 0 #conta in quante epoche si sta verificando un aumento della loss in fase di testing
+    counter_steps_increase_loss = 0 #conta in quante epoche si sta verificando un aumento della loss consecutivamente. Si resetta se migliora
 
     for epoch in range(1, EPOCHS + 1):
 
         model.train()
         total_loss = 0.0
 
+        #ottimizzazione per ogni esempio del batch
         for X_b, y_dom_b, y_dif_b, y_fu_b in train_dl:
             optimizer.zero_grad()
             logits_dom, logits_dif, logits_fu = model(X_b)
@@ -220,27 +220,36 @@ def train():
             no_improve += 1
             marker = ""
 
-        if epoch % 5 == 0 or epoch == 1:
-            print(f"  ep={epoch:4d} | tr_loss={avg_loss:.4f} | vl_loss={val_loss:.4f} | "
-                  f"vl_f1={val_f1:.4f} | best={best_f1:.4f} | "
-                  f"no_impr={no_improve}/{PATIENCE} | lr={current_lr:.2e}{marker}")
+        #if epoch % 5 == 0 or epoch == 1:
+        print(f"  ep={epoch:4d} | tr_loss={avg_loss:.4f} | vl_loss={val_loss:.4f} | "
+                f"vl_f1={val_f1:.4f} | best={best_f1:.4f} | "
+                f"no_impr={no_improve}/{PATIENCE} | lr={current_lr:.2e}{marker}")
 
         #Criteri per la convergenza dell'errore e terminazione del training 
         #no_improve >= PATIENCE per implementare early stopping
         #val_f1 > 0.85 per avere un valore accettabile
+        #(val_loss-last__vl_loss >= tollerance___vl_loss and counter_steps_increase_loss > 2) e per almeno 3 epoche non c'è stato miglioranmento e alla terza la discrepanza di aumento supera la tolleranza
+        #counter_steps_increase_loss >= 5 previene che la loss aumenti di poco per troppo tempo 
 
-        if (val_loss-last__vl_loss >= tollerance___vl_loss and counter_steps_increase_loss > 2) or (no_improve >= PATIENCE and val_f1 >= 0.85):
-            print(f"\n  ⏹  Early stopping a epoca {epoch} (nessun miglioramento per {PATIENCE} epoche consecutive) con valore f1 accettabile ({val_f1})")
+        if (val_loss-last__vl_loss >= tollerance___vl_loss and counter_steps_increase_loss > 2) or \
+            (no_improve >= PATIENCE and val_f1 >= 0.85) or counter_steps_increase_loss >= 10:
+            print(f"\n  ⏹  Early stopping a epoca {epoch} "
+                  f", con counter_steps_increase_loss={counter_steps_increase_loss} "
+                  f"e valore di f1 pari a {val_f1:.4f}")
             break
 
 
-        if(last__vl_loss != 0 and val_loss > last__vl_loss):
+        if(val_loss > last__vl_loss):
             counter_steps_increase_loss += 1
         else:
             counter_steps_increase_loss = 0
+
+        #if(epoch % 5 == 0):
+        print(f"Metriche: last_val_loss={last__vl_loss:.4f}, mentre la loss attuale è {val_loss:.4f}. counter_steps_increase_loss = {counter_steps_increase_loss}")
         
         #aggiorno l'ultimo valore di loss calcolato dopo il controllo del residuo
         last__vl_loss = val_loss
+
 
 
     print(f"\n[3/4] Training completato. Miglior F1-macro val (domain): {best_f1:.4f}")

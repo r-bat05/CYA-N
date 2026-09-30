@@ -7,6 +7,53 @@ inference) e contratto delle chiavi del checkpoint.
 import torch.nn as nn
 from classifier_config import EMBEDDING_DIM
 
+'''MIGLIORE DA METTERE - PREVIENE OVERFITTING E PERFORMA MEGLIO'''
+'''class MultiTaskMLP(nn.Module):
+    """
+    Backbone condiviso + 3 teste specializzate.
+    Forward restituisce LOGIT GREZZI (nessuna attivazione finale):
+    training usa BCEWithLogitsLoss/CrossEntropyLoss, le attivazioni
+    (sigmoid/softmax) vengono applicate solo a inference time.
+    """
+    def __init__(self):
+        super().__init__()
+        self.backbone = nn.Sequential(
+            nn.Linear(EMBEDDING_DIM, 180),
+            nn.LayerNorm(180),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(180, 80),
+            nn.LayerNorm(80),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+        )
+        self.domain_head = nn.Sequential(
+            nn.Linear(80, 4),
+            #nn.ReLU(),
+            #nn.Linear(32, 4),
+        )
+        self.difficulty_head = nn.Sequential(
+            nn.Linear(80, 3),
+            #nn.ReLU(),
+            #nn.Linear(50, 3),
+        )
+        self.followup_head = nn.Sequential(
+            nn.Linear(80, 1),
+            #nn.ReLU(),
+            #nn.Linear(50, 25),
+            #nn.ReLU(),
+            #nn.Linear(25, 1)
+        )
+        
+
+    def forward(self, x):
+        h = self.backbone(x)
+        return (
+            self.domain_head(h),
+            self.difficulty_head(h),
+            self.followup_head(h),
+        )
+'''
 
 class MultiTaskMLP(nn.Module):
     """
@@ -53,7 +100,6 @@ class MultiTaskMLP(nn.Module):
             self.difficulty_head(h),
             self.followup_head(h),
         )
-
 
 # --- Contratto chiavi checkpoint (CFG-5) ---
 # Unica fonte di verità: train_nn.py scrive, nn_classifier.py legge.
