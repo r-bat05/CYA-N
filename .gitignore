@@ -10,7 +10,7 @@ env/
 *.pkl 
 *.pt
 classifier_config.json
-piano_lavoro_espansione_dataset.md
+0_report_espansione_dataset.md
 check_dataset_seeds.py
 
 # LaTeX

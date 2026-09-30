@@ -562,6 +562,71 @@ MANUAL_RECORDS = [
     _r("Il mio professore di ingegneria del software vuole il deployment del progetto su un cloud provider entro venerdì e onestamente non ho la più pallida idea di come iniziare, mi aiuti a capire i primi passi?", _C, 2),
 
     # ══════════════════════════════════════════════════════════════════════
+    # [T5 — report_espansione §9 P4] Code-switch IT/EN (registro studentesco/gergale)
+    # A) coding (26) + math (12): nucleo tecnico con lessico strugglando/assignment/deadline/
+    #    help me/bug/debugger/refactoring. Casi eval N-CS1..4 NON replicati (temi diversi).
+    # B) contrappesi (general 8 + rights 6): STESSO registro, dominio diverso, per evitare la
+    #    scorciatoia lessicale 'assignment/deadline/help me' -> dominio (N-CS1 falliva verso RIGHTS).
+    # ══════════════════════════════════════════════════════════════════════
+    # -- coding --
+    _r("Sto strugglando con un merge conflict enorme sul mio branch, il prof vuole la pull request entro stasera e non so nemmeno da dove iniziare a risolverlo, help me.", _C, 2),
+    _r("Ho pushato per sbaglio delle credenziali nel repository, come faccio a rimuoverle dalla history di git prima che il team faccia la review?", _C, 2),
+    _r("Il mio unit test fallisce solo sulla CI ma in locale passa, sto impazzendo con questa pipeline e la deadline del progetto è lunedì, qualche hint?", _C, 2),
+    _r("Non capisco perché il mio codice mi throwa un NullPointerException alla riga 42, il debugger si ferma ma non mi dice niente di utile.", _C, 1),
+    _r("Sto strugglando con un assignment di programmazione a oggetti e non capisco quando usare una interface invece di una abstract class in Java.", _C, 1),
+    _r("Il mio prof di software engineering ci ha dato un homework sui design pattern e non ho capito come implementare il pattern Observer senza creare dipendenze circolari.", _C, 2),
+    _r("Ho un bug strano nel mio frontend: lo state di React non si aggiorna dopo il click e la deadline della demo è domani mattina, help me a capire dove sbaglio.", _C, 2),
+    _r("Sto strugglando con i segmentation fault nel mio progetto in C, ho già provato a debuggare con gdb ma non riesco a capire quale puntatore sia il colpevole.", _C, 3),
+    _r("Il build del mio progetto fallisce con un errore di linking e non ho la minima idea di come fixarlo, ho provato a fare clean ma niente.", _C, 2),
+    _r("Devo fare il refactoring di una classe da mille righe che fa troppe cose, come la spezzo in moduli più piccoli senza rompere i test esistenti?", _C, 2),
+    _r("Scusa la domanda da newbie ma cosa cambia tra una list e un array in Python? Il mio TA dice che è importante per l'assignment.", _C, 1),
+    _r("Il mio endpoint API mi ritorna un 500 solo quando faccio il POST con body vuoto, ho controllato i log ma lo stack trace non è chiaro, help me.", _C, 2),
+    _r("Sto strugglando con la concorrenza in Go, le mie goroutine vanno in deadlock e non riesco a trovare quale channel resta bloccato.", _C, 3),
+    _r("Domani ho la code review con il mio team lead e vorrei capire come gestire meglio le eccezioni in questa funzione, adesso faccio catch di tutto e mi dicono che è sbagliato.", _C, 2),
+    _r("Ho lanciato il progetto in locale con Docker ma il container si chiude subito dopo lo start, come faccio a capire cosa sta andando storto nei log?", _C, 2),
+    _r("Per il mio progetto di database devo fare la migration dello schema ma il rollback mi cancella dei dati, come si evita?", _C, 2),
+    _r("Il compilatore mi dà mille warning sui tipi in TypeScript e non capisco se devo fixarli tutti o posso ignorarne qualcuno, la deadline è vicina.", _C, 1),
+    _r("Sto strugglando a capire la differenza tra ricorsione e iterazione nel mio assignment, il prof vuole entrambe le versioni di una funzione che visita un albero binario.", _C, 2),
+    _r("Ho una memory leak in un servizio Java che gira in produzione da una settimana, il profiler mostra l'heap che cresce ma non so come risalire all'oggetto responsabile.", _C, 3),
+    _r("Help me a capire come funziona il garbage collector in Python, ho un assignment sui reference cycle e non mi è chiaro quando un oggetto viene davvero liberato.", _C, 2),
+    _r("Il mio script Bash funziona sul mio laptop ma sul server mi dice permission denied, ho la deadline per la consegna e sto perdendo la testa.", _C, 2),
+    _r("Sto strugglando con le query SQL del mio progetto, la join mi ritorna righe duplicate e non capisco se il problema è nella query o nei dati.", _C, 2),
+    _r("Il prof vuole che il nostro progetto abbia una buona test coverage ma non ho capito come si scrivono i mock per una dipendenza esterna, help.", _C, 2),
+    _r("Ho debuggato per tre ore un loop infinito nel mio programma e alla fine era una condizione sbagliata nel while, come evito questi errori in futuro?", _C, 1),
+    _r("Sto lavorando a una feature nuova e il mio collega mi ha chiesto di fare il rebase sul main, ma ho paura di perdere i miei commit, come funziona in sicurezza?", _C, 2),
+    _r("Il mio codice Python è troppo lento sul dataset grande, il profiling dice che il collo di bottiglia è un nested loop e vorrei capire come renderlo più performante.", _C, 2),
+    # -- math --
+    _r("Sto preparando il midterm di algebra lineare e sto strugglando con il concetto di base e dimensione di uno spazio vettoriale, help me a capire come si trovano.", _M, 2),
+    _r("Ho un homework di analisi con un integrale per parti che mi manda in loop, la deadline è domani e non capisco quale funzione scegliere come derivata.", _M, 2),
+    _r("Il mio prof di probabilità dice che il teorema di Bayes è fondamentale per l'esame ma sto strugglando a capire quando applicarlo, mi spieghi il ragionamento?", _M, 2),
+    _r("Non capisco come si calcola un autovalore quando la matrice ha una riga di zeri, il mio TA dice che è facile ma io sono bloccato, help.", _M, 2),
+    _r("Sto strugglando con i limiti che danno forma indeterminata, il prof ci ha dato un quiz e vorrei capire quando conviene usare De L'Hôpital invece dei limiti notevoli.", _M, 1),
+    _r("Domani ho l'exam di statistica e non ho capito la differenza tra varianza campionaria e varianza della popolazione, qualche spiegazione semplice?", _M, 1),
+    _r("Per l'assignment di analisi 2 devo trovare i massimi e minimi vincolati di una funzione a due variabili e sto strugglando con i moltiplicatori di Lagrange.", _M, 2),
+    _r("Help me con questa dimostrazione per induzione: ho verificato il caso base ma non riesco a fare il passo induttivo, il prof dice che manca un'ipotesi.", _M, 2),
+    _r("Il mio prof ci ha assegnato un problema sugli spazi di Hilbert e sto strugglando a capire perché la completezza sia così importante, ho la deadline venerdì.", _M, 3),
+    _r("Sto studiando per il final di equazioni differenziali e non capisco come si risolve un'equazione lineare del secondo ordine quando le radici del polinomio caratteristico sono complesse.", _M, 2),
+    _r("Ho un topic di geometria che proprio non mi entra: come si trova la distanza tra due rette sghembe nello spazio? Il TA non ha chiarito.", _M, 2),
+    _r("Sto strugglando con la trasformata di Fourier e il teorema di convoluzione, ho l'exam tra una settimana e vorrei capire il ragionamento dietro la dimostrazione, help.", _M, 3),
+    # -- general --
+    _r("Sto strugglando a scegliere un regalo per l'anniversario dei miei, la deadline è sabato e non ho idea di cosa comprare, help me con qualche idea.", _G, 1),
+    _r("Ho un assignment di storia dell'arte e devo scrivere un saggio sul Barocco, il prof vuole una tesi originale ma non so su cosa concentrarmi.", _G, 2),
+    _r("Il mio boss mi ha chiesto di organizzare il team building di fine anno con una deadline strettissima, help me a trovare un'attività divertente e poco costosa.", _G, 1),
+    _r("Sto strugglando con la mia routine di allenamento, non riesco a essere costante e ho bisogno di un piano semplice per tornare in forma.", _G, 1),
+    _r("Domani ho un colloquio di lavoro e sono in totale panico, help me a capire come rispondere alla domanda sui miei punti deboli.", _G, 2),
+    _r("Ho il meeting più importante dell'anno e sto strugglando a decidere cosa indossare: il dress code dice smart casual ma non ho capito cosa significhi.", _G, 1),
+    _r("Sto facendo un refactoring completo del mio armadio, ho troppi vestiti e la deadline è il trasloco della prossima settimana, come scelgo cosa tenere?", _G, 1),
+    _r("Sto strugglando a imparare lo spagnolo, il mio assignment di conversazione è tra due giorni e non riesco a memorizzare i verbi irregolari, qualche trucco?", _G, 2),
+    # -- rights --
+    _r("Il mio landlord mi ha dato una deadline di quindici giorni per lasciare l'appartamento e sto strugglando a capire se può farlo senza una procedura di sfratto, help me.", _R, 2),
+    _r("Il mio boss vuole farmi firmare un nuovo contratto con un patto di non concorrenza e non capisco se sono obbligato ad accettarlo, help.", _R, 2),
+    _r("Ho ricevuto una lettera di licenziamento e la deadline per impugnarla mi preoccupa parecchio, quanto tempo ho esattamente per fare ricorso?", _R, 2),
+    _r("Il mio employer non mi paga gli straordinari da mesi e sto strugglando a capire se posso rivolgermi al giudice del lavoro senza perdere il posto.", _R, 2),
+    _r("Sto strugglando con la caparra del mio affitto: il padrone di casa non me la restituisce e ha superato la deadline prevista dal contratto, come posso fare?", _R, 2),
+    _r("La mia compagnia assicurativa rifiuta il risarcimento dopo un incidente e sto strugglando a capire quali sono i miei diritti e i tempi per fare reclamo, help me.", _R, 2),
+
+
+    # ══════════════════════════════════════════════════════════════════════
     # [T2 — report_espansione §9.3 / piano_lavoro T2] Espansione is_followup
     # ------------------------------------------------------------------------
     # Applicata la decisione D1-C (HISTORY_MAX_TURNS=1 in history_utils.py):
