@@ -807,8 +807,7 @@ MANUAL_RECORDS = [
     _fu("ok, e questa procedura vale anche in appello?", _R, 2, ["Come funziona il ricorso gerarchico e il ricorso al TAR nel diritto amministrativo?"]),
     _fu("giusto, e chi paga le spese in questi casi?", _R, 2, ["Quali sono le fasi del procedimento amministrativo e l'obbligo di motivazione."]),
     _fu("ah ok, e serve comunque un atto scritto?", _R, 2, ["Come si presenta un ricorso al giudice di pace contro una sanzione amministrativa?"]),
-    _fu("interessante, e vale anche per i contratti verbali?", _R, 2, ["Cosa prevede la normativa civile per l'acquisto della proprietà tramite usucapione?"]),
-
+    _fu("interessante, e vale anche per i contratti verbali?", _R, 2, ["Cosa prevede la normativa civile per l'acquisto della proprietà tramite usucapione?"])
 ]
 
 # ── False-Pipeline Hard Negatives (ex-FIX A-C1, ampliato) ────────────────────
@@ -1225,7 +1224,17 @@ def stratified_split(records: list) -> list:
 #   - 2 varianti per record selezionato (NOISE_VARIANTS_PER_SEED), a
 #     copertura di posizione/sapore diversi senza esplosione combinatoria.
 
-NOISE_INJECTION_RATIO   = 0.35   # frazione selezionata per ogni class-key (get_class_key)
+NOISE_INJECTION_RATIO   = 0.35   # frazione selezionata per i seed diff=1 (ratio di riferimento)
+# [T7 — report_espansione §8/§9.4] Stratificazione per DIFFICULTY: il ratio non e' piu'
+# uniforme per class-key ma per (class-key, difficulty). I seed diff 2/3 ricevono una
+# densita' di noise-wrap >= di quelli diff 1, cosi' la rete vede abbastanza esempi di
+# "query complessa ma scritta in modo narrativo/lungo" da rompere l'euristica spuria
+# "lungo/narrativo => semplice" (7/7 errori di difficulty erano sottostime, §8).
+# Vincolo di monotonia (diff1 <= diff2 <= diff3) verificato al caricamento del modulo.
+NOISE_RATIO_BY_DIFFICULTY = {1: NOISE_INJECTION_RATIO, 2: NOISE_INJECTION_RATIO, 3: NOISE_INJECTION_RATIO}
+if not (set(NOISE_RATIO_BY_DIFFICULTY) == {1, 2, 3}
+        and NOISE_RATIO_BY_DIFFICULTY[1] <= NOISE_RATIO_BY_DIFFICULTY[2] <= NOISE_RATIO_BY_DIFFICULTY[3]):
+    raise ValueError(f"NOISE_RATIO_BY_DIFFICULTY non monotono o incompleto: {NOISE_RATIO_BY_DIFFICULTY}")
 NOISE_VARIANTS_PER_SEED = 2      # varianti generate per ogni record selezionato
 
 # Pool "framing narrativo": topic-agnostic per costruzione — nessuna voce
@@ -1337,7 +1346,7 @@ def _compose_noise_variant(base_query: str, rng: random.Random) -> str:
     return f"{core}{frame}."
 
 
-def augment_noise(records: list, ratio: float = NOISE_INJECTION_RATIO,
+def augment_noise(records: list, ratio_by_diff: dict = None,
                    variants_per_seed: int = NOISE_VARIANTS_PER_SEED) -> list:
     """
     Genera varianti "rumorose" di record già etichettati, per insegnare
@@ -1352,18 +1361,25 @@ def augment_noise(records: list, ratio: float = NOISE_INJECTION_RATIO,
     altrimenti si reintroduce esattamente il leakage train/test già
     risolto per l'augmentation a sinonimi, vedi [FIX LEAKAGE] in main().
 
-    Selezione: `ratio` di record per ogni class-key (get_class_key) — stessa
-    granularità di augment_class(), a garanzia di copertura simmetrica sui
-    4 domini/3 pipeline/classi bridge non-pipeline (requisito §4.3.1). Ogni
-    record selezionato genera `variants_per_seed` varianti indipendenti
-    (posizione e sapore pescati a random) per coprire diversità di
-    posizione senza esplosione combinatoria (requisito §4.3.5).
+    [T7] Selezione STRATIFICATA PER DIFFICULTY: per ogni class-key
+    (get_class_key, copertura simmetrica sui 4 domini/3 pipeline/classi
+    bridge non-pipeline, requisito §4.3.1) i record sono divisi per
+    difficulty e da ciascun sottogruppo si seleziona
+    round(len(sottogruppo) * ratio_by_diff[difficulty]) sorgenti
+    (default NOISE_RATIO_BY_DIFFICULTY: diff 2/3 >= diff 1). Niente piu'
+    floor max(1, ...) per sottogruppo (gonfiava i sottogruppi diff=1
+    minuscoli oltre la densita' dei diff 2/3); resta pero' la garanzia
+    di almeno 1 sorgente per class-key (fallback rng.choice).
+    Ogni record selezionato genera `variants_per_seed` varianti
+    indipendenti (posizione e sapore pescati a random, requisito §4.3.5).
 
     Rng dedicato e deterministico (seed fisso, indipendente dallo stato
     globale di `random` già usato da augment_class()/stratified_split()):
     single responsibility, nessun effetto collaterale sull'ordine di
     generazione delle altre augmentation.
     """
+    ratio_by_diff = ratio_by_diff or NOISE_RATIO_BY_DIFFICULTY
+
     by_class = defaultdict(list)
     for r in records:
         by_class[get_class_key(r)].append(r)
@@ -1375,8 +1391,18 @@ def augment_noise(records: list, ratio: float = NOISE_INJECTION_RATIO,
     for group in by_class.values():
         if not group:
             continue
-        n_select = max(1, round(len(group) * ratio))
-        selected = rng.sample(group, min(n_select, len(group)))
+
+        by_diff = defaultdict(list)
+        for r in group:
+            by_diff[r['difficulty']].append(r)
+
+        selected = []
+        for d in sorted(by_diff):
+            sub = by_diff[d]
+            n_select = min(len(sub), round(len(sub) * ratio_by_diff[d]))
+            selected.extend(rng.sample(sub, n_select))
+        if not selected:
+            selected = [rng.choice(group)]
 
         for src in selected:
             for _ in range(variants_per_seed):
@@ -1546,6 +1572,14 @@ def main():
     print(f"  Record sorgente eleggibili (intent+bridge, con split) : {len(noise_source)}")
     print(f"  Varianti rumorose generate                            : {len(noise_extra)}")
     print(f"  Totale dopo noise augmentation                        : {len(all_rec)}")
+    dens = {}
+    for d in (1, 2, 3):
+        n_src = sum(1 for r in noise_source if r['difficulty'] == d)
+        n_var = sum(1 for r in noise_extra  if r['difficulty'] == d)
+        dens[d] = n_var / max(1, n_src)
+        print(f"  [T7] diff={d}: sorgenti {n_src:4d} -> varianti {n_var:4d}  (densità {dens[d]:.2f})")
+    if not (dens[1] <= dens[2] and dens[1] <= dens[3]):
+        print("  ⚠️  [T7 WARNING] densità noise diff 2/3 inferiore a diff 1: stratificazione non rispettata")
 
     # [HARD-NEG FIX] FASE 2ter — Rinforzo mirato hard-negatives,
     # INDIPENDENTE dalla saturazione del dominio mono genitore (vedi

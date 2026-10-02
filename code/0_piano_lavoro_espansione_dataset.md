@@ -87,7 +87,7 @@ Sbilanciamento grafo-mono vs grafo-pipeline: 99 mono-coding contro circa 5 bridg
 Rischio: la rete impara "vocabolario da grafo ⇒ mai pipeline".
 eval_dataset.jsonl non ha casi di pipeline su grafi, quindi il rischio non sarebbe visibile.
 In T9, dopo il retrain, prova a mano 3-4 query del tipo "implementa Floyd-Warshall e analizza la complessità". Se regrediscono, si riduce il wrap o si aggiungono seed pipeline su grafi.
-Lo split è cambiato di nuovo. I 34 record in più hanno spostato i confini 70/85% della classe coding. Il test set non è confrontabile con i run precedenti, come già previsto in D2.
+Lo split è cambiato di nuovo. I 34 record in più hanno spostato i confini 70/85% della classe coding. Il test set non è confrontabile con i run precedenti, come già previsto in D2. Quota di is_followup: nel train è scesa al 9,9%, contro l'obiettivo del piano di 12–15% (T2). Le nuove varianti noise e i seed senza history la diluiscono. Va ribilanciata in T8.
 
 **T8 — Target Fase 1 (~5.000)** · `build_dataset_v2.py`
 - [ ] Verificare punto §2.7 (pool `augment_class` include `_fu`/`_cd`)

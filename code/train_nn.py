@@ -27,6 +27,10 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.metrics import f1_score
+import random, os
+import numpy as np
+SEED = int(os.environ.get("CYA_SEED", 42))
+random.seed(SEED); np.random.seed(SEED); torch.manual_seed(SEED)
 
 from domains import MONO_DOMAINS
 from classifier_config import EMBEDDINGS_PATH, WEIGHTS_PATH
