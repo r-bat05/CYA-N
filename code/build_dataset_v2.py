@@ -18,13 +18,21 @@ import json, random, hashlib
 from collections import defaultdict, Counter
 from db_query import INTENT_SENTENCES, BRIDGE_SENTENCES
 from domains import BRIDGE_MAP
-from classifier_config import DATASET_PATH, DIFFICULTY_LABELS_PATH
+from classifier_config import DATASET_PATH, DIFFICULTY_LABELS_PATH, EVAL_DATASET_PATH
 
 random.seed(42)
 
 # ── Costanti ───────────────────────────────────────────────────────────────────
-TARGET_MONO = 250   # min esempi per ogni dominio mono
-TARGET_PIPE = 80    # min esempi per ogni tipo pipeline
+# [T8 — piano_lavoro §4 / report §9.1-9.3] Target Fase 1, ora PER CLASSE (dict).
+# I target sono minimi sulla dimensione del bucket PRE-noise (seed + sinonimi);
+# il noise-wrap (FASE 2bis) e i rinforzi hard-neg (FASE 2ter) si sommano sopra.
+# Misura (dry-run T8): la capacita' massima di varianti sinonimiche e' il vero
+# vincolo (general: poche frasi iniziano con un verbo di SYNONYMS), quindi i
+# target sono tarati per NON saturare le classi (saturare = near-duplicate,
+# "volume non copertura", report §9.1). Asimmetria: 'general' resta il bucket
+# piu' grande in valore assoluto (580 seed vs 382/289/278 pre-augmentation).
+TARGET_MONO = {'coding': 570, 'math': 500, 'rights': 410, 'general': 700}
+TARGET_PIPE = {'math->coding': 230, 'rights->coding': 215, 'rights->math': 120}
 # [M2 FIX] Target esplicito per le classi bridge NON-pipeline (general+math,
 # general+rights, cioè '+' in k ma '->' non in k): prima erano ESCLUSE
 # dall'augmentation (`if '+' in k and '->' not in k: continue`), restando a
@@ -33,7 +41,10 @@ TARGET_PIPE = 80    # min esempi per ogni tipo pipeline
 # NON promuovere 'general' a pipeline (segnale statisticamente debole).
 # Valore intermedio (non TARGET_PIPE: sono esempi negativi, non pattern
 # positivi da massimizzare quanto le pipeline vere).
-TARGET_BRIDGE_NEG = 40
+# [T8] 40 non era raggiungibile (general+math 7+9 varianti, general+rights 9+6 con
+# SYNONYMS esteso): il [M1 WARNING] era strutturale. Allineato alla capacita' reale;
+# per crescere servono nuovi SEED bridge, non target piu' alti.
+TARGET_BRIDGE_NEG = 15
 
 # [HARD-NEG FIX — wrong_query_TESTING.md rev.2] Target dedicati per
 # sottoinsiemi di record "difficili" (hard negatives) che altrimenti NON
@@ -45,9 +56,22 @@ TARGET_BRIDGE_NEG = 40
 # su A-C1: 10 record "calcola X in Python" rimasti verbatim, fix
 # precedente inefficace anche dopo retrain). Ogni sottoinsieme riceve
 # quindi un rinforzo ESPLICITO in FASE 2ter, fuori dal loop generico.
-TARGET_FALSE_PIPELINE_NEG     = 70  # "calcola/implementa X in Python" mono-coding
+# [T8] 70 era saturo dopo T6 (51 seed -> +19 sinonimi, famiglie vecchie impoverite). 110 = 51 + 59.
+TARGET_FALSE_PIPELINE_NEG     = 110  # "calcola/implementa X in Python" mono-coding
 FALSE_PIPELINE_NOISE_VARIANTS = 2   # varianti wrapping narrativo per record base
 KEYWORD_TRAP_NOISE_VARIANTS   = 3   # varianti wrapping narrativo per record base
+
+# [T8 — piano §4 nota post-T6: quota is_followup train da ribilanciare] FASE 2quater:
+# noise-wrap dei record con history di MANUAL_RECORDS (_fu e _cd), l'unico gruppo che
+# augment_noise() esclude di proposito. Scopo: (a) piu' positivi is_followup in forma
+# verbosa (causa D-FU7-verbose: il marcatore corto annegato nel wrapping, 1 solo _fu
+# lungo prima di T2); (b) _cd wrappati con ratio PIU' ALTO dei _fu: tiene il rapporto
+# positivi:negativi-con-history <= quello attuale, per non rafforzare la scorciatoia
+# "history presente => followup". Solo record brevi (i verbosi di T2-A sono gia' lunghi)
+# e non-pipeline.
+FU_NOISE_RATIO         = 0.6
+CD_NOISE_RATIO         = 1.0
+HISTORY_NOISE_MAX_WORDS = 14
 
 OUTPUT_PATH = DATASET_PATH   # [CFG-2 FIX] condiviso con precompute_embeddings.py
 
@@ -67,6 +91,19 @@ SYNONYMS = {
     'configura':  ['imposta', 'predisponi'],
     'verifica':   ['controlla', 'valida', 'accerta'],
     "cos'è":      ['cosa si intende per', 'che cosa rappresenta', 'in cosa consiste'],  # [FIX]
+    # [T8] Estensione copertura (M1): 'general' aveva 49 varianti totali su 287 seed
+    # senza history perche' le frasi iniziano con "Spiegami/Dammi/Raccontami", assenti
+    # dalla tabella; math perdeva "Trova/Determina/Applica/Studia/Definisci/Enuncia".
+    # Solo sostituzioni grammaticalmente sicure (stessa persona/modo, stessa reggenza).
+    'spiegami':   ['illustrami', 'descrivimi', 'chiariscimi'],
+    'dammi':      ['indicami', 'fornisci', 'proponi'],
+    'raccontami': ['narrami', 'descrivimi'],
+    'trova':      ['determina', 'individua', 'ricava'],
+    'determina':  ['trova', 'individua', 'calcola'],
+    'applica':    ['utilizza', 'impiega', 'usa'],
+    'studia':     ['analizza', 'esamina', 'valuta'],
+    'definisci':  ['descrivi', 'spiega'],
+    'enuncia':    ['esponi', 'formula'],
 }
 
 # ── Shortcut label sets ────────────────────────────────────────────────────────
@@ -1098,10 +1135,23 @@ def build_bridge_records() -> list:
             ))
     return records
 
-def augment_class(group: list, target: int) -> list:
+def augment_class(group: list, target: int, exclude_ids=frozenset()) -> list:
+    """
+    [T8 — verifica piano §2.7] Il pool NON include piu':
+      - record con history (_fu/_cd di MANUAL_RECORDS): la sostituzione sinonimica
+        genera quasi-duplicati della coppia (query, history) e farebbe crescere
+        _fu/_cd in modo incontrollato rispetto al bilanciamento is_followup curato
+        a mano (T1/T2) e in FASE 2quater. Misura: pool previo conteneva fino a 21
+        _fu e 41 _cd variabili per bucket coding/general/math.
+      - record in exclude_ids (FALSE_PIPELINE_HARD_NEGATIVES / KEYWORD_TRAP_NEGATIVES):
+        hanno gia' un rinforzo dedicato in FASE 2ter; con un TARGET_MONO[coding] piu'
+        alto del bucket verrebbero augmentati DUE volte (stesse varianti -> duplicati
+        esatti).
+    La condizione di arresto continua a contare TUTTO il bucket (len(group)).
+    """
     extra = []
     seen  = {r['query'] for r in group}
-    pool  = group * 30
+    pool  = [r for r in group if not r.get('history') and id(r) not in exclude_ids] * 30
     random.shuffle(pool)
     for r in pool:
         if len(group) + len(extra) >= target:
@@ -1475,6 +1525,21 @@ def augment_hard_negatives_noise(records: list, variants_per_record: int,
     return extra
 
 
+def count_eval_overlap(records: list):
+    """[T8] Numero di record con (query, history utente) identici a una riga di eval_dataset.jsonl."""
+    if not EVAL_DATASET_PATH.exists():
+        return None
+    _n = lambda t: ' '.join(t.strip().lower().split())
+    keys = set()
+    with open(EVAL_DATASET_PATH, 'r', encoding='utf-8') as f:
+        for line in f:
+            if line.strip():
+                e = json.loads(line)
+                keys.add((_n(e['query']),
+                          tuple(_n(m['content']) for m in e.get('history', []) if m.get('role') == 'user')))
+    return sum(1 for r in records if (_n(r['query']), tuple(_n(h) for h in r['history'])) in keys)
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
@@ -1514,6 +1579,8 @@ def main():
     # 'split', prima di sovrascrivere solo 'query'). Stesso principio vale
     # per augment_noise() più sotto (vedi [NOISE-AUG]).
     all_rec = stratified_split(all_rec)
+    hard_ids = {id(r) for r in FALSE_PIPELINE_HARD_NEGATIVES + KEYWORD_TRAP_NEGATIVES}  # [T8]
+    seed_overlap = count_eval_overlap(all_rec)                                          # [T8] baseline leakage
 
     class_map = defaultdict(list)
     for r in all_rec:
@@ -1524,7 +1591,7 @@ def main():
     below_target = []  # [M1 FIX] classi che restano sotto il target richiesto
     for k, group in class_map.items():
         if '->' in k:
-            target = TARGET_PIPE
+            target = TARGET_PIPE[k]
         elif '+' in k:
             # [M2 FIX] Bridge non-pipeline (general+math, general+rights):
             # prima escluse del tutto dall'augmentation (`continue`), ora
@@ -1533,10 +1600,10 @@ def main():
             # pattern positivi da massimizzare quanto le pipeline vere).
             target = TARGET_BRIDGE_NEG
         else:
-            target = TARGET_MONO
+            target = TARGET_MONO[k]
 
         if len(group) < target:
-            aug = augment_class(group, target)
+            aug = augment_class(group, target, hard_ids)
             total_after = len(group) + len(aug)
             print(f"  {k:25s}: +{len(aug):3d} record augmentati (tot={total_after}/{target})")
             if total_after < target:
@@ -1602,6 +1669,25 @@ def main():
     all_rec = all_rec + hard_neg_extra
     print(f"  Totale dopo rinforzo hard-negatives: {len(all_rec)}")
 
+    # [T8] FASE 2quater — noise-wrap dei record con history (_fu/_cd), vedi FU_NOISE_RATIO.
+    print(f"\n[FASE 2quater] Noise-wrap record con history (ribilanciamento is_followup):")
+    hist_src = [r for r in MANUAL_RECORDS
+                if r.get('split') and r['history'] and not r['is_pipeline']
+                and len(r['query'].split()) <= HISTORY_NOISE_MAX_WORDS]
+    fu_src = [r for r in hist_src if r['is_followup']]
+    cd_src = [r for r in hist_src if not r['is_followup']]
+    rng_h  = random.Random(4301)
+    fu_sel = rng_h.sample(fu_src, round(len(fu_src) * FU_NOISE_RATIO))
+    cd_sel = rng_h.sample(cd_src, round(len(cd_src) * CD_NOISE_RATIO))
+    hist_extra  = augment_hard_negatives_noise(fu_sel, 1, "followup [noise-wrap]", rng_seed=4301)
+    hist_extra += augment_hard_negatives_noise(cd_sel, 1, "domain-switch [noise-wrap]", rng_seed=4302)
+    all_rec = all_rec + hist_extra
+    print(f"  Totale dopo noise-wrap history: {len(all_rec)}")
+
+    # [T8] Rete di sicurezza finale: nessun duplicato esatto (query, history) tra le varie
+    # fasi (es. varianti sinonimiche coincidenti con altre fasi). Tiene il primo occorrente.
+    all_rec = dedup_records(all_rec)
+
     # [FIX LEAKAGE] Split già assegnato in FASE 1, prima dell'augmentation.
     # Questo shuffle è solo per l'ordine di scrittura nel file JSONL — NON
     # tocca lo split, altrimenti si reintroduce il leak.
@@ -1624,6 +1710,26 @@ def main():
     print(f"  record con history : {hist_n}")
     print(f"  is_followup=True   : {fu_n}  ({fu_n/len(all_rec)*100:.1f}%)")
     print(f"  record pipeline    : {pipe_n}")
+
+    # [T8] Report di verifica Fase 1 (piano §4 T8: conteggi per classe/split/difficulty/followup)
+    print(f"\n[T8 — CONTEGGI PER CLASSE]  (train/val/test)")
+    cls_c = defaultdict(Counter)
+    for r in all_rec:
+        cls_c[get_class_key(r)][r['split']] += 1
+    for k in sorted(cls_c):
+        c = cls_c[k]
+        print(f"  {k:16s}: {sum(c.values()):5d}   {c['train']}/{c['val']}/{c['test']}")
+    print(f"\n[T8 — is_followup / history per split]")
+    for sp in ('train', 'val', 'test'):
+        x  = [r for r in all_rec if r['split'] == sp]
+        fu = sum(1 for r in x if r['is_followup'])
+        h  = sum(1 for r in x if r['history'])
+        print(f"  {sp:5s}: n={len(x):4d}  followup={fu:4d} ({fu/len(x)*100:4.1f}%)  "
+              f"history={h:4d}  history-negativi={h-fu:4d}  (rapporto pos:neg-con-history = {fu/max(1,h-fu):.2f})")
+    gen_overlap = count_eval_overlap(all_rec)
+    if gen_overlap is not None:
+        flag = "OK" if gen_overlap <= seed_overlap else "⚠️  AUMENTATO: una fase di augmentation riproduce query dell'eval"
+        print(f"\n[T8 — LEAKAGE eval] righe dataset == eval (query+history): seed={seed_overlap} finale={gen_overlap}  {flag}")
     print(f"\n✅  Dataset salvato in: {OUTPUT_PATH}\n")
 
 

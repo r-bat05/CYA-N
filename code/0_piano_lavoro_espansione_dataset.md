@@ -75,7 +75,7 @@ Aggiornare la checklist §4 prima di ogni nuova chat.
 **T6 — False pipeline su grafi (P5)** · `build_dataset_v2.py` → `FALSE_PIPELINE_HARD_NEGATIVES` **✅ COMPLETATO**
 - [x] Dijkstra, BFS, DFS, componenti connesse, Bellman-Ford… solo "implementa", MAI "dimostra/analizza complessità" (sarebbe pipeline vera); verbo imperativo presente in `SYNONYMS`
 
-**T7 — Difficulty (§8, §9.4)** · `build_dataset_v2.py`
+**T7 — Difficulty (§8, §9.4)** · `build_dataset_v2.py` non eseguito perchè peggiorava
 - [ ] `augment_noise()` stratificato per difficulty (diff 2/3 ≥ densità di diff 1)
 - [ ] Seed diff 2/3 in forma wrap/slang (stile N-CS3, G-NOISE1)
 
@@ -89,10 +89,10 @@ eval_dataset.jsonl non ha casi di pipeline su grafi, quindi il rischio non sareb
 In T9, dopo il retrain, prova a mano 3-4 query del tipo "implementa Floyd-Warshall e analizza la complessità". Se regrediscono, si riduce il wrap o si aggiungono seed pipeline su grafi.
 Lo split è cambiato di nuovo. I 34 record in più hanno spostato i confini 70/85% della classe coding. Il test set non è confrontabile con i run precedenti, come già previsto in D2. Quota di is_followup: nel train è scesa al 9,9%, contro l'obiettivo del piano di 12–15% (T2). Le nuove varianti noise e i seed senza history la diluiscono. Va ribilanciata in T8.
 
-**T8 — Target Fase 1 (~5.000)** · `build_dataset_v2.py`
-- [ ] Verificare punto §2.7 (pool `augment_class` include `_fu`/`_cd`)
-- [ ] `TARGET_MONO` asimmetrico (general > altri), `TARGET_PIPE`, `TARGET_BRIDGE_NEG`, `TARGET_FALSE_PIPELINE_NEG`
-- [ ] Dry-run con conteggi per classe/split/difficulty/followup
+**T8 — Target Fase 1 (~5.000)** · `build_dataset_v2.py` **✅ COMPLETATO**
+- [x] Verificare punto §2.7 (pool `augment_class` include `_fu`/`_cd`)
+- [x] `TARGET_MONO` asimmetrico (general > altri), `TARGET_PIPE`, `TARGET_BRIDGE_NEG`, `TARGET_FALSE_PIPELINE_NEG`
+- [x] Dry-run con conteggi per classe/split/difficulty/followup
 
 **T9 — Cascade e verifica Fase 1**
 - [ ] Applicati D1 e D2 (+ retrain baseline se D2-B)
