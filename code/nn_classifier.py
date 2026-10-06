@@ -34,7 +34,8 @@ from typing import Tuple, Optional
 import config
 from history_utils import build_input_str, HISTORY_MAX_TURNS
 from domains import DOMAIN_NAMES, PIPELINE_CLASSES, PIPELINE_ORDER
-from classifier_config import WEIGHTS_PATH, ENCODER_MODEL_NAME
+# import (sostituisce la riga esistente)
+from classifier_config import WEIGHTS_PATH, ENCODER_MODEL_NAME, ENCODER_MAX_SEQ_LEN
 from model_architecture import (
     MultiTaskMLP,
     CKPT_STATE_DICT_KEY,
@@ -72,6 +73,7 @@ def _load_model():
 
     print(f"[NN_CLASSIFIER] Caricamento encoder: {ENCODER_MODEL_NAME}")
     _encoder = SentenceTransformer(ENCODER_MODEL_NAME)
+    _encoder.max_seq_length = ENCODER_MAX_SEQ_LEN
     _encoder.eval()
 
     print(f"[NN_CLASSIFIER] Caricamento pesi: {WEIGHTS_PATH}")

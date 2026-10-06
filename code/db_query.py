@@ -1343,35 +1343,90 @@ BRIDGE_SENTENCES: Dict[Tuple[str, str], List[str]] = {
         "Qual è la formula per il calcolo dell'indice di Herfindahl-Hirschman (HHI) e come viene usato dall'AGCM per valutare le concentrazioni di mercato?",
     ],
 
-    # -------------------------------------------------------------------------
-    # GENERAL <-> MATH (7 frasi uniche)
-    # -------------------------------------------------------------------------
-    ('general', 'math'): [
-        # --- Lato math (più formale) ---
-        "Qual è la proporzione matematica esatta per ricalcolare le dosi di una ricetta passando da 2 a 9 persone?",
-        "Come si imposta l'equazione per calcolare il reale tasso di sconto applicato durante i saldi stagionali?",
-        "Dimostra matematicamente come il tasso di cambio composto influisce sul costo reale di una vacanza all'estero.",
-        "Spiega con formule come calcolare il consumo medio di carburante e l'efficienza energetica di un veicolo su base mensile.",
-        # --- Lato general (più pratico) ---
-        "Qual è il metodo mentale più veloce per calcolare al volo lo sconto del 30% su un capo d'abbigliamento in negozio?",
-        "Come faccio a calcolare esattamente quanta vernice o metri quadri mi servono per dipingere le pareti della mia stanza?",
-        "Spiegami come si convertono mentalmente i gradi Fahrenheit in Celsius quando si viaggia negli Stati Uniti.",
-    ],
 
-    # -------------------------------------------------------------------------
-    # GENERAL <-> RIGHTS (9 frasi uniche)
-    # -------------------------------------------------------------------------
-    ('general', 'rights'): [
-        # --- Lato rights (più formale) ---
-        "Quali sono le clausole obbligatorie per registrare un contratto di affitto transitorio per studenti universitari?",
-        "Cosa prevede il Codice del Consumo o la Carta dei Diritti del Passeggero per il rimborso di un volo cancellato o in ritardo?",
-        "Come si attiva la garanzia legale di conformità per un prodotto difettoso acquistato su un portale e-commerce?",
-        "Qual è la procedura per la constatazione amichevole (CID) e l'attribuzione delle responsabilità civili in un tamponamento a catena?",
-        "Quali sono le norme esatte del codice civile riguardanti il rispetto delle distanze legali e l'immissione di fumo tra vicini?",
-        # --- Lato general (più pratico) ---
-        "Quali sono i documenti necessari e i passi pratici da fare al Comune per cambiare la residenza in una nuova città?",
-        "Dammi dei consigli pratici su cosa verificare prima di prendere in affitto un appartamento per la prima volta.",
-        "Come funziona la procedura pratica per fare il reso gratuito su Amazon e quanti giorni ho per restituire il pacco?",
-        "Spiegami cosa fare praticamente e chi chiamare immediatamente subito dopo aver fatto un piccolo incidente in auto.",
-    ],
 }
+
+# =============================================================================
+# [v3] Spostamenti e nuovi seed (D1 calcolo normativo→rights; D2 niente bridge
+# general+X; P3 query brevissime). Eseguito DOPO la definizione dei due dict.
+# `.remove()` solleva ValueError se la frase non c'è: drift segnalato subito.
+# =============================================================================
+# D2: general+math → mono per lato
+INTENT_SENTENCES['math'].extend([
+    "Qual è la proporzione matematica esatta per ricalcolare le dosi di una ricetta passando da 2 a 9 persone?",
+    "Come si imposta l'equazione per calcolare il reale tasso di sconto applicato durante i saldi stagionali?",
+    "Dimostra matematicamente come il tasso di cambio composto influisce sul costo reale di una vacanza all'estero.",
+    "Spiega con formule come calcolare il consumo medio di carburante e l'efficienza energetica di un veicolo su base mensile.",
+])
+INTENT_SENTENCES['general'].extend([
+    "Qual è il metodo mentale più veloce per calcolare al volo lo sconto del 30% su un capo d'abbigliamento in negozio?",
+    "Come faccio a calcolare esattamente quanta vernice o metri quadri mi servono per dipingere le pareti della mia stanza?",
+    "Spiegami come si convertono mentalmente i gradi Fahrenheit in Celsius quando si viaggia negli Stati Uniti.",
+    # general+rights → lato pratico
+    "Quali sono i documenti necessari e i passi pratici da fare al Comune per cambiare la residenza in una nuova città?",
+    "Dammi dei consigli pratici su cosa verificare prima di prendere in affitto un appartamento per la prima volta.",
+    "Come funziona la procedura pratica per fare il reso gratuito su Amazon e quanti giorni ho per restituire il pacco?",
+    "Spiegami cosa fare praticamente e chi chiamare immediatamente subito dopo aver fatto un piccolo incidente in auto.",
+])
+INTENT_SENTENCES['rights'].extend([
+    "Quali sono le clausole obbligatorie per registrare un contratto di affitto transitorio per studenti universitari?",
+    "Cosa prevede il Codice del Consumo o la Carta dei Diritti del Passeggero per il rimborso di un volo cancellato o in ritardo?",
+    "Come si attiva la garanzia legale di conformità per un prodotto difettoso acquistato su un portale e-commerce?",
+    "Qual è la procedura per la constatazione amichevole (CID) e l'attribuzione delle responsabilità civili in un tamponamento a catena?",
+    "Quali sono le norme esatte del codice civile riguardanti il rispetto delle distanze legali e l'immissione di fumo tra vicini?",
+])
+
+# D1: calcolo normativo SENZA richiesta matematica esplicita: bridge math-rights → rights mono
+_TO_RIGHTS = [
+    "Come si quantifica il danno biologico permanente usando le tabelle risarcitorie del Tribunale di Milano?",
+    "Qual è il calcolo legale esatto per la ripartizione millesimale delle spese condominiali di rifacimento tetto?",
+    "Quale procedura di calcolo prevede il codice civile per la rivalutazione monetaria dei crediti risarcitori?",
+    "Come si calcolano gli interessi moratori su un debito commerciale secondo le direttive europee sui ritardi di pagamento?",
+    "Qual è il calcolo previsto dalla normativa per la determinazione del valore di avviamento di un'azienda in sede di cessione?",
+    "Come si calcola l'impatto economico del superamento del tetto contributivo INPS sul netto in busta paga secondo le aliquote vigenti?",
+    "Come si calcola il piano di rimborso anticipato di un mutuo e qual è il metodo normativo per la penale massima ai sensi del D.Lgs. 141/2010?",
+]
+for _s in _TO_RIGHTS:
+    BRIDGE_SENTENCES[('math', 'rights')].remove(_s)
+INTENT_SENTENCES['rights'].extend(_TO_RIGHTS)
+
+# Richiesta matematica ESPLICITA → bridge rights->math
+_TO_BRIDGE = [
+    "Come si ricalcolano matematicamente le tabelle millesimali di un condominio se un condomino effettua un ampliamento volumetrico?",
+    "Come si calcolano matematicamente gli oneri di urbanizzazione per il rilascio del permesso di costruire?",
+]
+for _s in _TO_BRIDGE:
+    INTENT_SENTENCES['rights'].remove(_s)
+_TFR = "Spiegami la derivazione matematica della formula del TFR stabilita dalla normativa."
+INTENT_SENTENCES['math'].remove(_TFR)
+BRIDGE_SENTENCES[('math', 'rights')].extend(_TO_BRIDGE + [_TFR])
+
+# P3 — query brevissime (1-4 parole). Ogni frase ha la voce in difficulty_labels.json.
+INTENT_SENTENCES['coding'].extend([
+    "git stash", "docker volume", "SQL subquery", "Python lambda", "CSS grid",
+    "pytest fixture", "async Python", "JavaScript closure", "bash grep", "React useEffect",
+    "Java stream", "TypeScript generics", "Flask blueprint", "SQL index", "C++ vector",
+])
+INTENT_SENTENCES['math'].extend([
+    "derivata arcsin", "integrale x^2", "limite notevole", "matrice inversa 2x2", "serie geometrica",
+    "teorema Rolle", "coniche equazione", "varianza campionaria", "rango matrice", "modulo numero complesso",
+    "proprietà logaritmi", "disequazione secondo grado", "prodotto matrici", "gradiente funzione", "binomio di Newton",
+])
+INTENT_SENTENCES['rights'].extend([
+    "registrazione contratto locazione", "diritto di recesso", "requisiti usucapione", "patto di non concorrenza",
+    "durata DASPO", "sanzioni GDPR", "prova del mobbing", "legittima difesa", "successione senza testamento",
+    "caparra confirmatoria", "diffamazione online", "ricorso al TAR", "permesso di soggiorno",
+    "licenza software", "clausole vessatorie",
+])
+BRIDGE_SENTENCES[('coding', 'math')].extend([
+    "SVD teoria Python", "Newton-Raphson convergenza codice", "PCA dimostrazione Python",
+    "Monte Carlo errore Python", "Simpson errore implementazione", "ODE Eulero stabilità codice",
+])
+BRIDGE_SENTENCES[('coding', 'rights')].extend([
+    "GDPR cookie banner codice", "Python log accessi GDPR", "cifratura password normativa Python",
+    "script cancellazione dati GDPR", "firma elettronica Python eIDAS", "DPIA automatica Python",
+])
+BRIDGE_SENTENCES[('math', 'rights')].extend([
+    "formula matematica TFR", "calcolo matematico soglia usura", "dimostra formula ammortamento",
+    "modello matematico indennità licenziamento", "formula attuariale riscatto", "calcola matematicamente danno biologico",
+])

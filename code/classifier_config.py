@@ -16,5 +16,6 @@ WEIGHTS_PATH            = _BASE_DIR / 'classifier' / 'nn_weights.pt'
 DIFFICULTY_LABELS_PATH  = _BASE_DIR / 'difficulty_labels.json'
 EVAL_DATASET_PATH       = _BASE_DIR / 'eval_dataset.jsonl'
 
+ENCODER_MAX_SEQ_LEN = 256  # default MiniLM = 128: oltre, la coda ([QUERY] / nucleo tecnico) viene troncata
 ENCODER_MODEL_NAME = 'paraphrase-multilingual-MiniLM-L12-v2'
 EMBEDDING_DIM       = 384  # deve combaciare con ENCODER_MODEL_NAME

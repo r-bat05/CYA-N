@@ -117,11 +117,10 @@ SYSTEM_SETTINGS = {
 # --- 4. CONFIGURAZIONE NEURAL CLASSIFIER ---
 # Soglie interne al meccanismo di decisione della NN (_derive_class_id in
 # nn_classifier.py): trasformano i domain_probs grezzi in class_id.
-# Fanno parte di COME la rete produce il proprio output, non lo alterano
-# a posteriori — per questo restano, a differenza delle soglie rimosse sopra.
+# Fanno parte di COME la rete produce il proprio output
 NEURAL_CLASSIFIER_SETTINGS = {
-    'threshold_mono':     0.50,   # soglia candidatura stadio 1 (permissiva)
-    'threshold_pipeline': 0.75,   # soglia conferma coppia stadio 2 (severa)
+    'threshold_mono':     0.75,   # soglia candidatura per primo modulo
+    'threshold_pipeline': 0.78,   # soglia conferma coppia stadio 2 (severa)
 }
 
 # --- 5. CONFIGURAZIONE PIPELINE MULTI-AGENTE ---
