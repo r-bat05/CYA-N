@@ -32,26 +32,18 @@ PIPELINE_ORDER = {
 
 # Coppie bridge NON-pipeline usate in db_query.py::BRIDGE_SENTENCES
 # (general+math, general+rights — esempi negativi, non pipeline vere).
-_NON_PIPELINE_BRIDGES = [
-    ('general', 'math'), ('math', 'general'),
-    ('general', 'rights'), ('rights', 'general'),
-]
-
 
 def _build_bridge_map():
     """
-    (d1, d2) -> (nome_pipeline | None, is_pipeline: bool), entrambe le
-    direzioni. Derivato da PIPELINE_CLASSES — era BRIDGE_MAP in
-    build_dataset_v2.py, 10 entry mantenute a mano indipendentemente.
+    (d1, d2) -> (nome_pipeline, True), entrambe le direzioni. Derivato da
+    PIPELINE_CLASSES. [D2] Nessuna coppia non-pipeline: i bridge general+X
+    sono stati ricondotti a mono-dominio.
     """
     m = {}
     for class_id, (a, b) in PIPELINE_CLASSES.items():
         name = DOMAIN_NAMES[class_id]
         m[(a, b)] = (name, True)
         m[(b, a)] = (name, True)
-    for pair in _NON_PIPELINE_BRIDGES:
-        m[pair] = (None, False)
     return m
-
 
 BRIDGE_MAP = _build_bridge_map()

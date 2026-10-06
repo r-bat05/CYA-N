@@ -33,18 +33,7 @@ random.seed(42)
 # piu' grande in valore assoluto (580 seed vs 382/289/278 pre-augmentation).
 TARGET_MONO = {'coding': 570, 'math': 500, 'rights': 410, 'general': 700}
 TARGET_PIPE = {'math->coding': 230, 'rights->coding': 215, 'rights->math': 120}
-# [M2 FIX] Target esplicito per le classi bridge NON-pipeline (general+math,
-# general+rights, cioè '+' in k ma '->' non in k): prima erano ESCLUSE
-# dall'augmentation (`if '+' in k and '->' not in k: continue`), restando a
-# 7/9 esempi grezzi contro i 250 dei mono-domain e gli 80 delle pipeline —
-# uno sbilanciamento marcato proprio sugli esempi che insegnano alla NN a
-# NON promuovere 'general' a pipeline (segnale statisticamente debole).
-# Valore intermedio (non TARGET_PIPE: sono esempi negativi, non pattern
-# positivi da massimizzare quanto le pipeline vere).
-# [T8] 40 non era raggiungibile (general+math 7+9 varianti, general+rights 9+6 con
-# SYNONYMS esteso): il [M1 WARNING] era strutturale. Allineato alla capacita' reale;
-# per crescere servono nuovi SEED bridge, non target piu' alti.
-TARGET_BRIDGE_NEG = 15
+
 
 # [HARD-NEG FIX — wrong_query_TESTING.md rev.2] Target dedicati per
 # sottoinsiemi di record "difficili" (hard negatives) che altrimenti NON
@@ -362,12 +351,8 @@ MANUAL_RECORDS = [
     _cd("scrivi un programma che simula il lancio di una moneta", _C, 2, ["Spiega la teoria della probabilità."]),
     _cd("qual è la formula per calcolare gli interessi composti?", _M, 2, ["Cosa mi consigli per risparmiare?"]),
     _cd("quali norme regolano il telelavoro in Italia?", _R, 2, ["Cosa cambierà nel mondo del lavoro con l'AI?"]),
-    # [FIX label-consistency] Era _M (mono-math): contraddiceva
-    # expected_domain="rights" in eval_dataset.jsonl (F-EC7), causando un
-    # test case auto-contraddittorio. Query bridge fiscale genuina
-    # (calcolo + normativa IVA): ora rights->math esplicito.
-    _r("come si calcola l'IVA su una fattura?", _RM, 1, is_pipe=True, pipe_type="rights->math",
-       hist=["Come funziona la partita IVA?"], is_followup=False),
+    # [D1] calcolo normativo semplice → rights (F-EC7 allineato)
+    _cd("come si calcola l'IVA su una fattura?", _R, 1, ["Come funziona la partita IVA?"]),
     _cd("scrivi una funzione Python per la validazione dell'email", _C, 1, ["Cosa prevede il GDPR sul consenso?"]),
     _cd("implementa il login con JWT in Flask", _C, 2, ["Come funziona l'autenticazione a due fattori?"]),
     _cd("è legale vendere dati statistici anonimi?", _R, 2, ["Come funziona l'analisi della varianza ANOVA?"]),
@@ -465,7 +450,7 @@ MANUAL_RECORDS = [
 
     # ── [FIX WRONG_QUERY] MATH — calcoli percentuali/fiscali ──
     _r("Come si calcola la percentuale di sconto applicata a un prezzo?", _M, 1),
-    _r("Qual è la formula per calcolare l'IVA al 22% su un importo?", _M, 1),
+    _r("Qual è la formula per calcolare l'IVA al 22% su un importo?", _R, 1),   # D1: calcolo normativo → rights
 
     # ── [FIX WRONG_QUERY] CODING — ricorsione/algoritmi (NON identiche a
     #    step4_evaluation.py: evitare leakage sul test set) ──
@@ -847,6 +832,111 @@ MANUAL_RECORDS = [
     _fu("interessante, e vale anche per i contratti verbali?", _R, 2, ["Cosa prevede la normativa civile per l'acquisto della proprietà tramite usucapione?"])
 ]
 
+# ── [v3] P1 pipeline con history | P1b followup dopo pipeline (→ ultimo modulo) | P2 switch tecnico→tecnico | P5 stesso dominio ──
+MANUAL_RECORDS += [
+    # P1 — math->coding con history
+    _r("Implementa in Python il metodo di Simpson e dimostra la formula dell'errore di quadratura.", _CM, 3, True, "math->coding", hist=["Consigliami un film di fantascienza."]),
+    _r("Scrivi il codice per il metodo delle potenze e dimostra perché converge all'autovalore dominante.", _CM, 3, True, "math->coding", hist=["Come si prepara la pasta frolla?"]),
+    _r("Implementa in Python la decomposizione QR con Householder e dimostra l'ortogonalità di Q.", _CM, 3, True, "math->coding", hist=["Cosa prevede il GDPR sul diritto all'oblio?"]),
+    _r("Codice Python per il filtro di Kalman scalare con derivazione matematica delle equazioni di aggiornamento.", _CM, 3, True, "math->coding", hist=["Quali sono le tutele per il whistleblowing aziendale?"]),
+    _r("Scrivi uno script che stima π con Monte Carlo e dimostra la convergenza dell'errore come 1/sqrt(N).", _CM, 3, True, "math->coding", hist=["Che film mi consigli per stasera?"]),
+    _r("Implementa il metodo di Newton in Python e dimostra la convergenza quadratica.", _CM, 3, True, "math->coding", hist=["Come funziona il garbage collector in Java?"]),
+    _r("Implementa in C++ l'algoritmo di Gauss-Seidel e analizza matematicamente la condizione di convergenza.", _CM, 3, True, "math->coding", hist=["Calcola il determinante di una matrice 3x3."]),
+    _r("Scrivi in Python la discesa del gradiente e dimostra la convergenza per funzioni convesse.", _CM, 3, True, "math->coding", hist=["Dammi una ricetta per il risotto."]),
+    _r("Implementa il crivello di Eratostene in Python e dimostra la complessità O(n log log n).", _CM, 3, True, "math->coding", hist=["Come si coltivano le erbe aromatiche in vaso?"]),
+    _r("Codice Python per la regressione polinomiale con derivazione delle equazioni normali.", _CM, 2, True, "math->coding", hist=["Spiega il pattern Observer in OOP."]),
+    # P1 — rights->coding con history
+    _r("Scrivi uno script Python che calcola le ferie maturate rispettando il CCNL commercio.", _RC, 3, True, "rights->coding", hist=["Consigliami un libro da leggere."]),
+    _r("Implementa in Python un sistema di consenso per i cookie conforme alla direttiva ePrivacy.", _RC, 2, True, "rights->coding", hist=["Come si imposta una routine di allenamento?"]),
+    _r("Scrivi il codice per cifrare i dati sanitari rispettando le misure di sicurezza del GDPR.", _RC, 3, True, "rights->coding", hist=["Dimostra il teorema di Bayes con un esempio."]),
+    _r("Sviluppa in Python un modulo che genera la DPIA compilando i campi richiesti dall'art. 35 GDPR.", _RC, 3, True, "rights->coding", hist=["Quanti pianeti ci sono nel sistema solare?"]),
+    _r("Codice Python per conservare i log di accesso per il periodo minimo previsto dal Garante per gli amministratori di sistema.", _RC, 3, True, "rights->coding", hist=["Qual è il fiume più lungo d'Europa?"]),
+    _r("Scrivi uno script che verifica la scadenza dei permessi di soggiorno dei dipendenti rispettando il Testo Unico sull'immigrazione.", _RC, 2, True, "rights->coding", hist=["Implementa una coda con priorità in Python."]),
+    _r("Implementa un endpoint Flask per il diritto di rettifica dei dati personali ai sensi dell'art. 16 GDPR.", _RC, 2, True, "rights->coding", hist=["Cosa prevede il Codice del Consumo sul recesso?"]),
+    _r("Scrivi il codice per generare la fattura elettronica XML con i campi obbligatori dell'Agenzia delle Entrate.", _RC, 2, True, "rights->coding", hist=["Consigliami una serie tv."]),
+    _r("Sviluppa uno script Python che anonimizza le segnalazioni whistleblowing come richiesto dal D.Lgs. 24/2023.", _RC, 3, True, "rights->coding", hist=["Come si calcola l'area di un cerchio?"]),
+    _r("Implementa in Java il controllo di conformità delle clausole di licenza open source GPL.", _RC, 2, True, "rights->coding", hist=["Come si risolve un merge conflict su Git?"]),
+    # P1 — rights->math con history
+    _r("Dimostra matematicamente la formula per calcolare la rivalutazione del TFR con il coefficiente ISTAT.", _RM, 2, True, "rights->math", hist=["Consigliami un ristorante a Roma."]),
+    _r("Qual è il modello matematico per calcolare la quota di mantenimento in base ai redditi dei coniugi secondo la giurisprudenza?", _RM, 3, True, "rights->math", hist=["Che tempo fa domani?"]),
+    _r("Deriva la formula matematica del tasso effettivo globale per un mutuo a rata costante secondo la normativa bancaria.", _RM, 3, True, "rights->math", hist=["Come si prepara il tiramisù?"]),
+    _r("Calcola matematicamente le quote ereditarie dei legittimari con la formula del codice civile e dimostra il risultato.", _RM, 3, True, "rights->math", hist=["Dimostra il teorema di Rolle."]),
+    _r("Dimostra con una formula come si ripartisce il danno tra i corresponsabili secondo l'art. 2055 c.c.", _RM, 3, True, "rights->math", hist=["Come funziona il pattern Factory?"]),
+    _r("Qual è la formula matematica dell'indennità di mobilità e come la disciplina la legge?", _RM, 2, True, "rights->math", hist=["Che film mi consigli?"]),
+    _r("Dimostra matematicamente il calcolo dell'imposta progressiva per scaglioni previsto dal TUIR.", _RM, 2, True, "rights->math", hist=["Cosa prevede il GDPR sulle sanzioni?"]),
+    _r("Determina con modello matematico il valore attuale della rendita vitalizia secondo le tabelle ministeriali.", _RM, 3, True, "rights->math", hist=["Come si organizza un trasloco?"]),
+    _r("Spiega la formula matematica per calcolare gli interessi legali e il tasso fissato dal Ministero dell'Economia.", _RM, 2, True, "rights->math", hist=["Qual è il fiume più lungo d'Italia?"]),
+    _r("Calcola matematicamente il compenso dell'avvocato con i parametri forensi e dimostra la formula applicata.", _RM, 2, True, "rights->math", hist=["Come si scrive un decoratore in Python?"]),
+
+    # P1b — followup dopo pipeline → dominio = ULTIMO modulo (coding)
+    _fu("e il caso peggiore?",                        _C, 2, ["Implementa in Python il metodo di Simpson e dimostra la formula dell'errore."]),
+    _fu("spiega meglio il passaggio dell'errore",     _C, 2, ["Implementa in Python il metodo di Simpson e dimostra la formula dell'errore."]),
+    _fu("puoi aggiungere i test?",                    _C, 2, ["Scrivi il codice per il metodo delle potenze e dimostra la convergenza all'autovalore dominante."]),
+    _fu("e se la matrice è sparsa?",                  _C, 2, ["Scrivi il codice per il metodo delle potenze e dimostra la convergenza all'autovalore dominante."]),
+    _fu("mostrami come lo rendo più veloce",          _C, 2, ["Scrivi in Python la discesa del gradiente e dimostra la convergenza."]),
+    _fu("non ho capito la dimostrazione",             _C, 2, ["Scrivi in Python la discesa del gradiente e dimostra la convergenza."]),
+    _fu("e come gestisco gli errori?",                _C, 2, ["Sviluppa uno script Python che anonimizza i dati rispettando il GDPR."]),
+    _fu("e se i dati sono molti?",                    _C, 2, ["Sviluppa uno script Python che anonimizza i dati rispettando il GDPR."]),
+    _fu("puoi riscriverlo in Java?",                  _C, 2, ["Implementa un endpoint Flask per il diritto di accesso ai dati personali ai sensi del GDPR."]),
+    _fu("aggiungi i commenti al codice",              _C, 1, ["Implementa un endpoint Flask per il diritto di accesso ai dati personali ai sensi del GDPR."]),
+    _fu("e con Django invece di Flask?",              _C, 2, ["Implementa un endpoint Flask per il diritto di accesso ai dati personali ai sensi del GDPR."]),
+    _fu("come lo collaudo?",                          _C, 2, ["Implementa in Python un sistema di consenso per i cookie conforme alla direttiva ePrivacy."]),
+
+    # P2 — switch tecnico→tecnico (query esplicita, is_followup=False)
+    _cd("Scrivi una funzione Python che inverte una stringa.",                       _C, 1, ["Calcola l'integrale di x al quadrato."]),
+    _cd("Come si crea un repository Git e si fa il primo commit?",                   _C, 1, ["Dimostra il teorema di Lagrange."]),
+    _cd("Implementa una lista concatenata in C.",                                    _C, 2, ["Calcola gli autovalori di una matrice 2x2."]),
+    _cd("Come si configura un server nginx come reverse proxy?",                     _C, 2, ["Spiega la serie di Taylor."]),
+    _cd("Scrivi una query SQL che conta gli ordini per cliente.",                    _C, 1, ["Qual è la probabilità di ottenere testa tre volte?"]),
+    _cd("Come si scrive un test con pytest per una funzione che somma due numeri?",  _C, 1, ["Cosa prevede il GDPR sul consenso?"]),
+    _cd("Implementa un algoritmo di ordinamento per inserimento in Java.",           _C, 1, ["Quali sono i diritti del lavoratore in caso di malattia?"]),
+    _cd("Come si usano gli hook useState e useEffect in React?",                     _C, 2, ["Spiega la differenza tra dolo e colpa."]),
+    _cd("Scrivi un Dockerfile per un'applicazione Flask.",                           _C, 2, ["Come funziona la successione legittima?"]),
+    _cd("Come si gestisce un'eccezione in C#?",                                      _C, 1, ["Cos'è la prescrizione del reato?"]),
+    _cd("Calcola la derivata di f(x) = x^2 * ln(x).",                                _M, 1, ["Come si centra un div con CSS?"]),
+    _cd("Risolvi il sistema lineare x + y = 3, 2x - y = 0.",                         _M, 1, ["Spiega il pattern Singleton."]),
+    _cd("Dimostra che la somma degli angoli interni di un triangolo è 180 gradi.",   _M, 1, ["Come si scrive una query SQL con JOIN?"]),
+    _cd("Calcola il limite di sin(x)/x per x che tende a zero.",                     _M, 1, ["Come funziona un reverse proxy?"]),
+    _cd("Trova gli autovalori della matrice [[2,1],[1,2]].",                         _M, 2, ["Scrivi un decoratore in Python."]),
+    _cd("Calcola l'integrale definito di cos(x) tra 0 e pi greco mezzi.",            _M, 1, ["Quali sono gli obblighi del datore di lavoro sulla sicurezza?"]),
+    _cd("Qual è la varianza di una variabile aleatoria uniforme tra 0 e 1?",         _M, 2, ["Come si impugna un licenziamento?"]),
+    _cd("Risolvi l'equazione differenziale y' = 2y con y(0)=1.",                     _M, 2, ["Cosa prevede il Codice del Consumo?"]),
+    _cd("Dimostra per induzione che 2^n è maggiore di n per ogni n naturale.",       _M, 2, ["Spiega il diritto di prelazione."]),
+    _cd("Calcola il prodotto scalare tra i vettori (1,2,3) e (4,5,6).",              _M, 1, ["Come si usa Docker Compose?"]),
+    _cd("Quali sono i requisiti per il divorzio breve in Italia?",                   _R, 1, ["Implementa una coda con priorità in Python."]),
+    _cd("Cosa prevede la legge sul periodo di prova nei contratti di lavoro?",       _R, 1, ["Calcola il determinante di una matrice 3x3."]),
+    _cd("Come funziona la garanzia legale di conformità per un acquisto online?",    _R, 1, ["Scrivi uno script Bash per fare un backup."]),
+    _cd("Quando un contratto è annullabile per errore o dolo?",                      _R, 2, ["Calcola la derivata di sin(x)*x."]),
+    _cd("Cosa rischia chi commette il reato di truffa?",                             _R, 1, ["Spiega la differenza tra stack e heap."]),
+    _cd("Quali sono i diritti del consumatore in caso di volo cancellato?",          _R, 1, ["Dimostra il teorema di Pitagora."]),
+    _cd("Entro quanto tempo si può impugnare un testamento?",                        _R, 2, ["Come funziona il garbage collector in Python?"]),
+    _cd("Come funziona la mediazione obbligatoria prima di una causa civile?",       _R, 2, ["Risolvi l'equazione x^2 - 5x + 6 = 0."]),
+    _cd("Cosa prevede la legge per le dimissioni per giusta causa?",                 _R, 2, ["Implementa il pattern Observer in Java."]),
+    _cd("Quali sono le tutele per un inquilino in caso di sfratto?",                 _R, 1, ["Calcola la probabilità di estrarre due carte rosse."]),
+
+    # P5 — stesso dominio, domanda autonoma (is_followup=False)
+    _cd("Come si usa il costrutto try except in Python?",              _C, 1, ["Come funziona la ricorsione in Python?"]),
+    _cd("Scrivi una funzione che inverte una lista in Java.",          _C, 1, ["Implementa la ricerca binaria in C++."]),
+    _cd("Come si crea una tabella in PostgreSQL?",                     _C, 1, ["Scrivi una query SQL con INNER JOIN."]),
+    _cd("Implementa un server HTTP minimale in Go.",                   _C, 2, ["Spiega la differenza tra TCP e UDP."]),
+    _cd("Come si configura un cron job su Linux?",                     _C, 1, ["Scrivi uno script Bash che cancella i log."]),
+    _cd("Calcola l'integrale di x*e^x.",                               _M, 2, ["Calcola la derivata di x*e^x."]),
+    _cd("Dimostra che la radice di 2 è irrazionale.",                  _M, 2, ["Dimostra il teorema di Pitagora."]),
+    _cd("Trova il rango della matrice [[1,2],[2,4]].",                 _M, 1, ["Calcola il determinante di una matrice 3x3."]),
+    _cd("Qual è la probabilità di ottenere almeno un sei in tre lanci di un dado?", _M, 1, ["Calcola la deviazione standard di questi dati."]),
+    _cd("Risolvi la disequazione x^2 - 4 > 0.",                        _M, 1, ["Risolvi l'equazione x^2 - 5x + 6 = 0."]),
+    _cd("Cosa prevede la legge sulle ferie non godute?",               _R, 1, ["Quali sono i diritti del lavoratore in caso di malattia?"]),
+    _cd("Come funziona l'usucapione di un terreno?",                   _R, 2, ["Cosa prevede il codice civile per la servitù di passaggio?"]),
+    _cd("Quali sanzioni prevede il GDPR per la mancata nomina del DPO?", _R, 2, ["Cosa prevede il GDPR sul diritto all'oblio?"]),
+    _cd("Come si registra un contratto di locazione?",                 _R, 1, ["Quali sono i diritti e i doveri del conduttore?"]),
+    _cd("Cosa rischia chi guida senza assicurazione?",                 _R, 1, ["Come funziona la patente a punti?"]),
+    _cd("Come si prepara il risotto ai funghi?",                       _G, 1, ["Dammi una ricetta per la pasta al pomodoro."]),
+    _cd("Quali sono i migliori libri di fantascienza?",                _G, 1, ["Consigliami un film di fantascienza."]),
+    _cd("Qual è la capitale dell'Australia?",                          _G, 1, ["Qual è il fiume più lungo d'Italia?"]),
+    _cd("Come si fa il bucato a mano?",                                _G, 1, ["Come si rimuovono le macchie di vino rosso?"]),
+    _cd("Che cos'è la fotosintesi?",                                   _G, 1, ["Come funziona il sistema immunitario?"]),
+]
+
 # ── False-Pipeline Hard Negatives (ex-FIX A-C1, ampliato) ────────────────────
 # [FIX A-C1 rev.2] "calcola/implementa X in Python" su operazioni CS
 # elementari con vocabolario numerico/matematico (fattoriale, primo, MCD,
@@ -1123,7 +1213,7 @@ def build_bridge_records() -> list:
         labels = {"coding": 0, "math": 0, "rights": 0, "general": 0}
         labels[d1] = 1
         labels[d2] = 1
-        pipeline_type, is_pipe = BRIDGE_MAP.get((d1, d2), (None, False))
+        pipeline_type, is_pipe = BRIDGE_MAP[(d1, d2)]   # KeyError se la coppia non è una pipeline nota
         for s in sentences:
             records.append(_r(
                 query=s, 
@@ -1592,13 +1682,6 @@ def main():
     for k, group in class_map.items():
         if '->' in k:
             target = TARGET_PIPE[k]
-        elif '+' in k:
-            # [M2 FIX] Bridge non-pipeline (general+math, general+rights):
-            # prima escluse del tutto dall'augmentation (`continue`), ora
-            # portate a un target esplicito e più basso di TARGET_PIPE
-            # (sono esempi negativi che insegnano il NO-pipeline, non
-            # pattern positivi da massimizzare quanto le pipeline vere).
-            target = TARGET_BRIDGE_NEG
         else:
             target = TARGET_MONO[k]
 

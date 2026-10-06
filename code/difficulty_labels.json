@@ -1130,5 +1130,21 @@
  "Quali sono i passaggi per pulire e mantenere in buono stato le scarpe di pelle?": 1,
  "Come si organizza un piccolo evento di compleanno per bambini senza spendere una fortuna?": 1,
  "Quali criteri aiutano a scegliere lo zaino giusto per una gita di un giorno in montagna?": 1,
- "Come si crea un ambiente accogliente in casa usando luci calde e profumi naturali?": 1
+ "Come si crea un ambiente accogliente in casa usando luci calde e profumi naturali?": 1,
+ "git stash": 1, "docker volume": 1, "SQL subquery": 1, "Python lambda": 1, "CSS grid": 1,
+ "pytest fixture": 1, "async Python": 1, "JavaScript closure": 1, "bash grep": 1, "React useEffect": 1,
+ "Java stream": 1, "TypeScript generics": 1, "Flask blueprint": 1, "SQL index": 1, "C++ vector": 1,
+ "derivata arcsin": 1, "integrale x^2": 1, "limite notevole": 1, "matrice inversa 2x2": 1, "serie geometrica": 1,
+ "teorema Rolle": 1, "coniche equazione": 2, "varianza campionaria": 1, "rango matrice": 1, "modulo numero complesso": 1,
+ "proprietà logaritmi": 1, "disequazione secondo grado": 1, "prodotto matrici": 1, "gradiente funzione": 1, "binomio di Newton": 1,
+ "registrazione contratto locazione": 1, "diritto di recesso": 1, "requisiti usucapione": 1, "patto di non concorrenza": 2,
+ "durata DASPO": 1, "sanzioni GDPR": 1, "prova del mobbing": 2, "legittima difesa": 1, "successione senza testamento": 2,
+ "caparra confirmatoria": 2, "diffamazione online": 1, "ricorso al TAR": 2, "permesso di soggiorno": 1,
+ "licenza software": 1, "clausole vessatorie": 1,
+ "SVD teoria Python": 1, "Newton-Raphson convergenza codice": 2, "PCA dimostrazione Python": 2,
+ "Monte Carlo errore Python": 1, "Simpson errore implementazione": 1, "ODE Eulero stabilità codice": 2,
+ "GDPR cookie banner codice": 1, "Python log accessi GDPR": 1, "cifratura password normativa Python": 1,
+ "script cancellazione dati GDPR": 1, "firma elettronica Python eIDAS": 1, "DPIA automatica Python": 2,
+ "formula matematica TFR": 1, "calcolo matematico soglia usura": 2, "dimostra formula ammortamento": 2,
+ "modello matematico indennità licenziamento": 2, "formula attuariale riscatto": 2, "calcola matematicamente danno biologico": 2
 }
