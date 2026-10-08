@@ -3,26 +3,6 @@
 
     Novità V7.2.0 (Difficulty Tier Routing): vedi TIER_ROUTING_SETTINGS
 
-    Novità V7.1.0 (Prompt Tiering — patch_prompt_LLM):
-    - [TIER] Aggiunto il campo 'prompt_tier' ('compact' | 'extended') a
-      ciascuna voce di MODELS_CONFIG. Statico, letto una sola volta da
-      BaseAI.__init__ in ai_engine.py, indipendente da is_using_fallback.
-      Governa SOLO il contenuto del system prompt (prompts_templates.py):
-      nessun impatto su routing/NN/RAM. Vedi report_prompt_tiering.md.
-
-    Novità V7.0.0 (Routing purity — output NN come unica fonte):
-    - [ROUTING PURITY] Rimossi da SYSTEM_SETTINGS: sticky_short_words,
-      sticky_tech_switch_min, sticky_short_override_min. Servivano solo a
-      _should_sticky_route() in main.py, rimossa: il dominio instradato è
-      ora sempre e solo quello indicato da class_id.
-    - [ROUTING PURITY] Rimossi da PIPELINE_SETTINGS: hybrid_threshold
-      (già dead code, non referenziato da nessun modulo), min_words_for_pipeline
-      e pipeline_order_matrix/pipeline_score_min (servivano solo alla
-      declassificazione/promozione pipeline in main.py, rimosse).
-    - NEURAL_CLASSIFIER_SETTINGS NON toccato: threshold_mono/threshold_pipeline
-      sono usati DENTRO nn_classifier.py per derivare class_id dai domain_probs
-      grezzi — fanno parte del meccanismo con cui la NN produce il proprio
-      output, non sono un file esterno che lo altera a posteriori.
 """
 
 # --- 1. COSTANTI HARDWARE ---
@@ -114,14 +94,13 @@ SYSTEM_SETTINGS = {
     'cjk_filter_enabled': True,
 }
 
-# --- 4. CONFIGURAZIONE NEURAL CLASSIFIER ---
-# Soglie interne al meccanismo di decisione della NN (_derive_class_id in
-# nn_classifier.py): trasformano i domain_probs grezzi in class_id.
-# Fanno parte di COME la rete produce il proprio output
 NEURAL_CLASSIFIER_SETTINGS = {
-    'threshold_mono':     0.75,   # soglia candidatura per primo modulo
-    'threshold_pipeline': 0.78,   # soglia conferma coppia stadio 2 (severa)
+    # Vincolo usato SOLO da train_nn.py per tarare il bias pipeline sul VAL:
+    # massimo tasso di query mono classificate come pipeline. Le soglie di decisione
+    # (bias pipeline, soglia fallback, soglia followup) NON vivono più qui: sono nel checkpoint.
+    'max_false_pipeline_rate': 0.02,
 }
+
 
 # --- 5. CONFIGURAZIONE PIPELINE MULTI-AGENTE ---
 # Solo meccanica di esecuzione (RAM, troncamento contesto) — nessuna soglia

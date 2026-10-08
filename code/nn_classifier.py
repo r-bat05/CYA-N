@@ -1,28 +1,17 @@
 """
 nn_classifier.py — CYA N | Step 5: Neural Classifier Inference Module
 =======================================================================
-Drop-in replacement di llm_router.py.
-Stessa interfaccia pubblica:
+Interfaccia pubblica INVARIATA:
     predict(text, history) → (class_id, conf, domain_scores, diff, is_followup)
     unload_router()
 
-[REFACTOR — report_patch.md] DOMAIN_NAMES, PIPELINE_CLASSES,
-PIPELINE_ORDER (DUP-2, DUP-3) importati da domains.py; path pesi/encoder
-(CFG-1, CFG-3) da classifier_config.py; MultiTaskMLP e chiavi checkpoint
-(DUP-1, CFG-5) da model_architecture.py. Nessun impatto comportamentale.
-
-[FIX Criticità 3 — Report Gemini] Rimosso il parametro last_domain da
-predict(): mai letto nel body, residuo del vecchio sticky routing.
-
-[FIX Criticità 2 — Report Gemini] unload_router() libera davvero encoder
-MiniLM (~470MB) e pesi MLP (del + gc.collect()) — necessario sul vincolo
-hardware di sviluppo (8GB RAM).
-
-[FIX Bug A] DOMAIN_THRESHOLD/PIPELINE_PAIR_THRESHOLD lette da
-config.NEURAL_CLASSIFIER_SETTINGS (logica a due stadi, vedi _derive_class_id).
-
-[FIX Report Gemini punto 3] _build_input_str() delega a
-history_utils.build_input_str(), stessa funzione usata in training.
+[v4] 3 reti indipendenti (model_architecture.py) in un unico checkpoint.
+  - class_id   : argmax a 7 classi + bias pipeline (tarato sul VAL, salvato nel checkpoint).
+  - conf       : probabilità softmax della classe scelta.
+  - domain_scores (solo diagnostica, per main.py): P(mono) + somma P(pipeline che lo contengono).
+  - difficulty : ordinale con soglia fallback (salvata nel checkpoint).
+  - is_followup: sigmoid ≥ soglia (salvata nel checkpoint).
+Nessuna soglia in config.py: tutti i parametri di decisione vivono nel checkpoint.
 """
 
 import time
@@ -31,36 +20,29 @@ import torch
 from sentence_transformers import SentenceTransformer
 from typing import Tuple, Optional
 
-import config
 from history_utils import build_input_str, HISTORY_MAX_TURNS
-from domains import DOMAIN_NAMES, PIPELINE_CLASSES, PIPELINE_ORDER
-# import (sostituisce la riga esistente)
+from domains import MONO_DOMAINS, DOMAIN_NAMES, PIPELINE_CLASSES
 from classifier_config import WEIGHTS_PATH, ENCODER_MODEL_NAME, ENCODER_MAX_SEQ_LEN
 from model_architecture import (
-    MultiTaskMLP,
-    CKPT_STATE_DICT_KEY,
-    CKPT_TEST_F1_DOMAIN_KEY,
-    CKPT_TEST_DIFF_ACC_KEY,
-    CKPT_TEST_FOLLOWUP_F1_KEY,
+    MODEL_CLASSES, CKPT_VERSION, CKPT_VERSION_KEY, CKPT_TASKS,
+    CKPT_STATE_KEY, CKPT_PARAMS_KEY, CKPT_METRICS_KEY,
+    decide_domain, decide_difficulty,
 )
 
 _CLASS_TO_NAME = {i: n for i, n in enumerate(DOMAIN_NAMES)}
 
-DOMAIN_THRESHOLD        = config.NEURAL_CLASSIFIER_SETTINGS.get('threshold_mono',     0.35)
-PIPELINE_PAIR_THRESHOLD = config.NEURAL_CLASSIFIER_SETTINGS.get('threshold_pipeline', 0.60)
-
-_model:   Optional[MultiTaskMLP]        = None
+_models:  Optional[dict]                = None
+_params:  Optional[dict]                = None
 _encoder: Optional[SentenceTransformer] = None
 _loaded:  bool                          = False
 
 
 def _fmt_metric(value) -> str:
-    """[M6 FIX] Evita ValueError/TypeError quando la chiave manca dal checkpoint."""
     return f"{value:.4f}" if isinstance(value, (int, float)) else "N/A"
 
 
 def _load_model():
-    global _model, _encoder, _loaded
+    global _models, _params, _encoder, _loaded
 
     if _loaded:
         return
@@ -77,63 +59,27 @@ def _load_model():
     _encoder.eval()
 
     print(f"[NN_CLASSIFIER] Caricamento pesi: {WEIGHTS_PATH}")
-    ckpt = torch.load(str(WEIGHTS_PATH), map_location='cpu', weights_only=False)
+    ckpt = torch.load(str(WEIGHTS_PATH), map_location='cpu', weights_only=True)
+    if ckpt.get(CKPT_VERSION_KEY) != CKPT_VERSION:
+        raise RuntimeError("Checkpoint in formato obsoleto (MultiTaskMLP): rieseguire train_nn.py")
 
-    _model = MultiTaskMLP()
-    _model.load_state_dict(ckpt[CKPT_STATE_DICT_KEY])
-    _model.eval()
+    models, params = {}, {}
+    for t in CKPT_TASKS:
+        m = MODEL_CLASSES[t]()
+        m.load_state_dict(ckpt[t][CKPT_STATE_KEY])
+        m.eval()
+        models[t] = m
+        params[t] = ckpt[t][CKPT_PARAMS_KEY]
+        met = ckpt[t].get(CKPT_METRICS_KEY, {})
+        print(f"[NN_CLASSIFIER] {t:10s} params={params[t]} | "
+              + " | ".join(f"{k}={_fmt_metric(v)}" for k, v in met.items()))
 
-    print(f"[NN_CLASSIFIER] Test F1-macro domain : {_fmt_metric(ckpt.get(CKPT_TEST_F1_DOMAIN_KEY))}")
-    print(f"[NN_CLASSIFIER] Test difficulty acc  : {_fmt_metric(ckpt.get(CKPT_TEST_DIFF_ACC_KEY))}")
-    print(f"[NN_CLASSIFIER] Test is_followup F1  : {_fmt_metric(ckpt.get(CKPT_TEST_FOLLOWUP_F1_KEY))}")
-
-    _loaded = True
+    _models, _params, _loaded = models, params, True
 
 
 def _build_input_str(query: str, history: list) -> str:
-    """Estrae le query utente dalla history e delega a history_utils.build_input_str."""
-    user_turns = [
-        m['content'] for m in history
-        if m.get('role') == 'user'
-    ][-HISTORY_MAX_TURNS:]   # [ARCH-3 FIX] uso diretto, rimosso alias _HISTORY_TURNS
+    user_turns = [m['content'] for m in history if m.get('role') == 'user'][-HISTORY_MAX_TURNS:]
     return build_input_str(query, user_turns)
-
-
-def _derive_class_id(
-    domain_probs: torch.Tensor,
-    candidate_threshold: float = DOMAIN_THRESHOLD,
-    pipeline_threshold: float = PIPELINE_PAIR_THRESHOLD,
-) -> Tuple[int, float]:
-    """
-    LOGICA A DUE STADI:
-      Stadio 1 (candidate_threshold): domini "in lizza" per una pipeline.
-      Stadio 2 (pipeline_threshold): coppia top-2 CONFERMATA pipeline solo
-      se ENTRAMBI i probs superano questa soglia più alta; altrimenti
-      mono-domain (argmax sui 4).
-    CONFIDENCE: pipeline = min(prob_a, prob_b); mono-domain = prob vincente.
-    """
-    probs_np = domain_probs.cpu().numpy()
-    names_4  = DOMAIN_NAMES[:4]   # [DUP-2 FIX]
-
-    tech_candidates = [
-        (names_4[i], float(probs_np[i]))
-        for i in range(3)
-        if probs_np[i] >= candidate_threshold
-    ]
-
-    if len(tech_candidates) >= 2:
-        tech_sorted = sorted(tech_candidates, key=lambda x: x[1], reverse=True)
-        top2 = tech_sorted[:2]
-        pair = frozenset({top2[0][0], top2[1][0]})
-
-        if pair in PIPELINE_ORDER and min(top2[0][1], top2[1][1]) >= pipeline_threshold:
-            class_id   = PIPELINE_ORDER[pair]
-            confidence = min(top2[0][1], top2[1][1])
-            return class_id, confidence
-
-    class_id   = int(domain_probs.argmax().item())
-    confidence = float(probs_np[class_id])
-    return class_id, confidence
 
 
 def predict(
@@ -152,42 +98,27 @@ def predict(
         return -1, 0.0, {}, 2, False
 
     try:
-        t0 = time.time()
-
         input_str = _build_input_str(text, history)
 
         with torch.no_grad():
-            emb = _encoder.encode(
-                [input_str],
-                normalize_embeddings=True,
-                show_progress_bar=False,
-            )
-            x = torch.from_numpy(emb).float()
+            emb = _encoder.encode([input_str], normalize_embeddings=True, show_progress_bar=False)
+            x   = torch.from_numpy(emb).float()
+            lg_dom = _models['domain'](x).squeeze(0)        # [7]
+            lg_dif = _models['difficulty'](x).squeeze(0)    # [2]
+            lg_fu  = _models['followup'](x).reshape(())     # scalare
 
-        with torch.no_grad():
-            _model.eval()
-            logits_dom, logits_diff, logit_fu = _model(x)
+        probs    = torch.softmax(lg_dom, dim=0)
+        class_id = int(decide_domain(lg_dom, _params['domain']['bias_pipe']).item())
+        confidence = float(probs[class_id].item())
 
-        domain_probs = torch.sigmoid(logits_dom.squeeze(0))
-        diff_probs   = torch.softmax(logits_diff.squeeze(0), dim=0)
-        fu_prob      = torch.sigmoid(logit_fu.squeeze()).item()
+        scores = {n: float(probs[i]) for i, n in enumerate(MONO_DOMAINS)}
+        for cid, (a, b) in PIPELINE_CLASSES.items():
+            scores[a] += float(probs[cid])
+            scores[b] += float(probs[cid])
+        domain_scores = {n: round(v, 4) for n, v in scores.items()}
 
-        class_id, confidence = _derive_class_id(domain_probs)
-
-        domain_scores = {   # [DUP-2 FIX]
-            name: round(float(prob), 4)
-            for name, prob in zip(DOMAIN_NAMES[:4], domain_probs)
-        }
-
-        difficulty  = int(diff_probs.argmax().item()) + 1
-        is_followup = fu_prob >= 0.5
-
-        ms = (time.time() - t0) * 1000
-        label = _CLASS_TO_NAME[class_id]
-        scores_str = ' | '.join(f"{k}:{v:.3f}" for k, v in domain_scores.items())
-        # print(f"[NN_CLASSIFIER] {label.upper()} | conf={confidence:.3f} | "
-        #      f"diff={difficulty} | followup={is_followup} (fu_prob={fu_prob:.3f}) | "
-        #      f"scores=[{scores_str}] | {ms:.0f}ms")
+        difficulty  = int(decide_difficulty(lg_dif, _params['difficulty']['thr_fallback']).item())
+        is_followup = bool(torch.sigmoid(lg_fu).item() >= _params['followup']['thr'])
 
         return class_id, confidence, domain_scores, difficulty, is_followup
 
@@ -197,12 +128,11 @@ def predict(
 
 
 def unload_router():
-    """Libera esplicitamente encoder MiniLM e pesi MLP dalla RAM Python."""
-    global _model, _encoder, _loaded
-    if _model is None and _encoder is None:
+    """Libera esplicitamente encoder MiniLM e reti dalla RAM Python."""
+    global _models, _params, _encoder, _loaded
+    if _models is None and _encoder is None:
         return
-    del _model, _encoder
-    _model, _encoder, _loaded = None, None, False
+    _models, _params, _encoder, _loaded = None, None, None, False
     gc.collect()
     try:
         if torch.cuda.is_available():

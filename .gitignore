@@ -12,7 +12,7 @@ env/
 classifier_config.json
 0_report_espansione_dataset.md
 check_dataset_seeds.py
-grafico_loss_training.png
+training_curves.png
 
 # LaTeX
 *.aux
