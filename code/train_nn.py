@@ -28,6 +28,7 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import f1_score
 from torch.utils.data import DataLoader, TensorDataset
+from matplotlib.pyplot import plot, show, savefig #plot e salvataggio del grafico della loss
 
 SEED = int(os.environ.get("CYA_SEED", 42))
 SAVE = os.environ.get("CYA_SAVE", "1") == "1"
@@ -49,11 +50,11 @@ from model_architecture import (
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 PKL_PATH         = EMBEDDINGS_PATH
-LR               = 0.00025
-WEIGHT_DECAY     = 1e-2          # [v3] era 1e-4: con AdamW lr*wd ≈ 2.5e-8/step = nessun effetto
+LR               = 0.00025       # 2.5 * 1e-4
+WEIGHT_DECAY     = 1e-2          # era 1e-4: con AdamW lr*wd ≈ 2.5e-8/step = nessun effetto
 EPOCHS           = 100
 BATCH_SIZE       = 64
-PATIENCE         = 25
+PATIENCE         = 10
 SCHED_PATIENCE   = 10
 
 LOSS_W_DOMAIN    = 0.70
@@ -148,6 +149,7 @@ def train():
                           batch_size=BATCH_SIZE, shuffle=True)
 
     best_f1, best_state, no_improve = -1.0, None, 0
+    loss_val_training = [] #lista per plottare la loss del testing
 
     for epoch in range(1, EPOCHS + 1):
         model.train()
@@ -171,6 +173,9 @@ def train():
                         + LOSS_W_FOLLOWUP * loss_followup(lv_fu, Y_fu['val'].unsqueeze(1))).item()
             val_f1 = class_f1_macro(lv_dom, Y_cls['val'])
 
+            #inserisco la loss in quell'epoca
+            loss_val_training.append(val_loss)
+
         scheduler.step(val_f1)
         if val_f1 > best_f1:
             best_f1, best_state, no_improve, marker = val_f1, {k: v.clone() for k, v in model.state_dict().items()}, 0, " ★"
@@ -181,11 +186,25 @@ def train():
               f"vl_clsF1={val_f1:.4f} | best={best_f1:.4f} | no_impr={no_improve}/{PATIENCE} | "
               f"lr={optimizer.param_groups[0]['lr']:.2e}{marker}")
 
+
+        #da migliorare i criteri d'arresto 
         if no_improve >= PATIENCE:
             print(f"\n  ⏹  Early stopping a epoca {epoch}")
             break
 
     print(f"\n[3/4] Training completato. Miglior macro-F1 classi (val): {best_f1:.4f}")
+
+    #stampo il valore della loss (asse x = epoche, asse y = valore loss)
+    x = np.linspace(1, epoch, num=epoch) #vettore delle epoche
+
+    #preparo il grafio
+    plot(x, loss_val_training) 
+    #salvo il grafico
+    savefig('./code/classifier/grafico_loss_training.png') 
+    #mostro i grafici preparati
+    show()
+
+    #salvo la loss come png
 
     model.load_state_dict(best_state)
     model.eval()
