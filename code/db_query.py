@@ -2,6 +2,7 @@
     DATABASE QUERY — Frasi di training.
 """
 
+import os
 from typing import Dict, List, Tuple
 
 # =============================================================================
@@ -711,6 +712,16 @@ INTENT_SENTENCES: Dict[str, List[str]] = {
 
         # Fix Q4: "parabola" in contesto fisico quotidiano (non matematico)
         "Come ci si comporta quando si rompe accidentalmente qualcosa di proprietà altrui durante un'attività sportiva?",
+
+        # traduzioni di testo
+        "traduci questa frase in inglese: 'trasporre una matrice può essere molto complesso, " \
+        "affinchè avvenga correttamente bisogna scrivere l'equazione con le dimensioni ben definite",
+        "dimmi la traduzione di: 'codice civile'", 
+        "come si dice in francese variabile globale? E' il concetto che si usa in programmazione",
+        "parcheggio in tedesco", 
+        "Che lingua si parla in Finlandia", 
+        "Storia di omero in inglese", 
+        "Matrice e derivata in inglese, grazie",
 
         #Macroeconomia, bilanci, finanza quotidiana
         "Spiegami le cause e le conseguenze dell'inflazione e come le banche centrali usano i tassi d'interesse.",
@@ -1430,3 +1441,71 @@ BRIDGE_SENTENCES[('math', 'rights')].extend([
     "formula matematica TFR", "calcolo matematico soglia usura", "dimostra formula ammortamento",
     "modello matematico indennità licenziamento", "formula attuariale riscatto", "calcola matematicamente danno biologico",
 ])
+
+
+# =============================================================================
+# [F3-C — report_followup_switch_domain.md] Riallineamento etichette alla regola R-PIPE (STRICT)
+# =============================================================================
+# R-PIPE: una query è PIPELINE solo se contiene una richiesta ESPLICITA del secondo dominio:
+#   math->coding   = codice + (dimostra / deriva / analizza matematicamente / complessità /
+#                    convergenza / stabilità / errore / "spiega perché" / base matematica);
+#   rights->coding = codice + vincolo normativo ESPLICITO (legge, regolamento, CCNL, GDPR,
+#                    Garante, eIDAS, istituto giuridico: DSAR, DPIA, portabilità dei dati...);
+#   rights->math   = formula/modello matematico ESPLICITO + riferimento normativo.
+# Implementare un algoritmo "numerico" o una tecnica di privacy/sicurezza SENZA richiesta
+# esplicita del secondo dominio è MONO-CODING (anche se il lessico è matematico/legale):
+# la stessa richiesta era etichettata in modo opposto in punti diversi (es. Newton-Raphson
+# in INTENT coding vs BRIDGE coding+math) → rumore di etichetta che causava gli errori C8-C11.
+# Triage fatto a mano sulla lista completa: 88 seed coding+math
+# e 19 seed coding+rights sono "to_coding"; restano pipeline i seed che chiedono esplicitamente
+# teoria/normativa. I 6 seed rights->math "a due parti" (calcolo + obblighi di legge: VAN+TUIR,
+# Gini, DNA+c.p.p., ...) RESTANO pipeline: chiedono davvero entrambe le competenze.
+# I 7 seed general "lato pratico" (D2/D5) restano general: logistica/consigli, non procedura legale.
+# Le chiavi di difficulty_labels.json sono i testi: spostare un seed NON richiede nuove etichette.
+# Disattivabile per bisezione: CYA_F3_MOVES=0 (riproduce esattamente il dataset pre-patch).
+
+_CM_KEEP_PIPELINE = [   # sottostringhe UNICHE dei seed coding+math che chiedono teoria esplicita
+    "Dimostra il teorema di Nyquist-Shannon e scrivi", "filtro passa-basso nel dominio delle frequenze",
+    "Analizza matematicamente il fenomeno dell'aliasing", "metodo di Cooley-Tukey",
+    "stima il valore di π e analizza matematicamente", "dimostra empiricamente la convergenza 1/sqrt(N)",
+    "perché è applicabile solo a matrici definite positive", "calcola il numero di condizionamento di una matrice e spiega",
+    "correzione del bias per i momenti", "analizza la velocità di convergenza",
+    "spiega la statistica del test e la distribuzione del p-value", "spiega come si calcola il grado di libertà",
+    "analizza la complessità O(V³)", "verifica il teorema max-flow min-cut",
+    "probabilità di connessione in funzione di p", "confronta la stabilità numerica",
+    "analizza la complessità computazionale", "backpropagation matematica e codice Python",
+    "SVD teoria Python", "Newton-Raphson convergenza codice", "PCA dimostrazione Python",
+    "Monte Carlo errore Python", "Simpson errore implementazione", "ODE Eulero stabilità codice",
+    "K-means codice Python convergenza",
+]
+_CR_TO_CODING = [       # coding+rights SENZA vincolo normativo esplicito
+    "pseudonimizzare i dati personali in un dataset", "data masking che offusca", "data masking Python campi sensibili",
+    "anonimizzare irreversibilmente un dataset", "sistema di DLP (Data Loss Prevention)", "DLP Python esfiltrazione",
+    "watermarking steganografico del codice sorgente", "watermarking steganografico codice sorgente Python",
+    "gestisce automaticamente le royalties", "royalties smart contract Solidity streaming",
+    "Distributed Autonomous Agreement", "smart contract Solidity locazione penale",
+    "codice anonimizzazione dati personali Python", "Python cancellazione sicura record utente",
+    "firma digitale Python X.509 valida", "data retention automatica Python cancellazione",
+    "bias algoritmico test Python fairness", "hash chain prove digitali Python immutabile",
+    "firma digitale CAdES PAdES verifica Python",
+]
+
+
+def _pick_unique(pool, key):
+    hits = [s for s in pool if key in s]
+    if len(hits) != 1:      # fail-fast: drift tra questa tabella e i seed
+        raise ValueError(f"[F3-C] chiave {key!r}: {len(hits)} corrispondenze (attesa 1)")
+    return hits[0]
+
+
+if os.environ.get('CYA_F3_MOVES', '1') == '1':
+    _cm = BRIDGE_SENTENCES[('coding', 'math')]
+    _keep = {_pick_unique(_cm, k) for k in _CM_KEEP_PIPELINE}
+    _move_cm = [s for s in _cm if s not in _keep]
+    BRIDGE_SENTENCES[('coding', 'math')] = [s for s in _cm if s in _keep]
+    INTENT_SENTENCES['coding'].extend(_move_cm)
+
+    _cr = BRIDGE_SENTENCES[('coding', 'rights')]
+    _move_cr = [_pick_unique(_cr, k) for k in _CR_TO_CODING]
+    BRIDGE_SENTENCES[('coding', 'rights')] = [s for s in _cr if s not in set(_move_cr)]
+    INTENT_SENTENCES['coding'].extend(_move_cr)

@@ -10,11 +10,12 @@ Sorgenti:
   2. EDGE_CASES manuali          → follow-up, switch dominio, false/true pipeline
   3. Augmentation lessicale      → sinonimi per bilanciare le classi
   4. Augmentation di rumore      → framing narrativo / stile-risposta (Opzione A)
+  5. Espansione mirata (DS-1…10) → follow-up/switch/confini di dominio (sezione [F2], stadi via CYA_STAGES)
 
 Output: code/dataset_v2.jsonl
 """
 
-import json, random, hashlib
+import json, os, random, hashlib
 from collections import defaultdict, Counter
 from db_query import INTENT_SENTENCES, BRIDGE_SENTENCES
 from domains import BRIDGE_MAP
@@ -32,7 +33,10 @@ random.seed(42)
 # "volume non copertura", report §9.1). Asimmetria: 'general' resta il bucket
 # piu' grande in valore assoluto (580 seed vs 382/289/278 pre-augmentation).
 TARGET_MONO = {'coding': 570, 'math': 500, 'rights': 410, 'general': 700}
-TARGET_PIPE = {'math->coding': 230, 'rights->coding': 215, 'rights->math': 120}
+# [F3-D] Ricalibrato dopo il riallineamento R-PIPE (seed math->coding 113→25, rights->coding 110→91):
+# 230 non era più raggiungibile con SYNONYMS (saturazione → near-duplicate). Valori = quanto la
+# sinonimia riesce a produrre senza saturare; il resto lo coprono noise-wrap e record manuali.
+TARGET_PIPE = {'math->coding': 112, 'rights->coding': 215, 'rights->math': 120}
 
 
 # [HARD-NEG FIX — wrong_query_TESTING.md rev.2] Target dedicati per
@@ -58,11 +62,9 @@ KEYWORD_TRAP_NOISE_VARIANTS   = 3   # varianti wrapping narrativo per record bas
 # positivi:negativi-con-history <= quello attuale, per non rafforzare la scorciatoia
 # "history presente => followup". Solo record brevi (i verbosi di T2-A sono gia' lunghi)
 # e non-pipeline.
-FU_NOISE_RATIO         = 0.6
+FU_NOISE_RATIO         = 0.4   # [F2] era 0.6: con i nuovi followup DS-1/5 il train sforava il 15% (15.3%)
 CD_NOISE_RATIO         = 1.0
 HISTORY_NOISE_MAX_WORDS = 14
-
-OUTPUT_PATH = DATASET_PATH   # [CFG-2 FIX] condiviso con precompute_embeddings.py
 
 # [DUP-3 FIX] BRIDGE_MAP importato da domains.py: unica fonte di verità
 # derivata da PIPELINE_CLASSES, non più mantenuto a mano qui.
@@ -937,6 +939,480 @@ MANUAL_RECORDS += [
     _cd("Che cos'è la fotosintesi?",                                   _G, 1, ["Come funziona il sistema immunitario?"]),
 ]
 
+# ── [F2] Espansione mirata del dataset — report_followup_switch_domain.md ─────────
+# (ex dataset_expansion.py, ora integrata qui)
+# Record base AGGIUNTI a MANUAL_RECORDS PRIMA di dedup/split (difficulty inline: nessuna modifica a
+# difficulty_labels.json): ereditano split e trattamento (noise-wrap history FASE 2quater) come tutti gli altri.
+# Scelta "chirurgica" (priorità DS-1, 2, 3, 5, 8, 9, 10, 7): 366 record (~8% del dataset) invece dei ~600
+# della versione estesa (rischio bulk-additions). Regole di etichettatura: LABEL_RULES.md (R-FU, R-FUP, R-RN,
+# R-ARIT, R-RG, R-PIPE).
+#
+# STADI (ogni stadio = 1 retrain + step4 dev/test + compare_runs.py; env CYA_STAGES, default "2.1,2.2";
+# "none"/"" = nessuna espansione, riproduce esattamente il dataset pre-patch):
+#   2.1 Followup/switch con history : DS-1 (60) DS-2 (60) DS-3 (60) DS-5 (24)      = 204 record
+#   2.2 Confini di dominio          : DS-7 (42) DS-8 (40) DS-9 (40) DS-10 (40)     = 162 record
+# Vincoli: una sola query di history (HISTORY_MAX_TURNS=1); nessuna query copiata da eval_dataset.jsonl
+# (verifica: check_dataset_seeds.py, leakage seed<->eval = 0); history = query autonoma con antecedente
+# reale; ellissi pura SENZA history non è mai un followup (R-FU).
+# Non inclusi (stadio "esteso"): DS-4 (coppie controfattuali), DS-1b, DS-6, DS-7b, DS-11…16.
+
+EXPANSION_STAGES_ENV     = 'CYA_STAGES'
+EXPANSION_DEFAULT_STAGES = "2.1,2.2"
+
+def _ds1():
+    """DS-1 — followup positivi SENZA marker 'e/ok/ah' (verbo/anafora/condizionale), history con antecedente reale."""
+    R = [  # rights (20): query dal suono 'general'
+        ("chi paga le spese se perdo?", 2, "Come funziona il ricorso al giudice di pace contro una multa?"),
+        ("quanto tempo ho per rispondere alla lettera?", 1, "Cosa prevede la legge sulla contestazione disciplinare del lavoratore?"),
+        ("posso farlo anche senza avvocato?", 1, "Come si presenta un'opposizione a un decreto ingiuntivo?"),
+        ("serve una forma scritta oppure basta un messaggio?", 1, "Come si disdice un contratto di abbonamento alla palestra?"),
+        ("vale anche per chi è in prova?", 2, "Quali tutele ha un lavoratore in caso di malattia?"),
+        ("dove si deposita il documento?", 1, "Come si registra un contratto di locazione?"),
+        ("quanto costa farlo fare a un notaio?", 1, "Come si fa un atto di donazione tra genitori e figli?"),
+        ("dopo quanti giorni scade il termine?", 1, "Come si impugna una cartella esattoriale?"),
+        ("posso rifiutarmi senza rischiare niente?", 2, "Un datore di lavoro può chiedere il trasferimento a un'altra sede?"),
+        ("cosa rischia chi non rispetta l'obbligo?", 2, "Quali obblighi ha il datore di lavoro sulla formazione alla sicurezza?"),
+        ("serve il consenso di entrambi i genitori?", 1, "Come si richiede il passaporto per un minore?"),
+        ("mi spieghi meglio il punto sulla prova?", 2, "Come si dimostra un inadempimento contrattuale in tribunale?"),
+        ("chi può presentare la richiesta?", 1, "Come funziona l'amministrazione di sostegno?"),
+        ("può farlo anche il vicino?", 2, "Quando scatta il reato di disturbo della quiete pubblica?"),
+        ("quindi in pratica cosa devo fare domani?", 1, "Cosa prevede la legge quando il datore di lavoro non paga lo stipendio?"),
+        ("vale lo stesso se il contratto è stato firmato online?", 2, "Quali sono i requisiti di forma per la validità di un contratto?"),
+        ("entro quale data devo comunicarlo?", 1, "Come si comunica la cessione di fabbricato?"),
+        ("puoi indicarmi l'articolo di riferimento?", 2, "Quali sono i diritti del conduttore in caso di vendita dell'immobile?"),
+        ("c'è una differenza se sono residente all'estero?", 2, "Come funziona la successione di un parente senza testamento?"),
+        ("per un dipendente pubblico cambia qualcosa?", 2, "Quali sono le regole sul licenziamento per giusta causa?"),
+    ]
+    C = [  # coding (14), 4 con 'esempio'
+        ("potresti scriverlo con una classe invece che con funzioni?", 2, "Come si struttura un piccolo script Python per leggere un CSV?"),
+        ("mostrami un esempio con due thread", 2, "Cos'è una race condition?"),
+        ("puoi aggiungere i commenti a ogni riga?", 1, "Scrivi una funzione Python che conta le parole in un file."),
+        ("da dove comincio se uso Windows?", 1, "Come si configura un ambiente virtuale per un progetto Django?"),
+        ("non mi è chiaro il passaggio con il ciclo while", 1, "Scrivi un programma C che stampa i numeri pari fino a 50."),
+        ("potresti riscriverlo senza usare le librerie esterne?", 2, "Come si fa una richiesta HTTP GET in Python?"),
+        ("fammi un esempio con i dizionari annidati", 1, "Come si accede a un valore dentro un JSON in JavaScript?"),
+        ("puoi mostrarmi anche la versione asincrona?", 2, "Come si leggono più file in sequenza in Node.js?"),
+        ("aggiungi anche il caso in cui il file non esista", 1, "Come si apre un file di testo in Java?"),
+        ("perché hai usato un set invece di una lista?", 1, "Scrivi una funzione che rimuove i duplicati da un array."),
+        ("mostrami un esempio con un'interfaccia", 2, "Qual è la differenza tra una classe astratta e un'interfaccia in C#?"),
+        ("potresti spiegarmi meglio la riga con il lambda?", 1, "Come si ordina una lista di tuple in Python?"),
+        ("come lo eseguo da terminale?", 1, "Scrivi uno script Bash che crea un backup di una cartella."),
+        ("puoi dividerlo in due funzioni più piccole?", 2, "Scrivi una funzione che valida una password e restituisce gli errori."),
+    ]
+    M = [  # math (14), 4 con 'esempio'
+        ("potresti farmi un esempio con numeri piccoli?", 1, "Come si calcola il prodotto scalare tra due vettori?"),
+        ("non mi è chiaro il passaggio in cui raccogli il fattore comune", 1, "Scomponi in fattori il polinomio x^3 - x."),
+        ("mostrami un esempio con una matrice 2x2", 1, "Spiega come si trova l'inversa di una matrice."),
+        ("puoi rifarlo usando il metodo di sostituzione?", 2, "Risolvi il sistema 3x + 2y = 12, x - y = 1 con l'eliminazione."),
+        ("perché il segno cambia in quel passaggio?", 1, "Risolvi la disequazione -2x + 6 > 0."),
+        ("da dove comincio se la funzione è composta?", 2, "Come si calcola la derivata di sin(x)?"),
+        ("quando posso applicare lo stesso trucco a un integrale definito?", 2, "Calcola l'integrale indefinito di x*cos(x)."),
+        ("puoi verificare il risultato con un valore di prova?", 1, "Risolvi l'equazione 2x^2 - 8 = 0."),
+        ("riscrivilo con la notazione di sommatoria", 2, "Calcola la somma dei primi dieci numeri dispari."),
+        ("fammi un esempio con tre variabili", 2, "Cos'è un sistema lineare determinato?"),
+        ("potresti spiegare meglio perché si divide per n-1?", 2, "Come si calcola la varianza campionaria di un insieme di dati?"),
+        ("mostrami il grafico di quella funzione", 1, "Studia la funzione f(x) = x^2 - 4x + 3."),
+        ("posso usare lo stesso metodo se i coefficienti sono frazioni?", 1, "Risolvi l'equazione di secondo grado x^2 - 5x + 6 = 0."),
+        ("non ho capito perché il limite vale zero", 1, "Calcola il limite di 1/x per x che tende a infinito."),
+    ]
+    G = [  # general (12)
+        ("puoi consigliarmi qualcosa di meno impegnativo?", 1, "Consigliami un libro di storia contemporanea."),
+        ("potresti darmi una versione senza glutine?", 1, "Dammi la ricetta di una torta al limone."),
+        ("da dove comincio se non ho mai corso?", 1, "Quali sono i benefici della corsa per la salute?"),
+        ("mostrami un esempio con un budget di 500 euro", 1, "Come si organizza un viaggio di una settimana in Portogallo?"),
+        ("quanto tempo serve per vedere i primi risultati?", 1, "Come si costruisce una routine di allenamento a casa?"),
+        ("c'è un'alternativa più economica?", 1, "Quale telefono conviene comprare per usare molto la fotocamera?"),
+        ("puoi spiegarmelo con un'analogia?", 2, "Come funziona l'inflazione?"),
+        ("raccontami anche la parte meno nota", 1, "Chi era Giulio Cesare?"),
+        ("non ho capito perché succede di notte", 1, "Perché vediamo le stelle cadenti in certi periodi dell'anno?"),
+        ("preferirei un posto più tranquillo", 1, "Consigliami una località di mare per luglio."),
+        ("posso farlo anche in un appartamento piccolo?", 1, "Come si coltivano le erbe aromatiche in casa?"),
+        ("che differenza fa se è fresco o surgelato?", 1, "Come si prepara il pesce al forno?"),
+    ]
+    return [('R', R), ('C', C), ('M', M), ('G', G)]
+
+
+def _ds2():
+    """DS-2 — switch tecnico→tecnico, query corta autonoma; history di un ALTRO dominio (1/3 general)."""
+    C = [
+        ("Come si crea un file JSON da Python?", 1, "Calcola il determinante di una matrice 2x2."),
+        ("Scrivi una funzione che ordina una lista.", 1, "Quali sono i diritti del lavoratore in malattia?"),
+        ("Come si usa il comando tar in Linux?", 1, "Consigliami un film da guardare stasera."),
+        ("Come si dichiara una costante in JavaScript?", 1, "Risolvi l'equazione x^2 = 49."),
+        ("Come si crea una tabella con SQL?", 1, "Cosa prevede la legge sul diritto d'autore?"),
+        ("Scrivi un ciclo for in Rust.", 1, "Quanto è alto il monte Bianco?"),
+        ("Come si legge un file in Go?", 1, "Come funziona la caparra penitenziale?"),
+        ("Implementa una pila in C++.", 2, "Calcola l'integrale di 3x^2."),
+        ("Come si installa un pacchetto con pip?", 1, "Come si prepara il ragù?"),
+        ("Scrivi una query SQL con ORDER BY.", 1, "Cos'è la prescrizione di un credito?"),
+        ("Come si gestisce un'eccezione in Python?", 1, "Risolvi la disequazione x^2 > 9."),
+        ("Scrivi una classe Persona in Java.", 1, "Dimmi una curiosità sui polpi."),
+        ("Come si crea un branch in Git?", 1, "Quali sono le tutele per un affittuario?"),
+        ("Come si usa map in JavaScript?", 1, "Calcola la media di 3, 7 e 12."),
+        ("Scrivi un server HTTP in Node.js.", 2, "Come si fa il tè freddo?"),
+        ("Come si definisce una funzione in Kotlin?", 1, "Cosa si rischia per guida senza patente?"),
+        ("Come si concatenano stringhe in C#?", 1, "Trova il rango di una matrice 3x3."),
+        ("Scrivi un test con unittest.", 1, "Consigliami una serie tv."),
+        ("Come si fa il parsing di un XML?", 2, "Calcola la probabilità di due teste su due lanci."),
+        ("Come si apre un socket TCP in Python?", 2, "Come si pianta un limone in vaso?"),
+    ]
+    M = [
+        ("Calcola la derivata di e^(3x).", 1, "Scrivi una funzione Python che somma due liste."),
+        ("Trova le radici di x^2 - 6x + 8.", 1, "Come funziona il TFR?"),
+        ("Calcola l'integrale di 1/x^2.", 1, "Consigliami un ristorante a Torino."),
+        ("Quanto vale sin(pi/6)?", 1, "Come si usa Docker Compose con più servizi?"),
+        ("Calcola il determinante di [[3,1],[2,5]].", 1, "Cosa prevede la legge sui contratti a termine?"),
+        ("Risolvi 5x - 3 = 2x + 9.", 1, "Come si cuoce il riso basmati?"),
+        ("Calcola il limite di (x^2-4)/(x-2).", 1, "Scrivi una query SQL con LEFT JOIN."),
+        ("Trova il minimo di f(x) = x^2 + 4x.", 1, "Quali sono i requisiti per il divorzio?"),
+        ("Calcola la somma di 1/2^n da n=1.", 2, "Implementa una coda con due pile in Python."),
+        ("Qual è la derivata di ln(2x)?", 1, "Parlami della Rivoluzione francese."),
+        ("Calcola la probabilità di estrarre un re.", 1, "Come si impugna un verbale?"),
+        ("Trova il centro della circonferenza x^2+y^2-4x=0.", 2, "Scrivi un decoratore Python per il logging."),
+        ("Calcola l'area del cerchio di raggio 6.", 1, "Come funziona la successione testamentaria?"),
+        ("Risolvi il sistema x+2y=5, 3x-y=1.", 1, "Dammi un consiglio per dormire meglio."),
+        ("Calcola il prodotto vettoriale di (1,0,2) e (0,3,1).", 2, "Come si configura un cron job?"),
+        ("Determina il rango di [[1,2,3],[2,4,6]].", 1, "Quali sono le regole del condominio sulle assemblee?"),
+        ("Calcola l'integrale di e^x * x.", 2, "Racconta una barzelletta sui gatti."),
+        ("Quanto vale 7 alla quarta?", 1, "Come si usa la libreria requests in Python?"),
+        ("Calcola la deviazione standard di 2, 4, 6, 8.", 2, "Cosa significa risoluzione per inadempimento?"),
+        ("Trova gli zeri di x^3 - 8.", 1, "Cosa mangio per cena?"),
+    ]
+    R = [
+        ("Cosa prevede la legge sul lavoro notturno?", 2, "Scrivi un programma Python che calcola la media."),
+        ("Come si contesta una bolletta troppo alta?", 1, "Calcola la derivata di x^3 - 2x."),
+        ("Quanto spetta di liquidazione dopo dieci anni?", 2, "Consigliami un libro di fantascienza."),
+        ("Chi risponde se il cane graffia un passante?", 2, "Come si inverte una stringa in Python?"),
+        ("Come si revoca una procura?", 2, "Trova il massimo di 5 - x^2."),
+        ("Quali documenti servono per un'eredità?", 1, "Come si fa la pizza in casa?"),
+        ("Cosa rischia chi non paga l'affitto?", 1, "Scrivi una query SQL con COUNT."),
+        ("Come si registra un marchio?", 2, "Calcola l'area di un triangolo equilatero."),
+        ("Si può vietare l'accesso a un erede?", 2, "Dimmi la capitale della Norvegia."),
+        ("Cosa dice la legge sui periodi di prova?", 1, "Come si usa async in Python?"),
+        ("Come funziona il gratuito patrocinio per stranieri?", 2, "Risolvi x^2 - x - 6 = 0."),
+        ("Quanti giorni di permesso per un lutto?", 1, "Qual è il miglior modo per imparare lo spagnolo?"),
+        ("Posso detrarre le spese mediche del genitore?", 2, "Scrivi un Dockerfile per un'app Go."),
+        ("Cosa succede se il condominio blocca i lavori?", 2, "Calcola il coseno di 60 gradi."),
+        ("Entro quando chiedo il rimborso del biglietto?", 1, "Dammi una ricetta veloce per il pranzo."),
+        ("Come si fa un reclamo all'Agenzia delle Entrate?", 2, "Come si cancella un branch Git remoto?"),
+        ("Chi paga le spese di un trasloco aziendale?", 2, "Calcola il limite di sin(2x)/x."),
+        ("Come si divide una pensione di reversibilità?", 2, "Parlami della cucina giapponese."),
+        ("Quali sono i diritti dei lavoratori stagionali?", 2, "Scrivi una funzione JavaScript che filtra un array."),
+        ("Come si ottiene un permesso di costruire?", 2, "Risolvi il sistema 2x+y=4, x-y=2."),
+    ]
+    return [('C', C), ('M', M), ('R', R)]
+
+
+def _ds3():
+    """DS-3 — stesso dominio, domanda AUTONOMA dopo history dello stesso dominio (NON followup)."""
+    C = [
+        ("Come si crea un dizionario in Python?", 1, "Come si scrive un ciclo for in Python?"),
+        ("Come si usa il metodo split in Java?", 1, "Come si concatena una stringa in Java?"),
+        ("Scrivi una funzione che calcola il massimo di un array in C.", 1, "Scrivi una funzione che ordina un array in C."),
+        ("Cos'è una closure in Python?", 2, "Come si definisce un decoratore in Python?"),
+        ("Come si imposta un alias in Bash?", 1, "Come si elencano i file in una cartella con ls?"),
+        ("Come si crea un indice univoco in MySQL?", 2, "Come si crea una tabella con una chiave primaria in MySQL?"),
+        ("Implementa una funzione che verifica se una parola è un anagramma.", 1, "Scrivi una funzione che verifica se una stringa è un palindromo."),
+        ("Cosa fa il metodo reduce in JavaScript?", 2, "Come si usa il metodo filter in JavaScript?"),
+        ("Come si gestisce l'input dell'utente in C++?", 1, "Come si stampa un messaggio a video in C++?"),
+        ("Chi esegue il garbage collector in Java?", 2, "Come funziona la gestione della memoria in Java?"),
+        ("Scrivi una query SQL che raggruppa le vendite per mese.", 2, "Scrivi una query SQL che somma gli importi di una tabella."),
+        ("Come si crea un ambiente Conda?", 1, "Come si installano le dipendenze con pip?"),
+        ("Come si scrive una funzione generica in TypeScript?", 2, "Come si dichiara un tipo in TypeScript?"),
+        ("Qual è la differenza tra stack e queue?", 1, "Come si implementa una queue in Python?"),
+        ("Come si fa il merge di due branch in Git?", 1, "Come si crea un commit in Git?"),
+    ]
+    M = [
+        ("Calcola l'integrale di cos(2x).", 1, "Calcola la derivata di cos(2x)."),
+        ("Come si risolve un'equazione biquadratica?", 2, "Come si risolve un'equazione di secondo grado?"),
+        ("Qual è la formula del volume di un cono?", 1, "Qual è la formula del volume di un cilindro?"),
+        ("Calcola il limite di tan(x)/x per x tendente a 0.", 1, "Calcola il limite di sin(x)/x per x tendente a 0."),
+        ("Cosa significa che una matrice è simmetrica?", 1, "Cosa significa che una matrice è diagonale?"),
+        ("Qual è l'inversa della funzione esponenziale?", 1, "Qual è l'inversa della funzione quadratica sui positivi?"),
+        ("Calcola la probabilità di ottenere un 3 o un 5 con un dado.", 1, "Calcola la probabilità di ottenere un numero dispari con un dado."),
+        ("Dimostra che la somma di due numeri dispari è pari.", 1, "Dimostra che il prodotto di due numeri pari è pari."),
+        ("Come si calcola la mediana di un insieme di dati?", 1, "Come si calcola la moda di un insieme di dati?"),
+        ("Trova i punti di flesso di f(x) = x^3 - 3x.", 2, "Trova i punti stazionari di f(x) = x^3 - 3x."),
+        ("Cosa vuol dire che una serie è assolutamente convergente?", 2, "Cosa vuol dire che una serie è convergente?"),
+        ("Calcola il volume di un cubo di lato 4.", 1, "Calcola l'area di un quadrato di lato 4."),
+        ("Risolvi la disequazione (x-1)(x+2) < 0.", 1, "Risolvi la disequazione x^2 - 1 > 0."),
+        ("Qual è la somma degli angoli interni di un pentagono?", 1, "Qual è la somma degli angoli interni di un quadrilatero?"),
+        ("Calcola l'integrale definito di 2x tra 1 e 3.", 1, "Calcola l'integrale indefinito di 2x."),
+    ]
+    R = [
+        ("Come si ottiene la cittadinanza per nascita?", 2, "Quali sono i requisiti per la cittadinanza per residenza?"),
+        ("Cosa prevede la legge sulla maternità facoltativa?", 2, "Cosa prevede la legge sul congedo di paternità?"),
+        ("Quali sono le sanzioni per l'evasione dell'IVA?", 2, "Quali sono le sanzioni per l'omesso versamento delle ritenute?"),
+        ("Chi può fare opposizione a un'ingiunzione di pagamento?", 2, "Come si presenta un ricorso contro un'ingiunzione fiscale?"),
+        ("Come funziona la separazione giudiziale?", 2, "Come funziona la separazione consensuale?"),
+        ("Cosa significa responsabilità oggettiva?", 2, "Cosa significa responsabilità solidale?"),
+        ("Come si disconosce una firma su un contratto?", 2, "Come si dimostra la validità di una firma su un contratto?"),
+        ("Quanto dura un contratto di locazione a canone libero?", 1, "Quanto dura un contratto di locazione a canone concordato?"),
+        ("Come si presenta una denuncia di smarrimento documenti?", 1, "Come si richiede il duplicato di un documento d'identità?"),
+        ("Cosa si intende per usufrutto legale?", 2, "Cosa si intende per servitù prediale?"),
+        ("Quali sono le regole sul lavoro straordinario?", 2, "Quali sono le regole sui turni notturni?"),
+        ("Chi risponde dei danni causati da un dipendente?", 2, "Chi risponde dei danni causati da un minore?"),
+        ("Come si estingue un'ipoteca?", 2, "Come si iscrive un'ipoteca?"),
+        ("Cos'è la querela di parte e quando serve?", 1, "Cos'è la denuncia e quando è obbligatoria?"),
+        ("Come si ottiene il rimborso di un prodotto difettoso?", 1, "Come funziona la garanzia su un elettrodomestico?"),
+    ]
+    G = [
+        ("Come si fa la maionese in casa?", 1, "Come si prepara il guacamole?"),
+        ("Qual è la capitale del Perù?", 1, "Qual è la capitale della Colombia?"),
+        ("Cosa si può visitare a Siviglia?", 1, "Cosa si può visitare a Lisbona in due giorni?"),
+        ("Chi ha scritto I Malavoglia?", 1, "Chi ha scritto Il Gattopardo?"),
+        ("Come si coltiva la menta in vaso?", 1, "Come si coltiva il rosmarino in vaso?"),
+        ("Quali sono le fasi del sonno?", 2, "Perché sogniamo durante il sonno?"),
+        ("Come si allena la schiena a casa?", 1, "Come si allenano le gambe a casa?"),
+        ("Cosa significa il termine Rinascimento?", 1, "Cosa significa il termine Illuminismo?"),
+        ("Come si sceglie un buon olio extravergine?", 1, "Come si riconosce un buon miele?"),
+        ("Qual è il pianeta più vicino al Sole?", 1, "Qual è il pianeta più grande del sistema solare?"),
+        ("Come si organizza una gita in bicicletta?", 1, "Come si prepara lo zaino per un trekking?"),
+        ("Chi ha dipinto I girasoli?", 1, "Chi ha dipinto La ragazza con l'orecchino di perla?"),
+        ("Come si prepara una crema pasticcera?", 1, "Come si prepara la pasta sfoglia?"),
+        ("Che differenza c'è tra un fiume e un torrente?", 1, "Che differenza c'è tra un lago e uno stagno?"),
+        ("Cosa devo portare per un weekend in montagna?", 1, "Come si sceglie un buon paio di scarponcini?"),
+    ]
+    return [('C', C), ('M', M), ('R', R), ('G', G)]
+
+
+# DS-5 — followup dopo history PIPELINE (R-FUP: label = ULTIMO modulo): (query, diff, history_pipeline, label)
+_DS5 = [
+    ("puoi rifarlo con un tasso del 3%?", 2, "Calcola matematicamente il valore attuale di una rendita vitalizia secondo le tabelle ministeriali.", 'M'),
+    ("come cambia se l'ISEE raddoppia?", 2, "Dimostra la formula del calcolo dell'assegno unico in funzione dell'ISEE.", 'M'),
+    ("non ho capito il passaggio con le percentuali", 2, "Deriva il modello matematico per la ripartizione del danno tra più responsabili secondo l'art. 2055 c.c.", 'M'),
+    ("fammi un esempio con 28.000 euro", 2, "Dimostra matematicamente come si calcola l'imposta progressiva per scaglioni dell'IRPEF.", 'M'),
+    ("e se il coefficiente ISTAT fosse negativo?", 2, "Qual è la formula matematica per calcolare la rivalutazione del TFR accantonato?", 'M'),
+    ("puoi mostrare il calcolo con 12 giorni residui?", 2, "Deriva la formula matematica dell'indennità sostitutiva delle ferie non godute.", 'M'),
+    ("e con un solo figlio?", 2, "Dimostra con un modello matematico il calcolo della quota di legittima con due figli e un coniuge.", 'M'),
+    ("perché i parametri si moltiplicano tra loro?", 2, "Calcola matematicamente il compenso forense con i parametri ministeriali e dimostra la formula.", 'M'),
+    ("puoi usare 45 giorni di ritardo come esempio?", 2, "Deriva la formula degli interessi di mora giornalieri secondo la normativa sui ritardi di pagamento.", 'M'),
+    ("mostrami la quota interessi della terza rata", 2, "Dimostra matematicamente la formula dell'ammortamento alla francese e le norme sulla trasparenza dei mutui.", 'M'),
+    ("e se pago dopo 20 giorni?", 2, "Costruisci un modello matematico per la sanzione ridotta nel ravvedimento operoso.", 'M'),
+    ("spiega meglio il coefficiente di invalidità", 2, "Dimostra la formula con cui si calcola il danno biologico temporaneo secondo le tabelle.", 'M'),
+    ("puoi aggiungere un limite massimo di iterazioni?", 2, "Implementa in Python il metodo di Newton per le radici quadrate e dimostra la convergenza quadratica.", 'C'),
+    ("come lo rendo vettorizzato?", 2, "Scrivi il codice del metodo di Gauss-Seidel e dimostra la condizione di convergenza.", 'C'),
+    ("scrivilo anche con NumPy", 2, "Implementa la discesa del gradiente con momentum e dimostra la convergenza su funzioni quadratiche.", 'C'),
+    ("aggiungi un test con una funzione nota", 2, "Programma in Python la regola del punto medio e dimostra l'ordine di convergenza.", 'C'),
+    ("come gestisco la divisione per zero sulla diagonale?", 2, "Implementa il metodo di Jacobi in Python e analizza matematicamente la convergenza.", 'C'),
+    ("e se la matrice è quasi singolare?", 3, "Scrivi uno script per l'eliminazione gaussiana con pivoting e dimostra la stabilità.", 'C'),
+    ("puoi gestire anche i part-time?", 2, "Scrivi uno script Python che calcola i giorni di ferie maturati secondo il CCNL dell'industria.", 'C'),
+    ("come lo proteggo con un token?", 2, "Implementa in Flask un endpoint per il diritto di cancellazione dei dati ai sensi dell'art. 17 GDPR.", 'C'),
+    ("puoi salvare i log in un file separato?", 2, "Sviluppa un modulo Python che registra gli accessi degli amministratori di sistema come richiesto dal Garante.", 'C'),
+    ("aggiungi la validazione del codice destinatario", 2, "Scrivi il codice per generare la fattura elettronica con i campi obbligatori del Sistema di Interscambio.", 'C'),
+    ("mostrami un esempio con tre contratti", 2, "Implementa uno script che verifica la scadenza dei contratti a termine rispetto al limite di legge.", 'C'),
+    ("come lo esporto in CSV?", 2, "Sviluppa in Django un registro dei consensi privacy con versione dell'informativa e data.", 'C'),
+]
+
+# DS-7 — rights colloquiale/pratico (R-RG): 20 colloquiali + 20 neutri
+_DS7 = [
+    ("raga se il mio capo mi manda un messaggio alle 11 di sera sono obbligato a rispondere?", 2),
+    ("boh ma può un'azienda controllarmi la posta elettronica aziendale?", 2),
+    ("vabbè ma il padrone di casa può entrare in casa mia quando non ci sono?", 2),
+    ("scusate ma se pago in ritardo l'affitto di due giorni rischio lo sfratto?", 2),
+    ("ma tipo se un negozio mi vende un prodotto scaduto cosa posso fare legalmente?", 1),
+    ("è legale registrare una riunione di lavoro con il telefono?", 2),
+    ("posso denunciare chi mi ha insultato in un gruppo whatsapp?", 2),
+    ("mi devono pagare gli straordinari fatti il sabato anche se non li ho firmati?", 2),
+    ("chi può fare il tutore di un parente anziano che non è più autosufficiente?", 2),
+    ("il compromesso immobiliare è vincolante oppure posso ancora tirarmi indietro?", 2),
+    ("dopo il rogito quanto tempo ho per segnalare dei difetti alla casa?", 2),
+    ("se il mio inquilino smette di pagare l'affitto da tre mesi cosa posso fare?", 2),
+    ("una scuola può espellere uno studente per un post sui social?", 2),
+    ("mio fratello vuole vendere la casa dei nostri genitori ma io non voglio: può farlo?", 2),
+    ("devo pagare il canone tv se non ho nemmeno il televisore?", 1),
+    ("posso licenziare una colf senza preavviso?", 2),
+    ("se trovo una carta di credito per strada e la uso commetto reato?", 1),
+    ("mi hanno tolto la patente per l'alcol: quanto dura la sospensione?", 2),
+    ("posso lavorare in nero mentre prendo la disoccupazione?", 1),
+    ("obbligare un dipendente a usare l'auto personale per lavoro è lecito?", 2),
+    ("Quali sono le conseguenze legali di una falsa dichiarazione all'ISEE?", 2),
+    ("Come funziona l'azione di risarcimento per un errore medico?", 2),
+    ("Cosa prevede la legge sul divieto di fumo nei luoghi pubblici?", 1),
+    ("Quali sono le regole per aprire un'attività di affittacamere?", 2),
+    ("Come si ottiene l'affidamento esclusivo di un figlio minore?", 2),
+    ("Cosa dice la legge sul diritto di cronaca e la privacy delle persone?", 2),
+    ("Quali tutele ha un lavoratore trasferito senza il suo consenso?", 2),
+    ("Come si dimostra la convivenza di fatto davanti a un ufficio pubblico?", 2),
+    ("Cosa rischia chi guida un'auto senza revisione?", 1),
+    ("Come si chiede la sospensione della pena per una condanna lieve?", 2),
+    ("Cosa prevede la normativa sull'uso dei droni in ambito privato?", 2),
+    ("Come funziona l'assegno divorzile e quando può essere revocato?", 2),
+    ("Quali sono i diritti di un passeggero in caso di smarrimento del bagaglio?", 1),
+    ("Come si trasferisce la proprietà di un veicolo usato?", 1),
+    ("Cosa prevede il codice civile sul diritto di ritenzione?", 2),
+    ("Quali responsabilità ha un amministratore di condominio?", 2),
+    ("Come si impugna una delibera condominiale?", 2),
+    ("Quali sono i limiti legali alle intercettazioni telefoniche?", 2),
+    ("Come si ottiene il riconoscimento di un figlio nato fuori dal matrimonio?", 2),
+    ("Quali sono le regole per i contratti di locazione turistica brevi?", 2),
+    ("Cosa prevede la legge sull'obbligo di fedeltà del dipendente verso l'azienda?", 2),
+    ("Come si ottiene l'annullamento di una multa pagata per errore?", 1),
+]
+
+# DS-8 — calcolo normativo semplice → rights (R-RN): niente 'formula/matematicamente/dimostra'
+_DS8 = [
+    ("Come si calcola il bollo auto in base ai kilowatt?", 1),
+    ("Come si calcola la TARI per un appartamento di 80 metri quadri?", 1),
+    ("Come si determina il contributo unificato per una causa civile?", 2),
+    ("Come si calcolano i ratei di quattordicesima per chi è stato assunto a marzo?", 1),
+    ("Quanto spetta a un dipendente che lavora tre giorni fuori sede?", 2),
+    ("A quanto ammontano i contributi INPS di un artigiano iscritto alla gestione speciale?", 2),
+    ("Come si calcola la soglia ISEE per accedere a un bonus?", 2),
+    ("Come si calcola la ritenuta d'acconto del 20% su una parcella?", 1),
+    ("A quanto ammonta l'imposta di bollo su un estratto conto?", 1),
+    ("Come si calcola la tassa di soggiorno per una famiglia di quattro persone?", 1),
+    ("Come si determina l'importo dell'assegno di inclusione?", 2),
+    ("Come si calcola il costo di una pratica di successione presso l'Agenzia delle Entrate?", 2),
+    ("Come si calcolano le ferie residue alla cessazione del rapporto di lavoro?", 2),
+    ("Quanto si paga di multa se la revisione dell'auto è scaduta da mesi?", 1),
+    ("Come si determina il canone minimo di un contratto a canone concordato?", 2),
+    ("Come si calcola la pensione minima integrata?", 2),
+    ("Come si determina il sussidio per un bracciante agricolo a fine stagione?", 2),
+    ("Come si calcolano le spese di notaio per l'acquisto della prima casa?", 2),
+    ("Come si calcola l'Irap per una piccola impresa individuale?", 2),
+    ("Come si calcola la franchigia dell'imposta di donazione tra fratelli?", 2),
+    ("A quanto ammonta il contributo per l'iscrizione al registro delle imprese?", 1),
+    ("Come si determina la base imponibile per l'imposta di successione?", 2),
+    ("Quale importo spetta come bonus mamma domani alle neomamme senza lavoro?", 2),
+    ("Come si calcolano gli oneri accessori sull'affitto di un negozio?", 2),
+    ("Come si calcola la tassa automobilistica per un'auto elettrica?", 1),
+    ("Come si calcola il contributo di solidarietà sulle pensioni alte?", 2),
+    ("Come si determina la rendita catastale di un immobile?", 2),
+    ("A quanto ammonta la multa per divieto di sosta in una zona a traffico limitato?", 1),
+    ("Come si calcola il netto di una busta paga con addizionale comunale?", 2),
+    ("Come si calcola il rimborso dell'IVA per un acquisto all'estero?", 2),
+    ("Come si calcola il contributo previdenziale di un collaboratore domestico?", 2),
+    ("Come si calcola il compenso del notaio per una procura?", 1),
+    ("Come si calcola l'anzianità contributiva ai fini pensionistici?", 2),
+    ("Come si calcola la sanzione per ritardato pagamento del bollo?", 1),
+    ("A quanto ammontano le detrazioni per i figli a carico?", 2),
+    ("Come si determina l'importo del trattamento di fine mandato?", 2),
+    ("Come si calcola la tassa sui rifiuti per un negozio?", 1),
+    ("Come si calcolano le detrazioni per le spese universitarie?", 2),
+    ("Come si calcola la quota esente per il pignoramento della pensione?", 2),
+    ("Come si calcola la sanzione per una dichiarazione dei redditi presentata in ritardo?", 2),
+]
+
+# DS-9 — aritmetica con euro (R-ARIT): 30 math + 10 contrasti general (consigli)
+_DS9_M = [
+    ("Un maglione costa 48 euro e ha il 25% di sconto: quanto pago?", 1),
+    ("Se investo 2500 euro al 3,5% semplice per 2 anni, quanto ricevo alla fine?", 1),
+    ("Se restituisco 1800 euro in 9 mensilità uguali senza interessi, di quanto è ogni mensilità?", 1),
+    ("Dopo una ritenuta del 12% mi accreditano 440 euro: quanto era l'importo lordo?", 2),
+    ("Quanto fa il 7% di 1300 euro?", 1),
+    ("Un oggetto passa da 120 a 150 euro: di quanto è aumentato in percentuale?", 1),
+    ("Quanto diventano 800 euro al 2% annuo composto dopo 3 anni?", 2),
+    ("Se divido 450 euro in parti proporzionali a 2, 3 e 4, quanto spetta a ciascuno?", 2),
+    ("Quanto costano 3,5 kg di mele a 2,40 euro al chilo?", 1),
+    ("Un salvadanaio ha 36 monete da 50 centesimi e 20 da 2 euro: quanto contiene?", 1),
+    ("Se un prezzo scende del 30% e poi risale del 30%, qual è il prezzo finale partendo da 100 euro?", 2),
+    ("Qual è il prezzo iniziale di un televisore che costa 340 euro dopo uno sconto del 15%?", 2),
+    ("Se risparmio 85 euro al mese, quanto metto da parte in due anni?", 1),
+    ("Quanto interesse maturano 6000 euro al 2,5% in 18 mesi?", 2),
+    ("Quanti euro sono 245 dollari al cambio di 0,92?", 1),
+    ("Se la benzina costa 1,85 euro al litro, quanto spendo per 32 litri?", 1),
+    ("Un conto di 96 euro viene diviso tra 5 amici: quanto paga ciascuno?", 1),
+    ("Se pago a rate 12 volte da 63 euro, quanto spendo in totale?", 1),
+    ("Quale percentuale è 45 euro su un totale di 360?", 1),
+    ("Un capitale di 1500 euro frutta 90 euro in un anno: qual è il tasso?", 2),
+    ("Quanto resta da pagare per un viaggio di 540 euro con un acconto del 30% già versato?", 1),
+    ("Quanti anni servono per raddoppiare un capitale al 5% di interesse semplice?", 2),
+    ("Se un prodotto con IVA al 10% costa 66 euro, qual è il prezzo senza IVA?", 2),
+    ("Un abbonamento costa 9,90 euro al mese o 99 euro l'anno: quanto risparmio con quello annuale?", 1),
+    ("Quanto si accumula versando 100 euro al mese per 5 anni senza interessi?", 1),
+    ("Se uno stipendio di 1500 euro aumenta del 4%, qual è il nuovo importo?", 1),
+    ("Quanto pago di mancia se lascio il 12% su un conto di 75 euro?", 1),
+    ("Con un interesse composto del 4% annuo, dopo quanti anni 1000 euro superano i 1200?", 2),
+    ("Se divido un premio di 2400 euro in modo che A riceva il doppio di B, quanto prende B?", 2),
+    ("Quanto pagherò in totale se prendo 5000 euro in prestito con il 5% di interessi semplici in 3 anni?", 2),
+]
+_DS9_G = [
+    ("Conviene un prestito a tasso fisso o variabile per comprare un'auto?", 2),
+    ("Come posso dividere lo stipendio tra spese, risparmi e svago?", 1),
+    ("È meglio pagare la carta di credito a saldo o a rate?", 1),
+    ("Quanto conviene tenere come fondo di emergenza sul conto?", 2),
+    ("Come si impara a risparmiare qualcosa ogni mese senza rinunce eccessive?", 1),
+    ("Conviene affittare o comprare casa in una grande città?", 2),
+    ("Quali spese si possono tagliare per prime quando il budget è stretto?", 1),
+    ("Per chi parcheggia i risparmi conviene un conto deposito o restare sul conto corrente?", 2),
+    ("Come si spiega il valore del denaro ai bambini?", 1),
+    ("È una buona idea investire in oro per proteggere i risparmi?", 2),
+]
+
+# DS-10 — trap tecnici in contesto non tecnico: 26 general lunghi, 8 rights (Codice della Strada), 6 coding (code review)
+_DS10_G = [
+    ("Mia figlia studia ingegneria e a cena parla solo di reti neurali, gradienti e funzioni di costo, mentre io mi limito ad annuire: mi consigli qualche documentario o libro divulgativo che mi aiuti a seguire i suoi discorsi senza formule?", 2),
+    ("Al corso di storia dell'architettura il docente ha parlato della proporzione aurea e di certe equazioni che regolavano le facciate dei palazzi veneziani, ma a me interessa solo capire quali edifici vale la pena visitare a Venezia in due giorni.", 1),
+    ("In ufficio tutti parlano di algoritmi che decidono cosa vediamo sui social, e io vorrei capire in modo semplice, senza matematica, perché certi contenuti ci sembrano seguirci ovunque: c'è un modo discorsivo per spiegarlo a chi non ha basi tecniche?", 2),
+    ("Mio marito è programmatore e dice sempre che la nostra organizzazione domestica ha dei bug da correggere: oltre alla battuta, vorrei consigli pratici per dividere meglio le faccende di casa tra noi due senza litigare ogni sera.", 1),
+    ("Ho letto che certi pittori usavano formule e prospettive geometriche molto complesse per dipingere le città ideali del Rinascimento: mi racconti in modo narrativo chi erano quegli artisti e che cosa cercavano di comunicare con quelle scene?", 2),
+    ("Sono appassionato di cucina molecolare e mi affascina che dietro una spuma ci siano formule e rapporti precisi, ma mi serve solo una ricetta semplice di una spuma al cioccolato per sorprendere gli ospiti di sabato sera.", 1),
+    ("Il mio professore di filosofia ha paragonato la logica di Aristotele a un linguaggio di programmazione antico, e la cosa mi ha incuriosito: mi spieghi con parole semplici cosa intendeva Aristotele per sillogismo e perché è ancora citato oggi?", 2),
+    ("Mi hanno regalato un libro sulla storia dell'informatica con tante pagine di equazioni e circuiti; io vorrei solo sapere chi erano i pionieri di cui si parla e che vita facevano, senza entrare nei dettagli tecnici dei loro progetti.", 2),
+    ("Dopo anni di lavoro con fogli di calcolo e formule ho voglia di dedicarmi a un hobby manuale: mi consigli qualche attività creativa, tipo ceramica o falegnameria, adatta a chi parte da zero e ha poco tempo la sera?", 1),
+    ("Mio nonno raccontava che i marinai si orientavano con complicati calcoli sulle stelle, e io vorrei capire in modo discorsivo come facevano a non perdersi in mezzo all'oceano prima dell'invenzione del GPS, senza dover seguire alcuna formula.", 2),
+    ("Mi piace pensare che la musica sia fatta di equazioni nascoste, ma da ascoltatore comune vorrei solo qualche suggerimento di album di jazz per iniziare ad apprezzare questo genere, magari con una breve storia di chi lo ha inventato.", 1),
+    ("Un mio amico dice che l'allenamento è questione di algoritmi e dati, ma io corro solo per piacere: come posso iniziare a correre tre volte a settimana senza farmi male alle ginocchia e senza comprare nessun gadget tecnologico?", 1),
+    ("Mi sono imbattuto in un articolo che spiega come i videogiochi usano la fisica e l'intelligenza artificiale per rendere credibili i personaggi, e mi chiedo, da semplice giocatore, quali sono i giochi con le storie più belle degli ultimi anni.", 1),
+    ("Studio storia economica e ho trovato tabelle con integrali e modelli sulla crescita dei prezzi nel Seicento; la mia domanda però è soltanto di contesto: quali furono le cause sociali della grande crisi del 1630 in Italia?", 2),
+    ("Sto leggendo un romanzo in cui un personaggio risolve enigmi con teoremi e formule, e mi ha incuriosito: potresti consigliarmi altri gialli ambientati in biblioteche o università, con atmosfere simili ma senza troppa matematica?", 1),
+    ("Mi dicono che in questa fase della vita dovrei ottimizzare il mio tempo e ridurre gli sprechi come fanno gli ingegneri con i processi, ma io vorrei solo suggerimenti gentili per dedicare più ore alla lettura senza sentirmi in colpa.", 1),
+    ("Ho assistito a una conferenza in cui si parlava di derivate e integrali come metafore della vita, ed era suggestivo, però ora vorrei solo qualche consiglio di viaggio per un weekend rilassante in un borgo toscano a settembre.", 1),
+    ("Mi incuriosisce la storia dell'orologeria: so che dietro ogni meccanismo c'erano calcoli di ingranaggi precisissimi, ma vorrei una spiegazione narrativa su come si è passati dagli orologi solari a quelli da polso e su come cambiò la vita quotidiana.", 2),
+    ("Nel mio gruppo di lettura qualcuno ha usato il termine gradiente per descrivere come cambia l'umore di un personaggio nel corso di un romanzo; mi spiegate in modo semplice cosa significa usare il linguaggio scientifico nell'analisi letteraria?", 2),
+    ("Sono un insegnante di scuola media e vorrei far appassionare i ragazzi alla storia con attività divertenti, anche se in classe abbiamo un laboratorio di informatica pieno di computer: avete idee di giochi o uscite didattiche da proporre?", 1),
+    ("Un collega mi ha detto che il mio stile di vita ha troppa entropia, tra orari sballati e cene improvvisate: mi dai qualche consiglio concreto e gentile per creare una routine serale più ordinata senza stravolgere la mia vita?", 1),
+    ("Il mio corso di sociologia usa spesso la parola modello per descrivere le città, con grafici e funzioni, ma io vorrei capire in modo concreto come è cambiata la vita dei quartieri operai di Torino dopo la chiusura delle grandi fabbriche.", 2),
+    ("Mi hanno spiegato che il caffè perfetto dipende da temperatura, pressione e tempo di estrazione, quasi un'equazione; a me basterebbe sapere come preparare un buon caffè con la moka senza che venga amaro e bruciato.", 1),
+    ("Per la mia tesi di storia dell'arte mi sono imbattuto in saggi che parlano di funzioni e algoritmi per analizzare i quadri, ma mi interessa soltanto sapere che cosa rappresentano gli affreschi di Giotto nella Cappella degli Scrovegni.", 2),
+    ("Leggo spesso che il cervello funziona come una rete di neuroni e di calcoli, ma da curioso vorrei capire in parole semplici perché dimentichiamo i sogni appena svegli e se esistono trucchi per ricordarli meglio.", 2),
+    ("Sono un fotografo amatoriale e so che la regola dei terzi ha basi geometriche, ma non mi interessano formule: mi puoi consigliare come fotografare un tramonto al mare per ottenere colori caldi e un'immagine ben bilanciata?", 1),
+]
+_DS10_R = [
+    ("Quanto si può superare il limite di velocità in curva prima di rischiare una multa?", 1),
+    ("Chi ha la precedenza in una rotatoria quando due auto entrano insieme?", 1),
+    ("È vietato il sorpasso in prossimità di una curva senza visibilità?", 1),
+    ("Quali sono le sanzioni per chi supera il limite di velocità di oltre 40 km/h?", 2),
+    ("In una rotatoria bisogna dare la destra o la sinistra e chi deve usare le frecce?", 1),
+    ("Quanta distanza laterale bisogna lasciare quando si supera una bicicletta?", 2),
+    ("Se un autovelox registra la velocità in curva, la multa è comunque valida?", 2),
+    ("Il limite di velocità vale anche nelle strade private aperte al pubblico?", 2),
+]
+_DS10_C = [
+    ("In code review mi hanno scritto che la mia classe ha troppe responsibility: come applico il single responsibility principle senza spezzare tutto in mille classi?", 2),
+    ("Il mio collega dice che l'ereditarietà in questo modulo è un errore e vuole la composizione: puoi mostrarmi come rifattorizzare una classe Animale con sottoclassi usando la composizione in Python?", 2),
+    ("Nella pull request mi chiedono di rispettare il principio open/closed: come rendo estendibile una funzione che calcola sconti senza modificarla ogni volta che c'è un nuovo caso?", 2),
+    ("Il linter si lamenta dell'ereditarietà multipla nella mia classe Python e il review lead vuole un mixin: come si struttura un mixin per aggiungere il logging a più classi?", 2),
+    ("Durante la code review mi hanno detto che il mio modulo viola il principio di inversione delle dipendenze: puoi mostrarmi in TypeScript come iniettare un repository tramite interfaccia?", 3),
+    ("Il team lead vuole che separiamo le responsibility tra controller e service in questa app Spring: come si organizzano i layer e dove va messa la validazione dei dati?", 2),
+]
+
+
+def build_expansion_records(stages: str = None) -> list:
+    """Record di espansione per gli stadi richiesti (env CYA_STAGES, default "2.1,2.2")."""
+    stages = (stages or os.environ.get(EXPANSION_STAGES_ENV, EXPANSION_DEFAULT_STAGES)).replace(' ', '')
+    wanted = {s for s in stages.split(',') if s and s.lower() != 'none'}
+    L = {'C': _C, 'M': _M, 'R': _R, 'G': _G}
+    out = []
+    if '2.1' in wanted:
+        for key, rows in _ds1():
+            out += [_fu(q, L[key], d, [h]) for q, d, h in rows]
+        for key, rows in _ds2() + _ds3():
+            out += [_cd(q, L[key], d, [h]) for q, d, h in rows]
+        for q, d, h, key in _DS5:                       # R-FUP: label = ultimo modulo
+            out.append(_fu(q, L[key], d, [h]))
+    if '2.2' in wanted:
+        out += [_r(q, L['R'], d) for q, d in _DS7 + _DS8]
+        out += [_r(q, L['M'], d) for q, d in _DS9_M]
+        out += [_r(q, L['G'], d) for q, d in _DS9_G + _DS10_G]
+        out += [_r(q, L['R'], d) for q, d in _DS10_R]
+        out += [_r(q, L['C'], d) for q, d in _DS10_C]
+    return out
+
+
+MANUAL_RECORDS += build_expansion_records()
+
 # ── False-Pipeline Hard Negatives (ex-FIX A-C1, ampliato) ────────────────────
 # [FIX A-C1 rev.2] "calcola/implementa X in Python" su operazioni CS
 # elementari con vocabolario numerico/matematico (fattoriale, primo, MCD,
@@ -1329,8 +1805,8 @@ def stratified_split(records: list) -> list:
         result.extend(group)
 
     if empty_splits:
-        print(f"\n⚠️  [M3 WARNING] Classi con split val e/o test VUOTO (n troppo piccolo "
-              f"per lo split 70/15/15 — punto cieco nella valutazione per-classe):")
+        print("\n⚠️  [M3 WARNING] Classi con split val e/o test VUOTO (n troppo piccolo "
+              "per lo split 70/15/15 — punto cieco nella valutazione per-classe):")
         for key, n, tr, va, te in empty_splits:
             print(f"     {key:25s}: n={n:3d} → train={tr} val={va} test={te}")
 
@@ -1650,7 +2126,7 @@ def main():
     # [A2 FIX] Dedup PRIMA di split/augmentation: vedi dedup_records().
     all_rec = dedup_records(all_rec)
 
-    print(f"\n[FASE 1] Dati base unificati:")
+    print("\n[FASE 1] Dati base unificati:")
     print(f"  INTENT_SENTENCES         : {len(intent)}")
     print(f"  BRIDGE_SENTENCES         : {len(bridge)}")
     print(f"  Manual Cases             : {len(MANUAL_RECORDS)}")
@@ -1676,7 +2152,7 @@ def main():
     for r in all_rec:
         class_map[get_class_key(r)].append(r)
 
-    print(f"\n[FASE 2] Augmentation (sinonimi):")
+    print("\n[FASE 2] Augmentation (sinonimi):")
     extra = []
     below_target = []  # [M1 FIX] classi che restano sotto il target richiesto
     for k, group in class_map.items():
@@ -1701,8 +2177,8 @@ def main():
             extra.extend(aug)
 
     if below_target:
-        print(f"\n⚠️  [M1 WARNING] Classi sotto target dopo augmentation "
-              f"(copertura SYNONYMS insufficiente per generare abbastanza varianti uniche):")
+        print("\n⚠️  [M1 WARNING] Classi sotto target dopo augmentation "
+              "(copertura SYNONYMS insufficiente per generare abbastanza varianti uniche):")
         for k, got, target in below_target:
             print(f"     {k:25s}: {got}/{target}  (mancano {target - got})")
 
@@ -1718,18 +2194,14 @@ def main():
     noise_source = [r for r in (intent + bridge) if r.get('split')]
     noise_extra  = augment_noise(noise_source)
     all_rec = all_rec + noise_extra
-    print(f"\n[FASE 2bis] Query Noise Augmentation (Opzione A):")
+    print("\n[FASE 2bis] Query Noise Augmentation (Opzione A):")
     print(f"  Record sorgente eleggibili (intent+bridge, con split) : {len(noise_source)}")
     print(f"  Varianti rumorose generate                            : {len(noise_extra)}")
     print(f"  Totale dopo noise augmentation                        : {len(all_rec)}")
-    dens = {}
-    for d in (1, 2, 3):
-        n_src = sum(1 for r in noise_source if r['difficulty'] == d)
-        n_var = sum(1 for r in noise_extra  if r['difficulty'] == d)
-        dens[d] = n_var / max(1, n_src)
-        print(f"  [T7] diff={d}: sorgenti {n_src:4d} -> varianti {n_var:4d}  (densità {dens[d]:.2f})")
-    if not (dens[1] <= dens[2] and dens[1] <= dens[3]):
-        print("  ⚠️  [T7 WARNING] densità noise diff 2/3 inferiore a diff 1: stratificazione non rispettata")
+    # [F2-vincolo ii] Rimosso il blocco diagnostico "[T7] densità per difficulty" e il suo
+    # warning: i tre ratio di NOISE_RATIO_BY_DIFFICULTY sono uguali per scelta (T7 rimosso),
+    # quindi il warning "densità diff 2/3 inferiore a diff 1" era una stampa falsa (rumore
+    # campionario). NOISE_RATIO_BY_DIFFICULTY resta uniforme: NON reintrodurre stratificazione.
 
     # [HARD-NEG FIX] FASE 2ter — Rinforzo mirato hard-negatives,
     # INDIPENDENTE dalla saturazione del dominio mono genitore (vedi
@@ -1741,7 +2213,7 @@ def main():
     #     nella sua variante con suffisso di stile (wrong_query_TESTING.md).
     #   - KEYWORD_TRAP_NEGATIVES: fraseggio discorsivo, zero match SYNONYMS
     #     → solo noise-wrap, che non dipende da SYNONYMS.
-    print(f"\n[FASE 2ter] Rinforzo mirato hard-negatives (bypassano la saturazione del dominio mono):")
+    print("\n[FASE 2ter] Rinforzo mirato hard-negatives (bypassano la saturazione del dominio mono):")
     hard_neg_extra = []
     hard_neg_extra += augment_hard_negatives_synonyms(
         FALSE_PIPELINE_HARD_NEGATIVES, TARGET_FALSE_PIPELINE_NEG, "false_pipeline [synonyms]")
@@ -1753,7 +2225,7 @@ def main():
     print(f"  Totale dopo rinforzo hard-negatives: {len(all_rec)}")
 
     # [T8] FASE 2quater — noise-wrap dei record con history (_fu/_cd), vedi FU_NOISE_RATIO.
-    print(f"\n[FASE 2quater] Noise-wrap record con history (ribilanciamento is_followup):")
+    print("\n[FASE 2quater] Noise-wrap record con history (ribilanciamento is_followup):")
     hist_src = [r for r in MANUAL_RECORDS
                 if r.get('split') and r['history'] and not r['is_pipeline']
                 and len(r['query'].split()) <= HISTORY_NOISE_MAX_WORDS]
@@ -1776,7 +2248,7 @@ def main():
     # tocca lo split, altrimenti si reintroduce il leak.
     random.shuffle(all_rec)
 
-    with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
+    with open(DATASET_PATH, 'w', encoding='utf-8') as f:
         for r in all_rec:
             f.write(json.dumps(r, ensure_ascii=False) + '\n')
 
@@ -1787,7 +2259,7 @@ def main():
     fu_n    = sum(1 for r in all_rec if r.get('is_followup'))
     pipe_n  = sum(1 for r in all_rec if r['is_pipeline'])
 
-    print(f"\n[RISULTATI]")
+    print("\n[RISULTATI]")
     print(f"  train / val / test : {split_c['train']} / {split_c['val']} / {split_c['test']}")
     print(f"  difficulty 1/2/3   : {diff_c[1]} / {diff_c[2]} / {diff_c[3]}")
     print(f"  record con history : {hist_n}")
@@ -1795,14 +2267,14 @@ def main():
     print(f"  record pipeline    : {pipe_n}")
 
     # [T8] Report di verifica Fase 1 (piano §4 T8: conteggi per classe/split/difficulty/followup)
-    print(f"\n[T8 — CONTEGGI PER CLASSE]  (train/val/test)")
+    print("\n[T8 — CONTEGGI PER CLASSE]  (train/val/test)")
     cls_c = defaultdict(Counter)
     for r in all_rec:
         cls_c[get_class_key(r)][r['split']] += 1
     for k in sorted(cls_c):
         c = cls_c[k]
         print(f"  {k:16s}: {sum(c.values()):5d}   {c['train']}/{c['val']}/{c['test']}")
-    print(f"\n[T8 — is_followup / history per split]")
+    print("\n[T8 — is_followup / history per split]")
     for sp in ('train', 'val', 'test'):
         x  = [r for r in all_rec if r['split'] == sp]
         fu = sum(1 for r in x if r['is_followup'])
@@ -1813,7 +2285,7 @@ def main():
     if gen_overlap is not None:
         flag = "OK" if gen_overlap <= seed_overlap else "⚠️  AUMENTATO: una fase di augmentation riproduce query dell'eval"
         print(f"\n[T8 — LEAKAGE eval] righe dataset == eval (query+history): seed={seed_overlap} finale={gen_overlap}  {flag}")
-    print(f"\n✅  Dataset salvato in: {OUTPUT_PATH}\n")
+    print(f"\n✅  Dataset salvato in: {DATASET_PATH}\n")
 
 
 if __name__ == '__main__':
