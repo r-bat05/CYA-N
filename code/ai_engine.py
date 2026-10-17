@@ -94,7 +94,7 @@ class BaseAI(ABC):
 
         if self.is_using_fallback:
             if available_ram < self.fallback_ram_req:
-                print(f"\nERRORE CRITICO: RAM insufficiente anche per il modello leggero.")
+                print("\nERRORE CRITICO: RAM insufficiente anche per il modello leggero.")
                 print(f"   Disponibili: {available_ram / config.GB:.2f} GB "
                       f"< Richiesti: {self.fallback_ram_req / config.GB:.2f} GB")
                 return False

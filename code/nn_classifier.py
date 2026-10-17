@@ -5,36 +5,48 @@ Interfaccia pubblica INVARIATA:
     predict(text, history) → (class_id, conf, domain_scores, diff, is_followup)
     unload_router()
 
-[v4] 3 reti indipendenti (model_architecture.py) in un unico checkpoint.
+[v4] 3 reti indipendenti (model_architecture.py) in un unico checkpoint (versione 4).
   - class_id   : argmax a 7 classi + bias pipeline (tarato sul VAL, salvato nel checkpoint).
   - conf       : probabilità softmax della classe scelta.
   - domain_scores (solo diagnostica, per main.py): P(mono) + somma P(pipeline che lo contengono).
   - difficulty : ordinale con soglia fallback (salvata nel checkpoint).
   - is_followup: sigmoid ≥ soglia (salvata nel checkpoint).
 Nessuna soglia in config.py: tutti i parametri di decisione vivono nel checkpoint.
+
+[v5 — report_followup_switch_domain.md]
+  F1-A  Gate: is_followup=True è possibile SOLO se esiste almeno un turno utente in history
+        (prima: la rete poteva dare True anche con history vuota — N-RAMBLE1, VMN-100, VSH-044).
+        Env CYA_FU_GATE=0 disattiva il gate (solo per riprodurre il baseline F0 "puro").
+  [v6] Checkpoint v4: un solo modello per task (rimossi ensemble, testa multi-label e 'arch').
+        I checkpoint v2/v3 vanno rigenerati con train_nn.py.
+  DEBUG LAST_DEBUG: dict aggiornato a ogni predict() con input, has_history, p_followup, thr,
+        gate, logit. main.py lo stampa: permette di capire SE un False viene dal gate (history
+        vuota) o dalla soglia (p < thr). Nessuna modifica all'interfaccia pubblica.
 """
 
-import time
 import gc
+import os
 import torch
 from sentence_transformers import SentenceTransformer
 from typing import Tuple, Optional
 
 from history_utils import build_input_str, HISTORY_MAX_TURNS
-from domains import MONO_DOMAINS, DOMAIN_NAMES, PIPELINE_CLASSES
+from domains import MONO_DOMAINS, PIPELINE_CLASSES
 from classifier_config import WEIGHTS_PATH, ENCODER_MODEL_NAME, ENCODER_MAX_SEQ_LEN
 from model_architecture import (
-    MODEL_CLASSES, CKPT_VERSION, CKPT_VERSION_KEY, CKPT_TASKS,
+    build_model, CKPT_VERSION, CKPT_VERSION_KEY, CKPT_TASKS,
     CKPT_STATE_KEY, CKPT_PARAMS_KEY, CKPT_METRICS_KEY,
     decide_domain, decide_difficulty,
 )
 
-_CLASS_TO_NAME = {i: n for i, n in enumerate(DOMAIN_NAMES)}
+_FU_GATE = os.environ.get("CYA_FU_GATE", "1") == "1"
 
-_models:  Optional[dict]                = None
+_models:  Optional[dict]                = None   # task -> nn.Module
 _params:  Optional[dict]                = None
 _encoder: Optional[SentenceTransformer] = None
 _loaded:  bool                          = False
+
+LAST_DEBUG: dict = {}
 
 
 def _fmt_metric(value) -> str:
@@ -61,11 +73,12 @@ def _load_model():
     print(f"[NN_CLASSIFIER] Caricamento pesi: {WEIGHTS_PATH}")
     ckpt = torch.load(str(WEIGHTS_PATH), map_location='cpu', weights_only=True)
     if ckpt.get(CKPT_VERSION_KEY) != CKPT_VERSION:
-        raise RuntimeError("Checkpoint in formato obsoleto (MultiTaskMLP): rieseguire train_nn.py")
+        raise RuntimeError(f"Checkpoint in formato obsoleto (versione {ckpt.get(CKPT_VERSION_KEY)}, "
+                           f"attesa {CKPT_VERSION}): rieseguire train_nn.py")
 
     models, params = {}, {}
     for t in CKPT_TASKS:
-        m = MODEL_CLASSES[t]()
+        m = build_model(t)
         m.load_state_dict(ckpt[t][CKPT_STATE_KEY])
         m.eval()
         models[t] = m
@@ -77,15 +90,16 @@ def _load_model():
     _models, _params, _loaded = models, params, True
 
 
-def _build_input_str(query: str, history: list) -> str:
-    user_turns = [m['content'] for m in history if m.get('role') == 'user'][-HISTORY_MAX_TURNS:]
-    return build_input_str(query, user_turns)
+def _user_turns(history: list) -> list:
+    """[F1-A] SOLO i turni utente (ultimi HISTORY_MAX_TURNS), come nel training."""
+    return [m['content'] for m in history if m.get('role') == 'user'][-HISTORY_MAX_TURNS:]
 
 
 def predict(
     text: str,
     history: list = None,
 ) -> Tuple[int, float, dict, int, bool]:
+    global LAST_DEBUG
     history = history or []
 
     try:
@@ -98,7 +112,9 @@ def predict(
         return -1, 0.0, {}, 2, False
 
     try:
-        input_str = _build_input_str(text, history)
+        user_turns = _user_turns(history)
+        has_hist   = bool(user_turns)
+        input_str  = build_input_str(text, user_turns)
 
         with torch.no_grad():
             emb = _encoder.encode([input_str], normalize_embeddings=True, show_progress_bar=False)
@@ -108,7 +124,8 @@ def predict(
             lg_fu  = _models['followup'](x).reshape(())     # scalare
 
         probs    = torch.softmax(lg_dom, dim=0)
-        class_id = int(decide_domain(lg_dom, _params['domain']['bias_pipe']).item())
+        pdom     = _params['domain']
+        class_id = int(decide_domain(lg_dom, pdom['bias_pipe']).item())
         confidence = float(probs[class_id].item())
 
         scores = {n: float(probs[i]) for i, n in enumerate(MONO_DOMAINS)}
@@ -118,9 +135,14 @@ def predict(
         domain_scores = {n: round(v, 4) for n, v in scores.items()}
 
         difficulty  = int(decide_difficulty(lg_dif, _params['difficulty']['thr_fallback']).item())
-        is_followup = bool(torch.sigmoid(lg_fu).item() >= _params['followup']['thr'])
+        p_fu        = float(torch.sigmoid(lg_fu).item())
+        thr_fu      = _params['followup']['thr']
+        is_followup = (has_hist or not _FU_GATE) and (p_fu >= thr_fu)     # [F1-A] gate history vuota
 
-        return class_id, confidence, domain_scores, difficulty, is_followup
+        LAST_DEBUG = {'input': input_str, 'has_history': has_hist, 'p_followup': p_fu,
+                      'thr_followup': thr_fu, 'logit_followup': float(lg_fu.item()),
+                      'gate_blocked': (not has_hist) and _FU_GATE and p_fu >= thr_fu}
+        return class_id, confidence, domain_scores, difficulty, bool(is_followup)
 
     except Exception as e:
         print(f"[NN_CLASSIFIER] Errore inference ({e}) → fallback keyword")

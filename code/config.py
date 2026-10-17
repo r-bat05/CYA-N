@@ -68,7 +68,6 @@ MODELS_CONFIG = {
 
 # --- 3. IMPOSTAZIONI SISTEMA ---
 SYSTEM_SETTINGS = {
-    'spinner_timeout':   60,
     'ollama_keep_alive': '60s',
     'ctx_size':          4096,
 
@@ -98,7 +97,7 @@ NEURAL_CLASSIFIER_SETTINGS = {
     # Vincolo usato SOLO da train_nn.py per tarare il bias pipeline sul VAL:
     # massimo tasso di query mono classificate come pipeline. Le soglie di decisione
     # (bias pipeline, soglia fallback, soglia followup) NON vivono più qui: sono nel checkpoint.
-    'max_false_pipeline_rate': 0.02,
+    'max_false_pipeline_rate': 0.03,   # [F1-F / D3] 0.02 non era raggiungibile (val FP≈0.04)
 }
 
 
@@ -126,4 +125,14 @@ PIPELINE_SETTINGS = {
 # rimossa).
 TIER_ROUTING_SETTINGS = {
     'fallback_max_difficulty': 1,
+    # [F1-C / F6-A] Le pipeline NON usano mai il tier fallback: l'integrazione di due domini
+    # richiede il modello primary. check_resources() (ai_engine.py) continua a degradare in
+    # caso di RAM insufficiente (rete di sicurezza hardware invariata).
+    'pipeline_min_difficulty': 2,
+    # [F6-D / D1-R5, OPZIONALE, default OFF] Se True, un follow-up eredita almeno la difficulty
+    # della risposta precedente (evita che un follow-up in un thread complesso passi al modello
+    # piccolo). is_followup resta comunque SOLO un segnale di tier: non modifica mai class_id
+    # (Routing Purity) né azzera la history (R4 sconsigliata: un falso negativo farebbe perdere
+    # contesto al LLM).
+    'followup_inherit_difficulty': False,
 }

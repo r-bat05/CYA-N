@@ -8,13 +8,11 @@ import time
 import psutil
 import config
 from ai_engine import get_ai_model, ResourceExhaustedError, would_use_fallback
-from nn_classifier import predict as router_predict, PIPELINE_CLASSES, DOMAIN_NAMES, unload_router
+from domains import MONO_DOMAINS, PIPELINE_CLASSES, DOMAIN_NAMES
+from nn_classifier import predict as router_predict, unload_router
+import nn_classifier   # [DEBUG followup] LAST_DEBUG: p_followup / soglia / gate history
 
 _ERROR_PREFIXES  = ("Errore Ollama:", "Errore Generico:", "__SYS_WARN__:")
-# [M5 FIX] Derivato da nn_classifier.DOMAIN_NAMES (unica fonte di verità)
-# invece di ridichiarato come dict indipendente: prima, un domani un quinto
-# dominio mono richiedeva l'aggiornamento sincrono di DUE file.
-_CLASS_TO_DOMAIN = {i: name for i, name in enumerate(DOMAIN_NAMES[:4])}
 
 
 def print_banner():
@@ -85,6 +83,7 @@ def main():
     max_history_turns       = config.SYSTEM_SETTINGS.get('max_history_turns', 3)
     max_messages            = max_history_turns * 2
     last_active_domain: str = ''
+    last_difficulty: int    = 0      # [F6-D] usata solo se followup_inherit_difficulty=True
 
     while True:
         try:
@@ -104,6 +103,7 @@ def main():
             if user_input.lower() in ['/reset', '/clear']:
                 chat_history.clear()
                 last_active_domain = ''
+                last_difficulty    = 0
                 print("🔄 Chat history e dominio attivo azzerati.\n")
                 continue
 
@@ -125,10 +125,28 @@ def main():
                 print("\n" + "_" * 60 + "\n")
                 continue
 
+            # [F1-C / F6-A] Le pipeline non vanno MAI al tier fallback (R2): applicato qui, DOPO la
+            # decisione del classificatore e PRIMA del tier routing → class_id resta l'unica autorità
+            # sul dominio (Routing Purity); `difficulty` governa solo il tier dentro il dominio.
+            raw_difficulty = difficulty
+            if class_id in PIPELINE_CLASSES:
+                difficulty = max(difficulty, config.TIER_ROUTING_SETTINGS.get('pipeline_min_difficulty', 2))
+
+            # [F6-D / D1-R5, OPZIONALE, default OFF] Un follow-up eredita almeno la difficulty della
+            # risposta precedente. Non tocca class_id né la history.
+            if (is_followup and config.TIER_ROUTING_SETTINGS.get('followup_inherit_difficulty', False)
+                    and last_difficulty):
+                difficulty = max(difficulty, last_difficulty)
+
             if domain_scores:
                 scores_str = ' | '.join(f"{k}:{v:.2f}" for k, v in domain_scores.items())
+                dbg = nn_classifier.LAST_DEBUG
+                fu_dbg = (f"P(fu)={dbg['p_followup']:.2f} thr={dbg['thr_followup']:.2f} "
+                          f"history={'sì' if dbg['has_history'] else 'NO'}") if dbg else "n/d"
+                diff_dbg = (f"{difficulty} (grezza {raw_difficulty}: tier minimo applicato)"
+                            if difficulty != raw_difficulty else f"{difficulty}")
                 print(f"🔍 [DEBUG NEURAL] Scores: [{scores_str}] | "
-                      f"Difficulty: {difficulty} (→ tier routing) | Followup: {is_followup}")
+                      f"Difficulty: {diff_dbg} (→ tier routing) | Followup: {is_followup} [{fu_dbg}]")
 
             domain_switched = False  # [HISTORY] solo igiene contesto, non instradamento
             is_hybrid        = False
@@ -149,7 +167,7 @@ def main():
                 if last_active_domain and domain_a != last_active_domain:
                     domain_switched = True
             else:
-                target = _CLASS_TO_DOMAIN[class_id]
+                target = MONO_DOMAINS[class_id]   # class_id 0-3 = ordine canonico di domains.MONO_DOMAINS
                 print(f"🔍 [DEBUG NEURAL] Classe={DOMAIN_NAMES[class_id]} | "
                       f"Confidence={confidence:.2f} | Dominio: {target.upper()}")
                 if last_active_domain and target != last_active_domain:
@@ -171,7 +189,7 @@ def main():
                 print(f"\n╭── 🧠 PIPELINE IBRIDA [{domain_a.upper()} → {domain_b.upper()}] in azione...")
                 print(f"│ Agente A (Draft): {_expected_model(agents[domain_a], difficulty)}")
                 print(f"│ Agente B (Merge): {_expected_model(agents[domain_b], difficulty)}")
-                print(f"╰──────────────────────────────────────────")
+                print("╰──────────────────────────────────────────")
 
                 print(f"\n⚙️  Fase 1/3 — Elaborazione contesto [{domain_a.upper()}] in corso...")
                 try:
@@ -234,6 +252,7 @@ def main():
                 else:
                     _update_history(chat_history, user_input, result, max_messages)
                     last_active_domain = domain_b
+                    last_difficulty    = difficulty
 
                 print("\n" + "_" * 60 + "\n")
                 continue
@@ -252,7 +271,7 @@ def main():
 
             print(f"\n╭── 🧠 MODULO [{target.upper()}] in azione...")
             print(f"│ Modello: {_expected_model(ai_agent, difficulty)}")
-            print(f"╰──────────────────────────────────────────")
+            print("╰──────────────────────────────────────────")
 
             try:
                 result = ai_agent.resolve(user_input, effective_history, difficulty)
@@ -266,6 +285,7 @@ def main():
             else:
                 _update_history(chat_history, user_input, result, max_messages)
                 last_active_domain = target   # aggiorna sempre, anche su 'general'
+                last_difficulty    = difficulty
 
             print("\n" + "_" * 60 + "\n")
 

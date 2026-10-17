@@ -80,7 +80,7 @@ def precompute(dataset_path: Path = DATASET_PATH, output_path: Path = EMBEDDINGS
     embeddings = torch.from_numpy(embeddings_np).float()
     print(f"      Shape: {embeddings.shape}")
 
-    print(f"[4/5] Costruzione tensori label...")
+    print("[4/5] Costruzione tensori label...")
 
     domain_labels = torch.tensor(
         [[float(r['domain_labels'][d]) for d in MONO_DOMAINS] for r in records],
@@ -91,6 +91,10 @@ def precompute(dataset_path: Path = DATASET_PATH, output_path: Path = EMBEDDINGS
         [1.0 if r.get('is_followup') else 0.0 for r in records], dtype=torch.float32
     )
     class_labels = torch.tensor([_class_id(r) for r in records], dtype=torch.long)
+    # [F0-B] has_history: serve a train_nn.py per (a) addestrare/valutare il followup SOLO sui record
+    # con history (F1-D) e (b) stampare le metriche per gruppo (no history / history&followup /
+    # history&switch). Non altera embeddings né altre label.
+    has_history = torch.tensor([1.0 if r.get('history') else 0.0 for r in records], dtype=torch.float32)
 
     split_indices = {'train': [], 'val': [], 'test': []}
     for i, r in enumerate(records):
@@ -107,6 +111,7 @@ def precompute(dataset_path: Path = DATASET_PATH, output_path: Path = EMBEDDINGS
         'difficulty_labels':  difficulty_labels,
         'is_followup_labels': is_followup_labels,
         'class_labels':       class_labels,
+        'has_history':        has_history,   # [F0-B]
         'splits': splits,
         'input_strings': input_strings,
         'meta': {
@@ -117,6 +122,7 @@ def precompute(dataset_path: Path = DATASET_PATH, output_path: Path = EMBEDDINGS
             'normalized':         True,
             'is_followup_source': 'structural_field_in_jsonl',
             'is_followup_positives': int(is_followup_labels.sum()),
+            'history_records':    int(has_history.sum()),
             'split_sizes': {k: len(v) for k, v in split_indices.items()},
         },
     }
@@ -133,22 +139,22 @@ def precompute(dataset_path: Path = DATASET_PATH, output_path: Path = EMBEDDINGS
     print(f"  Embedding shape  : {list(embeddings.shape)}")
     print(f"  Split train/val/test: {len(splits['train'])} / {len(splits['val'])} / {len(splits['test'])}")
 
-    print(f"\n  --- DOMAIN LABELS ---")
+    print("\n  --- DOMAIN LABELS ---")
     for i, name in enumerate(MONO_DOMAINS):
         cnt = int(domain_labels[:, i].sum())
         print(f"  {name:8s}: {cnt:4d}  ({cnt/n*100:.1f}%)")
 
-    print(f"\n  --- CLASSI (class_labels) ---")
+    print("\n  --- CLASSI (class_labels) ---")
     for i, name in enumerate(DOMAIN_NAMES):
         cnt = int((class_labels == i).sum())
         print(f"  {name:16s}: {cnt:4d}  ({cnt/n*100:.1f}%)")
 
-    print(f"\n  --- DIFFICULTY ---")
+    print("\n  --- DIFFICULTY ---")
     for i, name in enumerate(['semplice', 'media', 'complessa']):
         cnt = int((difficulty_labels == i).sum())
         print(f"  {name:10s}: {cnt:4d}  ({cnt/n*100:.1f}%)")
 
-    print(f"\n  --- IS_FOLLOWUP (campo strutturale del JSONL) ---")
+    print("\n  --- IS_FOLLOWUP (campo strutturale del JSONL) ---")
     pos = int(is_followup_labels.sum())
     print(f"  positivi : {pos}  ({pos/n*100:.1f}%)")
     print(f"  negativi : {n-pos}  ({(n-pos)/n*100:.1f}%)")
