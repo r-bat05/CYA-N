@@ -1,32 +1,34 @@
 """
-train_nn.py — CYA N | Step 3: training di 3 reti INDIPENDENTI
-==============================================================
-Input : classifier/embeddings_v2.pkl  (richiede 'class_labels')
-Output: classifier/nn_weights.pt  (1 file, 3 state_dict + parametri di decisione)
-        classifier/training_curves.png (loss train/val e score di selezione, per task)
+train_nn.py — CYA N | Step 3: training di 3 reti INDIPENDENTI (dominio, difficoltà, follow-up)
+=====================================================================================
+Input : classifier/embeddings_v2.pkl   (prodotto da precompute_embeddings.py)
+Output: classifier/nn_weights.pt       (checkpoint v4: pesi + soglie di decisione)
+        classifier/training_curves.png (loss train/val per task)
 
-Ogni task ha loss, metrica di selezione, scheduler ed early stopping PROPRI:
+Uso:  python train_nn.py                 addestra e salva
+      python train_nn.py --no-save       prova senza sovrascrivere i pesi
+      python train_nn.py --seed 43       altro seme (per controllare la stabilità)
 
-  DOMAIN     CE a 7 classi (pesi di classe ∝ 1/√freq, label smoothing 0.05).
-             Decisione: argmax + bias scalare sui logit pipeline (decide_domain).
-             Selezione: macro-F1(7 classi) con bias tarato OGNI epoca sul VAL,
-             penalizzata se la false-pipeline rate (mono→pipeline) supera
-             config.NEURAL_CLASSIFIER_SETTINGS['max_false_pipeline_rate'].
-  DIFFICULTY CORAL ordinale (BCE su [d>1, d>2]).
-             Decisione: soglia su P(d>1) per il tier fallback (decide_difficulty).
-             Selezione: 0.6·tier-score + 0.4·acc3, tier-score = 0.4·recall(facile) + 0.6·recall(difficile)
-             (errore costoso = query difficile mandata al modello piccolo).
-  FOLLOWUP   BCE con pos_weight √(neg/pos) ≤ 3. Soglia tarata sul VAL.
-             Selezione: 0.5·AP + 0.5·F1(soglia ottimale).
+IDEA GENERALE
+  Ogni task ha una propria rete e una propria loss. Il training segue SEMPRE lo stesso schema:
 
-Le loss riportate (train e val) sono entrambe: modalità eval, senza pesi né smoothing,
-quindi direttamente confrontabili (gap di overfitting).
+    1. Si addestra con AdamW. A ogni epoca si misura la loss su train e su val con la STESSA
+       formula, in modalità eval (niente dropout), così i due numeri sono confrontabili:
+       se la val loss sale mentre la train loss scende, la rete sta memorizzando (overfitting).
+    2. Il learning rate si dimezza quando la val loss smette di scendere (ReduceLROnPlateau),
+       ma non scende mai sotto LR_MIN.
+    3. Early stopping: ci si ferma quando la val loss non migliora per PATIENCE epoche e si
+       ripristinano i pesi dell'epoca migliore.
+    4. Solo ORA, a rete ferma, si tarano UNA VOLTA sul val le soglie di decisione
+       (bias pipeline, soglia fallback, soglia follow-up). Il test non partecipa a nulla.
 
-Env: CYA_SEED (default 42) | CYA_SAVE=0 per NON sovrascrivere i pesi.
-Esecuzione: python train_nn.py
+  Perché la val loss come criterio unico: è una misura continua e poco rumorosa. Una metrica come
+  la macro-F1 cambia a salti con pochi record (le classi pipeline in val ne hanno 24-40) e, se
+  calcolata a ogni epoca con una ricerca di soglie, finirebbe per "adattarsi" al val. Una rete con
+  val loss minima ha inoltre probabilità ben calibrate, e le soglie si tarano su probabilità sensate.
 """
 
-import os
+import argparse
 import pickle
 import random
 
@@ -37,290 +39,355 @@ import torch.optim as optim
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from sklearn.metrics import (f1_score, average_precision_score, precision_score,
-                             recall_score, confusion_matrix)
+from sklearn.metrics import average_precision_score, confusion_matrix, f1_score
 from torch.utils.data import DataLoader, TensorDataset
-
-SEED = int(os.environ.get("CYA_SEED", 42))
-SAVE = os.environ.get("CYA_SAVE", "1") == "1"
 
 import config
 from domains import DOMAIN_NAMES
 from classifier_config import EMBEDDINGS_PATH, WEIGHTS_PATH
 from model_architecture import (
-    DomainMLP, DifficultyMLP, FollowupMLP, N_MONO, N_CLASSES,
-    decide_domain, decide_difficulty,
-    CKPT_VERSION, CKPT_VERSION_KEY, CKPT_STATE_KEY, CKPT_PARAMS_KEY,
-    CKPT_METRICS_KEY, CKPT_CONFIG_KEY,
+    build_model, N_MONO, N_CLASSES, decide_domain, decide_difficulty,
+    CKPT_VERSION, CKPT_VERSION_KEY, CKPT_STATE_KEY, CKPT_PARAMS_KEY, CKPT_METRICS_KEY, CKPT_CONFIG_KEY,
 )
 
-# ─── CONFIG ───────────────────────────────────────────────────────────────────
-PKL_PATH       = EMBEDDINGS_PATH
-LR             = 2.5e-4
-WEIGHT_DECAY   = 1e-2
-EPOCHS         = 300            # tetto; è l'early stopping a fermare
-BATCH_SIZE     = 64
-PATIENCE       = 15             # epoche senza miglioramento > MIN_DELTA
-SCHED_PATIENCE = 4              # < PATIENCE: il LR scende PRIMA dello stop
-MIN_DELTA      = 1e-3
+# ═════════════════════════════ IPERPARAMETRI ═════════════════════════════
+# Ogni valore ha il suo range ragionevole: se esci dal range, di solito ottieni un sintomo preciso.
 
-LABEL_SMOOTHING = 0.05
-CLASS_W_POWER   = 0.5           # peso classe = (1/freq)^0.5
-CLASS_W_CAP     = 5.0
-MAX_FP_RATE     = config.NEURAL_CLASSIFIER_SETTINGS['max_false_pipeline_rate']
-FP_PENALTY      = 3.0           # score = F1 - 3·max(0, fp - MAX_FP_RATE)
+# LR (learning rate iniziale), range 1e-4 … 1e-3.
+# È la dimensione del passo di AdamW. Troppo alto (>5e-3): la val loss oscilla e non converge.
+# Troppo basso (<1e-4): servono centinaia di epoche e l'early stopping scatta prima della convergenza.
+# Valore scelto con 3 semi (42-44) tra 1e-4, 3e-4, 1e-3, 3e-3: 3e-4 dà la val loss più bassa e la
+# selezione dell'epoca più stabile (con 1e-3 la rete è già al minimo alla 2ª epoca). Viene dimezzato
+# da solo quando serve (vedi LR_PATIENCE).
+LR = 3e-4
 
-DIFF_W_TIER     = 0.6           # peso del tier-score nello score difficulty
-TIER_W_HARD     = 0.6           # peso recall(difficile) nel tier-score
-FU_MAX_POS_W    = 3.0
+# LR_MIN (pavimento del learning rate), fissato a 1e-6 come da requisito.
+# Sotto questo valore un passo è così piccolo che i pesi non cambiano più in modo utile.
+LR_MIN = 1e-6
 
-_srt = lambda grid, c: sorted([float(g) for g in grid], key=lambda g: abs(g - c))   # preferisce il centro
-DOM_BIAS_GRID = _srt(np.arange(-3.0, 3.01, 0.25), 0.0)
-DIFF_THR_GRID = _srt(np.arange(0.20, 0.71, 0.05), 0.5)
-FU_THR_GRID   = _srt(np.arange(0.20, 0.81, 0.05), 0.5)
-# ──────────────────────────────────────────────────────────────────────────────
+# LR_FACTOR (di quanto si riduce il LR), range 0.2 … 0.5.
+# 0.5 = si dimezza a ogni stallo: scende con gradualità e consente di raffinare la soluzione.
+LR_FACTOR = 0.5
+
+# LR_PATIENCE (epoche di stallo prima di ridurre il LR), range 3 … 6, SEMPRE minore di PATIENCE.
+# Deve essere più corto dell'early stopping, altrimenti la rete si ferma prima di aver provato
+# un LR più basso. Con 5 e PATIENCE 15 il LR ha il tempo di scendere due volte prima dello stop.
+LR_PATIENCE = 5
+
+# WEIGHT_DECAY (regolarizzazione L2 di AdamW), range 1e-3 … 1e-1.
+# Spinge i pesi verso zero: riduce l'overfitting. Se il gap train-val resta alto, alzalo;
+# se anche la train loss resta alta (la rete non impara), abbassalo.
+WEIGHT_DECAY = 1e-2
+
+# BATCH_SIZE (record per aggiornamento dei pesi), range 32 … 128.
+# Batch piccoli = gradiente più rumoroso (aiuta a non memorizzare) ma più lento; grandi = più stabile.
+BATCH_SIZE = 64
+
+# MAX_EPOCHS (tetto massimo di epoche), range 100 … 300.
+# È solo una rete di sicurezza: a fermare il training deve essere l'early stopping.
+MAX_EPOCHS = 200
+
+# PATIENCE (epoche senza miglioramento della val loss prima di fermarsi), range 10 … 25.
+# Troppo bassa: ci si ferma su un plateau passeggero. Troppo alta: si allena inutilmente.
+PATIENCE = 15
+
+# MIN_DELTA (miglioramento minimo della val loss per contare come "miglioramento"), range 1e-4 … 1e-2.
+# Evita di prendere per progresso le fluttuazioni nella terza cifra decimale.
+MIN_DELTA = 1e-3
+
+# MAX_FP_RATE (vincolo sul bias pipeline): quota massima di query mono-dominio che il modello può
+# promuovere a pipeline per errore. Vive in config.py perché è una scelta di prodotto: una
+# false-pipeline costa due chiamate ai modelli grandi invece di una.
+MAX_FP_RATE = config.NEURAL_CLASSIFIER_SETTINGS['max_false_pipeline_rate']
+
+# HARD_RECALL_WEIGHT (costo asimmetrico per la soglia fallback), range 0.5 … 0.8.
+# Mandare una query difficile al modello piccolo (risposta scadente) costa più che mandarne una
+# facile al modello grande (solo più lento). 0.7 = una query difficile pesa il 70% del punteggio.
+HARD_RECALL_WEIGHT = 0.7
+
+SEED = 42   # fissa pesi iniziali, ordine dei batch e dropout: due run con lo stesso seme coincidono
+# ═════════════════════════════════════════════════════════════════════════
+
+# Griglie di calibrazione. Ordinate per vicinanza al valore neutro: a parità di punteggio
+# vince la soglia meno estrema.
+def _centered(grid, center):
+    return sorted((float(g) for g in grid), key=lambda g: abs(g - center))
+
+BIAS_GRID    = _centered(np.arange(-3.0, 3.01, 0.25), 0.0)    # bias sui logit pipeline
+FALLBACK_GRID = _centered(np.arange(0.20, 0.71, 0.05), 0.5)   # soglia su P(d>1)
+FOLLOWUP_GRID = _centered(np.arange(0.20, 0.81, 0.05), 0.5)   # soglia su P(follow-up)
 
 
 def set_seed(s: int):
     random.seed(s); np.random.seed(s); torch.manual_seed(s)
 
 
-def load_pkl(path) -> dict:
-    with open(path, 'rb') as f:
-        return pickle.load(f)
+# ═════════════════════════════ LOSS (una per task, identica su train e val) ═════════════════════════════
+def make_domain_loss(y_train):
+    """
+    Cross-entropy a 7 classi con pesi di classe.
 
+        CE = - peso[y] · log softmax(logit)[y]        peso[c] ∝ 1 / √(numero di esempi di c)
 
-# ═════════════════════════ DOMAIN ═════════════════════════
-def domain_metrics(lg, y, bias):
-    yn, pred = y.numpy(), decide_domain(lg, bias).numpy()
-    f1   = float(f1_score(yn, pred, labels=list(range(N_CLASSES)), average='macro', zero_division=0))
-    mono = yn < N_MONO
-    fp   = float(((pred >= N_MONO) & mono).sum() / max(int(mono.sum()), 1))
-    return f1, fp, pred
-
-
-def domain_select(lg, y):
-    best = None
-    for b in DOM_BIAS_GRID:
-        f1, fp, _ = domain_metrics(lg, y, b)
-        s = f1 - FP_PENALTY * max(0.0, fp - MAX_FP_RATE)
-        if best is None or s > best[0] + 1e-9:
-            best = (s, b, f1, fp)
-    s, b, f1, fp = best
-    return s, {'bias_pipe': float(b)}, f"f1={f1:.3f} fp={fp:.3f} bias={b:+.2f}"
-
-
-def domain_losses(y_train):
+    Le classi pipeline hanno 94-198 esempi in train contro i ~880 di general: senza pesi la rete
+    imparerebbe a ignorarle. La radice quadrata è una via di mezzo: 1/freq pareggerebbe del tutto
+    le classi ma amplificherebbe il rumore dei pochi esempi rari. I pesi hanno media 1, così la
+    scala della loss resta confrontabile. Si calcolano SOLO sul train.
+    """
     cnt = torch.bincount(y_train, minlength=N_CLASSES).float().clamp(min=1)
-    w   = (cnt.sum() / (N_CLASSES * cnt)) ** CLASS_W_POWER
-    w   = (w / w.mean()).clamp(max=CLASS_W_CAP)
-    print(f"      pesi classe: " + " ".join(f"{n}={v:.2f}" for n, v in zip(DOMAIN_NAMES, w.tolist())))
-    return (lambda lg, y: F.cross_entropy(lg, y, weight=w, label_smoothing=LABEL_SMOOTHING),
-            lambda lg, y: F.cross_entropy(lg, y))
+    w = (cnt.sum() / (N_CLASSES * cnt)).sqrt()
+    w = w / w.mean()
+    print("      pesi classe: " + " ".join(f"{n}={v:.2f}" for n, v in zip(DOMAIN_NAMES, w.tolist())))
+    return lambda lg, y: F.cross_entropy(lg, y, weight=w)
 
 
-# ═════════════════════════ DIFFICULTY ═════════════════════════
-def _ord_targets(y):                       # y∈{0,1,2} → [d>1, d>2]
-    return torch.stack([(y >= 1), (y >= 2)], dim=1).float()
+def difficulty_loss(lg, y):
+    """
+    CORAL: due domande binarie indipendenti, "d>1?" e "d>2?", ciascuna con BCE; la loss è la media.
+    Esempio: y=2 (difficoltà 3) → target [1,1]; y=1 (difficoltà 2) → [1,0]; y=0 → [0,0].
+    """
+    target = torch.stack([(y >= 1), (y >= 2)], dim=1).float()
+    return F.binary_cross_entropy_with_logits(lg, target)
 
 
-def diff_loss(lg, y):
-    return F.binary_cross_entropy_with_logits(lg, _ord_targets(y))
+def followup_loss(lg, y):
+    """BCE binaria: -[y·log σ(z) + (1-y)·log(1-σ(z))], media sui record. Rapporto pos:neg ≈ 1:1."""
+    return F.binary_cross_entropy_with_logits(lg.squeeze(1), y)
 
 
-def diff_metrics(lg, y, thr):
-    yn   = y.numpy()
-    pred = decide_difficulty(lg, thr).numpy() - 1
-    easy, p_easy = (yn == 0), (pred == 0)
-    rec_easy = float((p_easy & easy).sum() / max(int(easy.sum()), 1))
-    rec_hard = float((~p_easy & ~easy).sum() / max(int((~easy).sum()), 1))
-    tier = (1 - TIER_W_HARD) * rec_easy + TIER_W_HARD * rec_hard
-    return float(tier), float((pred == yn).mean()), pred
+# ═════════════════════════════ TRAINING GENERICO ═════════════════════════════
+def fit(name, model, X, Y, loss_fn):
+    """
+    Allena `model` con loss_fn. Restituisce i pesi dell'epoca con la val loss più bassa e lo storico.
 
-
-def diff_select(lg, y):
-    best = None
-    for t in DIFF_THR_GRID:
-        tier, acc3, _ = diff_metrics(lg, y, t)
-        s = DIFF_W_TIER * tier + (1 - DIFF_W_TIER) * acc3
-        if best is None or s > best[0] + 1e-9:
-            best = (s, t, tier, acc3)
-    s, t, tier, acc3 = best
-    return s, {'thr_fallback': float(t)}, f"tier={tier:.3f} acc3={acc3:.3f} thr={t:.2f}"
-
-
-# ═════════════════════════ FOLLOWUP ═════════════════════════
-def fu_metrics(lg, y, thr):
-    yn = y.numpy().astype(int)
-    p  = torch.sigmoid(lg.squeeze(1)).numpy()
-    pred = (p >= thr).astype(int)
-    return (float(f1_score(yn, pred, zero_division=0)),
-            float(average_precision_score(yn, p)),
-            float(precision_score(yn, pred, zero_division=0)),
-            float(recall_score(yn, pred, zero_division=0)))
-
-
-def fu_select(lg, y):
-    best = None
-    for t in FU_THR_GRID:
-        f1 = fu_metrics(lg, y, t)[0]
-        if best is None or f1 > best[0] + 1e-9:
-            best = (f1, t)
-    f1, t = best
-    ap = fu_metrics(lg, y, t)[1]
-    return 0.5 * ap + 0.5 * f1, {'thr': float(t)}, f"f1={f1:.3f} ap={ap:.3f} thr={t:.2f}"
-
-
-def fu_losses(y_train):
-    pos = y_train.sum().clamp(min=1.0)
-    neg = float(y_train.shape[0]) - pos
-    pw  = (neg / pos).sqrt().clamp(max=FU_MAX_POS_W).float().unsqueeze(0)
-    print(f"      pos_weight followup: {pw.item():.2f}")
-    return (lambda lg, y: F.binary_cross_entropy_with_logits(lg.squeeze(1), y, pos_weight=pw),
-            lambda lg, y: F.binary_cross_entropy_with_logits(lg.squeeze(1), y))
-
-
-# ═════════════════════════ TRAINING GENERICO ═════════════════════════
-def fit(name, model, X, Y, train_loss, val_loss, select_fn):
-    """Allena `model`, ricarica il best checkpoint e restituisce {state, params, score, ep, hist}."""
+    Per ogni epoca:
+      • fase train: un passaggio sui dati a mini-batch, con dropout attivo, che aggiorna i pesi;
+      • fase eval: train loss e val loss sull'INTERO split, dropout spento, stessa loss_fn.
+        La train loss "vera" è quella di eval, non la media dei batch (quella è gonfiata dal dropout
+        e cambia a ogni batch): solo così il gap train-val misura l'overfitting.
+    """
     print(f"\n[{name.upper()}] {sum(p.numel() for p in model.parameters()):,} parametri")
     opt = optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
-    sch = optim.lr_scheduler.ReduceLROnPlateau(opt, mode='max', factor=0.5, patience=SCHED_PATIENCE,
-                                               threshold=MIN_DELTA, threshold_mode='abs')
-    dl  = DataLoader(TensorDataset(X['train'], Y['train']), batch_size=BATCH_SIZE, shuffle=True)
+    sched = optim.lr_scheduler.ReduceLROnPlateau(
+        opt, mode='min', factor=LR_FACTOR, patience=LR_PATIENCE,
+        threshold=MIN_DELTA, threshold_mode='abs', min_lr=LR_MIN)
+    loader = DataLoader(TensorDataset(X['train'], Y['train']), batch_size=BATCH_SIZE, shuffle=True)
 
-    hist = {'tr': [], 'vl': [], 'score': []}
-    best = {'score': -float('inf'), 'state': None, 'params': None, 'ep': 0}
-    no_imp = 0
+    hist = {'train': [], 'val': []}
+    best = {'val': float('inf'), 'epoch': 0, 'state': None}
+    stalled = 0
 
-    for ep in range(1, EPOCHS + 1):
+    for epoch in range(1, MAX_EPOCHS + 1):
         model.train()
-        for xb, yb in dl:
+        for xb, yb in loader:
             opt.zero_grad()
-            train_loss(model(xb), yb).backward()
+            loss_fn(model(xb), yb).backward()
             opt.step()
 
         model.eval()
         with torch.no_grad():
-            tr = val_loss(model(X['train']), Y['train']).item()
-            lv = model(X['val'])
-            vl = val_loss(lv, Y['val']).item()
-            score, params, info = select_fn(lv, Y['val'])
-        sch.step(score)
+            tr = loss_fn(model(X['train']), Y['train']).item()
+            vl = loss_fn(model(X['val']),   Y['val']).item()
+        sched.step(vl)
+        hist['train'].append(tr); hist['val'].append(vl)
 
-        improved = score > best['score'] + MIN_DELTA
-        if improved:
-            best.update(score=score, params=params, ep=ep,
-                        state={k: v.clone() for k, v in model.state_dict().items()})
-            no_imp = 0
+        if vl < best['val'] - MIN_DELTA:
+            best.update(val=vl, epoch=epoch, state={k: v.clone() for k, v in model.state_dict().items()})
+            stalled = 0
         else:
-            no_imp += 1
-        hist['tr'].append(tr); hist['vl'].append(vl); hist['score'].append(score)
+            stalled += 1
 
-        if improved or ep % 5 == 0:
-            print(f"  ep={ep:3d} | tr={tr:.4f} vl={vl:.4f} | score={score:.4f} [{info}] | "
-                  f"best={best['score']:.4f}@{best['ep']} | no_impr={no_imp}/{PATIENCE} | "
-                  f"lr={opt.param_groups[0]['lr']:.1e}{' ★' if improved else ''}")
-        if no_imp >= PATIENCE:
-            print(f"  ⏹  Early stopping a epoca {ep}")
+        if epoch % 10 == 0 or stalled == 0:
+            print(f"  ep={epoch:3d} | train={tr:.4f} val={vl:.4f} | best={best['val']:.4f}@{best['epoch']} "
+                  f"| lr={opt.param_groups[0]['lr']:.1e}{' ★' if stalled == 0 else ''}")
+        if stalled >= PATIENCE:
+            print(f"  ⏹  Early stopping a epoca {epoch}")
             break
 
     model.load_state_dict(best['state'])
     model.eval()
-    best['hist'] = hist
-    print(f"  → best epoca {best['ep']} | score={best['score']:.4f} | params={best['params']}")
-    return best
+    print(f"  → epoca migliore {best['epoch']} | train={hist['train'][best['epoch'] - 1]:.4f} "
+          f"val={best['val']:.4f}")
+    return {'model': model, 'state': best['state'], 'epoch': best['epoch'], 'hist': hist}
 
 
-def plot_curves(res: dict, path):
-    fig, ax = plt.subplots(2, len(res), figsize=(5 * len(res), 7))
-    for j, (name, r) in enumerate(res.items()):
-        h = r['hist']; e = range(1, len(h['vl']) + 1)
-        ax[0][j].plot(e, h['tr'], label='train'); ax[0][j].plot(e, h['vl'], label='val')
-        ax[0][j].axvline(r['ep'], ls='--', c='gray'); ax[0][j].set_title(f'{name} — loss'); ax[0][j].legend()
-        ax[1][j].plot(e, h['score']); ax[1][j].axvline(r['ep'], ls='--', c='gray')
-        ax[1][j].set_title(f'{name} — score di selezione')
+def logits_of(model, x):
+    with torch.no_grad():
+        return model(x)
+
+
+# ═════════════════════════════ CALIBRAZIONE DELLE SOGLIE (una volta, sul val) ═════════════════════════════
+def domain_scores(lg, y, bias):
+    """(macro-F1 sulle 7 classi, false-pipeline rate = mono classificate come pipeline)."""
+    pred = decide_domain(lg, bias).numpy()
+    yn   = y.numpy()
+    f1   = f1_score(yn, pred, labels=list(range(N_CLASSES)), average='macro', zero_division=0)
+    mono = yn < N_MONO
+    return float(f1), float(((pred >= N_MONO) & mono).sum() / max(mono.sum(), 1))
+
+
+def calibrate_domain(lg, y):
+    """
+    Sceglie il bias pipeline: massima macro-F1 tra i bias con false-pipeline rate ≤ MAX_FP_RATE.
+    Se nessun bias rispetta il vincolo, prende quello con meno false pipeline.
+    """
+    best_key, best_b = None, 0.0
+    for b in BIAS_GRID:
+        f1, fp = domain_scores(lg, y, b)
+        key = (fp <= MAX_FP_RATE, f1 if fp <= MAX_FP_RATE else -fp)   # tupla: prima il vincolo, poi F1
+        if best_key is None or key > best_key:
+            best_key, best_b = key, b
+    return {'bias_pipe': float(best_b)}
+
+
+def difficulty_scores(lg, y, thr):
+    """
+    (tier-score, accuratezza a 3 livelli). A runtime conta solo il tier (difficoltà 1 → fallback).
+    tier-score = media pesata di due recall: query facili al modello piccolo e query difficili al grande.
+    """
+    yn   = y.numpy()
+    pred = decide_difficulty(lg, thr).numpy() - 1
+    easy, p_easy = yn == 0, pred == 0
+    rec_easy = (p_easy & easy).sum() / max(easy.sum(), 1)
+    rec_hard = (~p_easy & ~easy).sum() / max((~easy).sum(), 1)
+    tier = (1 - HARD_RECALL_WEIGHT) * rec_easy + HARD_RECALL_WEIGHT * rec_hard
+    return float(tier), float((pred == yn).mean())
+
+
+def calibrate_difficulty(lg, y):
+    best_s, best_t = -1.0, 0.5
+    for t in FALLBACK_GRID:
+        s = difficulty_scores(lg, y, t)[0]
+        if s > best_s:
+            best_s, best_t = s, t
+    return {'thr_fallback': float(best_t)}
+
+
+def followup_scores(lg, y, thr):
+    """(precision, recall, F1, false-positive rate, AP) sui record passati (solo con history)."""
+    yn   = y.numpy().astype(int)
+    prob = torch.sigmoid(lg.squeeze(1)).numpy()
+    pred = (prob >= thr).astype(int)
+    tp = int(((pred == 1) & (yn == 1)).sum()); fp = int(((pred == 1) & (yn == 0)).sum())
+    fn = int(((pred == 0) & (yn == 1)).sum()); tn = int(((pred == 0) & (yn == 0)).sum())
+    p = tp / (tp + fp) if tp + fp else 0.0
+    r = tp / (tp + fn) if tp + fn else 0.0
+    f1 = 2 * p * r / (p + r) if p + r else 0.0
+    ap = float(average_precision_score(yn, prob)) if 0 < yn.sum() < len(yn) else 0.0
+    return p, r, f1, fp / max(fp + tn, 1), ap
+
+
+def calibrate_followup(lg, y):
+    """Soglia che massimizza la F1 sul val (solo record con history)."""
+    best_f1, best_t = -1.0, 0.5
+    for t in FOLLOWUP_GRID:
+        f1 = followup_scores(lg, y, t)[2]
+        if f1 > best_f1:
+            best_f1, best_t = f1, t
+    return {'thr': float(best_t)}
+
+
+# ═════════════════════════════ GRAFICO ═════════════════════════════
+def plot_curves(results: dict, path):
+    fig, axes = plt.subplots(1, len(results), figsize=(5 * len(results), 3.8))
+    for ax, (name, r) in zip(axes, results.items()):
+        ep = range(1, len(r['hist']['val']) + 1)
+        ax.plot(ep, r['hist']['train'], label='train'); ax.plot(ep, r['hist']['val'], label='val')
+        ax.axvline(r['epoch'], ls='--', c='gray'); ax.set_title(f'{name} — loss'); ax.set_xlabel('epoca')
+        ax.legend()
     fig.tight_layout(); fig.savefig(path, dpi=120); plt.close(fig)
 
 
-def train():
-    print(f"[1/4] Caricamento: {PKL_PATH}  (seed={SEED}, save={SAVE})")
-    data = load_pkl(PKL_PATH)
-    for k in ('class_labels', 'difficulty_labels', 'is_followup_labels'):
-        if k not in data:
-            raise KeyError(f"embeddings_v2.pkl privo di '{k}': rieseguire precompute_embeddings.py")
+# ═════════════════════════════ MAIN ═════════════════════════════
+def train(seed: int = SEED, save: bool = True) -> dict:
+    print(f"[1/4] Caricamento: {EMBEDDINGS_PATH}  (seed={seed}, save={save})")
+    with open(EMBEDDINGS_PATH, 'rb') as f:
+        data = pickle.load(f)
 
-    S  = {k: data['splits'][k] for k in ('train', 'val', 'test')}
-    X  = {k: data['embeddings'][S[k]] for k in S}
-    Yc = {k: data['class_labels'][S[k]] for k in S}
-    Yd = {k: data['difficulty_labels'][S[k]] for k in S}
-    Yf = {k: data['is_followup_labels'][S[k]] for k in S}
-    print(f"      Split → train={len(S['train'])} | val={len(S['val'])} | test={len(S['test'])} "
-          f"| max_fp_rate={MAX_FP_RATE}")
+    splits = ('train', 'val', 'test')
+    idx = {k: data['splits'][k] for k in splits}
+    X   = {k: data['embeddings'][idx[k]] for k in splits}
+    Yc  = {k: data['class_labels'][idx[k]] for k in splits}
+    Yd  = {k: data['difficulty_labels'][idx[k]] for k in splits}
+    Yf  = {k: data['is_followup_labels'][idx[k]] for k in splits}
+    hist_mask = {k: data['has_history'][idx[k]] > 0.5 for k in splits}
+    # Il follow-up si allena e si valuta SOLO sui record con history: senza history la risposta è
+    # sempre "no" (a runtime lo impone un gate in nn_classifier) e inflazionerebbe le metriche.
+    Xh  = {k: X[k][hist_mask[k]] for k in splits}
+    Yh  = {k: Yf[k][hist_mask[k]] for k in splits}
+    print(f"      train={len(idx['train'])} val={len(idx['val'])} test={len(idx['test'])} | "
+          f"follow-up (record con history): {len(Xh['train'])}/{len(Xh['val'])}/{len(Xh['test'])}")
 
     print("\n[2/4] Training (3 task indipendenti)")
-    set_seed(SEED);     m_dom = DomainMLP();     tl, vl = domain_losses(Yc['train'])
-    r_dom = fit('domain', m_dom, X, Yc, tl, vl, domain_select)
-    set_seed(SEED + 1); m_dif = DifficultyMLP()
-    r_dif = fit('difficulty', m_dif, X, Yd, diff_loss, diff_loss, diff_select)
-    set_seed(SEED + 2); m_fu = FollowupMLP();    tl, vl = fu_losses(Yf['train'])
-    r_fu  = fit('followup', m_fu, X, Yf, tl, vl, fu_select)
+    losses = {'domain': make_domain_loss(Yc['train']), 'difficulty': difficulty_loss, 'followup': followup_loss}
+    data_of = {'domain': (X, Yc), 'difficulty': (X, Yd), 'followup': (Xh, Yh)}
+    res = {}
+    for task in ('domain', 'difficulty', 'followup'):
+        set_seed(seed)                       # stesso punto di partenza per ogni task, indipendente dall'ordine
+        res[task] = fit(task, build_model(task), *data_of[task], losses[task])
 
-    print("\n[3/4] Report finale")
-    b, t_d, t_f = r_dom['params']['bias_pipe'], r_dif['params']['thr_fallback'], r_fu['params']['thr']
-    M, LG = {}, {}
-    with torch.no_grad():
-        for k in ('train', 'val', 'test'):
-            LG[k] = (m_dom(X[k]), m_dif(X[k]), m_fu(X[k]))
-            f1, fp, _   = domain_metrics(LG[k][0], Yc[k], b)
-            tier, a3, _ = diff_metrics(LG[k][1], Yd[k], t_d)
-            ff1, ap, pr, rc = fu_metrics(LG[k][2], Yf[k], t_f)
-            M[k] = dict(dom_f1=f1, fp=fp, tier=tier, acc3=a3, fu_f1=ff1, fu_ap=ap, fu_p=pr, fu_r=rc)
+    print("\n[3/4] Calibrazione soglie sul VAL e report finale")
+    lg = {t: {k: logits_of(res[t]['model'], data_of[t][0][k]) for k in splits} for t in res}
+    params = {
+        'domain':     calibrate_domain(lg['domain']['val'], Yc['val']),
+        'difficulty': calibrate_difficulty(lg['difficulty']['val'], Yd['val']),
+        'followup':   calibrate_followup(lg['followup']['val'], Yh['val']),
+    }
+    bias, thr_d, thr_f = (params['domain']['bias_pipe'], params['difficulty']['thr_fallback'],
+                          params['followup']['thr'])
+    print(f"  soglie: bias_pipe={bias:+.2f} | thr_fallback={thr_d:.2f} | thr_followup={thr_f:.2f}")
 
-    print(f"  {'':7s}{'dom-F1':>9s}{'FP-rate':>9s}{'tier':>8s}{'acc3':>8s}{'fu-F1':>8s}{'fu-AP':>8s}{'fu-P':>7s}{'fu-R':>7s}")
-    for k in ('train', 'val', 'test'):
-        m = M[k]
-        print(f"  {k:7s}{m['dom_f1']:9.4f}{m['fp']:9.4f}{m['tier']:8.4f}{m['acc3']:8.4f}"
-              f"{m['fu_f1']:8.4f}{m['fu_ap']:8.4f}{m['fu_p']:7.3f}{m['fu_r']:7.3f}")
-    print(f"  gap train-val: dom-F1={M['train']['dom_f1']-M['val']['dom_f1']:+.4f} | "
-          f"acc3={M['train']['acc3']-M['val']['acc3']:+.4f} | fu-F1={M['train']['fu_f1']-M['val']['fu_f1']:+.4f}"
-          f"   (soglie indicative: 0.05 / 0.10 / 0.10)")
+    M = {}
+    print(f"\n  {'':6s}{'loss-dom':>9s}{'loss-dif':>9s}{'loss-fu':>8s} |{'dom-F1':>7s}{'FP':>7s}"
+          f"{'tier':>7s}{'acc3':>7s} |{'fu-P':>6s}{'fu-R':>6s}{'fu-F1':>6s}{'fu-FPR':>7s}{'fu-AP':>6s}")
+    for k in splits:
+        l = [losses[t](lg[t][k], data_of[t][1][k]).item() for t in ('domain', 'difficulty', 'followup')]
+        f1, fp = domain_scores(lg['domain'][k], Yc[k], bias)
+        tier, acc3 = difficulty_scores(lg['difficulty'][k], Yd[k], thr_d)
+        p, r, f1h, fpr, ap = followup_scores(lg['followup'][k], Yh[k], thr_f)
+        M[k] = dict(loss_dom=l[0], loss_dif=l[1], loss_fu=l[2], dom_f1=f1, fp=fp, tier=tier, acc3=acc3,
+                    fu_p=p, fu_r=r, fu_f1=f1h, fu_fpr=fpr, fu_ap=ap)
+        print(f"  {k:6s}{l[0]:9.4f}{l[1]:9.4f}{l[2]:8.4f} |{f1:7.3f}{fp:7.3f}{tier:7.3f}{acc3:7.3f} |"
+              f"{p:6.3f}{r:6.3f}{f1h:6.3f}{fpr:7.3f}{ap:6.3f}")
+    print("  (le soglie sono tarate sul val: i numeri del val sono ottimistici, il test è il riferimento)")
+    gap = lambda key: M['val'][key] - M['train'][key]
+    print(f"  gap val-train delle loss: dom={gap('loss_dom'):+.3f} dif={gap('loss_dif'):+.3f} fu={gap('loss_fu'):+.3f}")
 
-    _, _, pred = domain_metrics(LG['test'][0], Yc['test'], b)
-    per_cls = f1_score(Yc['test'].numpy(), pred, labels=list(range(N_CLASSES)), average=None, zero_division=0)
+    pred = decide_domain(lg['domain']['test'], bias).numpy()
+    labels = list(range(N_CLASSES))
+    per_cls = f1_score(Yc['test'].numpy(), pred, labels=labels, average=None, zero_division=0)
     print("\n  F1 per classe (test): " + " | ".join(f"{n}={v:.3f}" for n, v in zip(DOMAIN_NAMES, per_cls)))
     print("  Confusione dominio test (righe=atteso):")
-    cm = confusion_matrix(Yc['test'].numpy(), pred, labels=list(range(N_CLASSES)))
-    for i, row in enumerate(cm):
+    for i, row in enumerate(confusion_matrix(Yc['test'].numpy(), pred, labels=labels)):
         print(f"   {i}={DOMAIN_NAMES[i]:15s}" + "".join(f"{v:5d}" for v in row))
 
-    curves = WEIGHTS_PATH.parent / 'training_curves.png'
-    curves.parent.mkdir(parents=True, exist_ok=True)
-    plot_curves({'domain': r_dom, 'difficulty': r_dif, 'followup': r_fu}, curves)
-    print(f"\n  Curve salvate → {curves}")
-
-    print(f"\nSEEDRESULT seed={SEED} val_dom={M['val']['dom_f1']:.4f} test_dom={M['test']['dom_f1']:.4f} "
-          f"test_fp={M['test']['fp']:.4f} test_tier={M['test']['tier']:.4f} test_acc3={M['test']['acc3']:.4f} "
-          f"test_fu_f1={M['test']['fu_f1']:.4f}")
-
-    if SAVE:
-        print(f"\n[4/4] Salvataggio: {WEIGHTS_PATH}")
+    if save:
+        curves = WEIGHTS_PATH.parent / 'training_curves.png'
+        curves.parent.mkdir(parents=True, exist_ok=True)
+        plot_curves(res, curves)
         T = M['test']
         torch.save({
             CKPT_VERSION_KEY: CKPT_VERSION,
-            'domain':     {CKPT_STATE_KEY: r_dom['state'], CKPT_PARAMS_KEY: r_dom['params'],
+            'domain':     {CKPT_STATE_KEY: res['domain']['state'], CKPT_PARAMS_KEY: params['domain'],
                            CKPT_METRICS_KEY: {'test_f1': T['dom_f1'], 'test_fp_rate': T['fp']}},
-            'difficulty': {CKPT_STATE_KEY: r_dif['state'], CKPT_PARAMS_KEY: r_dif['params'],
+            'difficulty': {CKPT_STATE_KEY: res['difficulty']['state'], CKPT_PARAMS_KEY: params['difficulty'],
                            CKPT_METRICS_KEY: {'test_tier': T['tier'], 'test_acc3': T['acc3']}},
-            'followup':   {CKPT_STATE_KEY: r_fu['state'],  CKPT_PARAMS_KEY: r_fu['params'],
-                           CKPT_METRICS_KEY: {'test_f1': T['fu_f1'], 'test_ap': T['fu_ap']}},
-            CKPT_CONFIG_KEY: {'lr': LR, 'weight_decay': WEIGHT_DECAY, 'batch_size': BATCH_SIZE, 'seed': SEED,
-                              'label_smoothing': LABEL_SMOOTHING, 'max_fp_rate': float(MAX_FP_RATE)},
+            'followup':   {CKPT_STATE_KEY: res['followup']['state'], CKPT_PARAMS_KEY: params['followup'],
+                           CKPT_METRICS_KEY: {'test_f1_hist': T['fu_f1'], 'test_fpr_hist': T['fu_fpr'],
+                                              'test_ap_hist': T['fu_ap']}},
+            CKPT_CONFIG_KEY: {'lr': LR, 'lr_min': LR_MIN, 'weight_decay': WEIGHT_DECAY, 'batch_size': BATCH_SIZE,
+                              'patience': PATIENCE, 'max_fp_rate': float(MAX_FP_RATE), 'seed': seed},
         }, WEIGHTS_PATH)
-        print(f"  ✅  Salvato → {WEIGHTS_PATH}  ({WEIGHTS_PATH.stat().st_size / 1024:.1f} KB)")
+        print(f"\n[4/4] ✅ Salvato → {WEIGHTS_PATH}  ({WEIGHTS_PATH.stat().st_size / 1024:.1f} KB) | curve → {curves}")
     else:
-        print("\n[4/4] CYA_SAVE=0: pesi NON salvati (run diagnostico).")
+        print("\n[4/4] --no-save: pesi NON salvati.")
+
+    return {'metrics': M, 'params': params, 'epochs': {t: res[t]['epoch'] for t in res}}
 
 
 if __name__ == '__main__':
-    train()
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--seed', type=int, default=SEED)
+    ap.add_argument('--no-save', action='store_true')
+    a = ap.parse_args()
+    train(a.seed, save=not a.no_save)

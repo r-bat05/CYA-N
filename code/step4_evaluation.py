@@ -9,6 +9,14 @@ Uso (dalla cartella del codice):
 Schema eval_dataset.jsonl: id, category, query, history, expected_domain, expected_followup,
   expected_diff_min  (soglia, record storici)  |  expected_diff (esatto 1/2/3, preferito),
   set (dev|test, default dev), tag (opz.: clean/verbose/short/long/colloquial/codeswitch/trap)
+
+[v5 — report_followup_switch_domain.md]
+  Output: SOLO wrong_query_TESTING.md (query errate di domain/followup/difficulty), riscritto a ogni run.
+  F8    (i) FP/FN del followup separati; (ii) accuratezza dominio per gruppo (no history /
+        history+followup / history+switch); (iii) calibrazione: accuratezza per bucket di conf;
+        (iv) actual_diff_runtime: stessa regola R2 di main.py
+        (pipeline → difficulty ≥ pipeline_min_difficulty), perché step4 non passa da main.py.
+Uso disciplinato dei set: tarare su val (train_nn) e dev (diagnosi); il set test solo ai checkpoint.
 """
 
 import argparse
@@ -18,15 +26,18 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from nn_classifier import predict, DOMAIN_NAMES, PIPELINE_CLASSES
+import config
+from domains import DOMAIN_NAMES, PIPELINE_CLASSES
+from nn_classifier import predict
 from classifier_config import EVAL_DATASET_PATH
 
 _BASE_DIR = Path(__file__).resolve().parent
 _REQUIRED_FIELDS = {'id', 'category', 'query', 'expected_domain', 'expected_followup'}
 _VALID_CATEGORIES = {'mono_domain', 'pipeline', 'false_pipeline', 'followup', 'domain_switch', 'edge_case'}
 _PIPE_NAMES = {DOMAIN_NAMES[i] for i in PIPELINE_CLASSES}
+_PIPE_MIN_DIFF = config.TIER_ROUTING_SETTINGS.get('pipeline_min_difficulty', 2)
 
 
 def _load_eval_dataset(path: Path) -> list:
@@ -96,14 +107,16 @@ def run_evaluation(sets=('dev',)):
         file_wrong_queries.unlink()
 
     for tc in tests:
+        has_hist = any(m.get('role') == 'user' for m in tc.get('history', []))
         try:
             class_id, confidence, domain_scores, difficulty, is_followup = predict(
                 tc['query'], history=tc.get('history', []))
         except Exception as e:
             print(f"  ⚠ ERRORE [{tc['id']}]: {e}")
-            results.append({**tc, "status": "ERROR", "actual_class_id": -1, "actual_domain": "???",
-                            "actual_followup": False, "actual_diff": -1, "confidence": 0.0,
-                            "ok_domain": False, "ok_followup": False, "ok_diff": False, "actual_tier": "???"})
+            results.append({**tc, "status": "ERROR", "has_history": has_hist, "actual_class_id": -1,
+                            "actual_domain": "???", "actual_followup": False, "actual_diff": -1,
+                            "actual_diff_runtime": -1, "confidence": 0.0, "ok_domain": False,
+                            "ok_followup": False, "ok_diff": False, "actual_tier": "???"})
             continue
 
         actual_domain = _class_id_to_domain(class_id)
@@ -111,10 +124,13 @@ def run_evaluation(sets=('dev',)):
         exp_diff = tc.get('expected_diff')
         exp_diff_min = tc.get('expected_diff_min', exp_diff)
 
+        # [F1-C] stessa regola R2 di main.py: pipeline mai al tier fallback
+        diff_runtime = max(difficulty, _PIPE_MIN_DIFF) if _is_pipeline(class_id) else difficulty
+
         ok_domain   = actual_domain == exp_domain
         ok_followup = is_followup == exp_followup
         ok_diff     = (difficulty == exp_diff) if exp_diff else (difficulty >= exp_diff_min)
-        actual_tier = 'FALLBACK' if difficulty == 1 else 'PRIMARY'
+        actual_tier = 'FALLBACK' if diff_runtime == 1 else 'PRIMARY'
 
         if ok_domain and ok_followup:
             status, errore = "✅ OK", 0
@@ -130,16 +146,18 @@ def run_evaluation(sets=('dev',)):
                 fw.write(f"\nfrase: {tc['query']}\n{status}\n"
                          f"  → {actual_domain.upper()} (exp: {exp_domain.upper()}) {'' if ok_domain else '← WRONG'}\n"
                          f"  followup={is_followup} (exp: {exp_followup}) {'' if ok_followup else '← WRONG'}"
-                         f"  diff={difficulty} (exp: {exp_diff or '>=' + str(exp_diff_min)}) "
+                         f"  diff={difficulty} (runtime={diff_runtime}) (exp: {exp_diff or '>=' + str(exp_diff_min)}) "
                          f"tier={actual_tier} {'✅' if ok_diff else '❌ DIFF_ERR'}  conf={confidence:.3f}\n")
 
-        results.append({**tc, "status": status, "actual_class_id": class_id, "actual_domain": actual_domain,
-                        "actual_followup": is_followup, "actual_diff": difficulty, "confidence": confidence,
+        results.append({**tc, "status": status, "has_history": has_hist, "actual_class_id": class_id,
+                        "actual_domain": actual_domain, "actual_followup": is_followup, "actual_diff": difficulty,
+                        "actual_diff_runtime": diff_runtime, "confidence": confidence,
                         "ok_domain": ok_domain, "ok_followup": ok_followup, "ok_diff": ok_diff,
                         "actual_tier": actual_tier})
 
     _print_summary(results)
     _print_metrics(results)
+    _print_groups_and_calibration(results)
     _diagnose_thresholds(results)
     return results
 
@@ -193,6 +211,21 @@ def _print_metrics(results: list):
     print(f"\n  FALSE-PIPELINE rate (mono → pipeline): {_fmt_ci(fp, len(mono))}")
     print(f"  PIPELINE-MISS rate (pipeline non riconosciuta): {_fmt_ci(miss, len(pipe))}")
 
+    # [F8-i] followup: FP / FN separati
+    fu_fp = [r for r in ok if r['actual_followup'] and not r['expected_followup']]
+    fu_fn = [r for r in ok if not r['actual_followup'] and r['expected_followup']]
+    n_neg = sum(1 for r in ok if not r['expected_followup'])
+    n_pos = sum(1 for r in ok if r['expected_followup'])
+    print(f"\n  FOLLOWUP FP (falso True) : {_fmt_ci(len(fu_fp), n_neg)}   senza history: "
+          f"{sum(1 for r in fu_fp if not r['has_history'])} | con history: {sum(1 for r in fu_fp if r['has_history'])}")
+    print(f"  FOLLOWUP FN (falso False): {_fmt_ci(len(fu_fn), n_pos)}")
+    hist_neg = [r for r in ok if r['has_history'] and not r['expected_followup']]
+    print(f"  FPR su soli negativi con history: {_fmt_ci(sum(1 for r in hist_neg if r['actual_followup']), len(hist_neg))}")
+    if fu_fp:
+        print("    FP ids: " + ", ".join(r['id'] for r in fu_fp))
+    if fu_fn:
+        print("    FN ids: " + ", ".join(r['id'] for r in fu_fn))
+
     by_tag = defaultdict(list)
     for r in ok:
         by_tag[r.get('tag', '-')].append(r)
@@ -207,13 +240,40 @@ def _print_metrics(results: list):
         for r in ex:
             dc[r['expected_diff'] - 1][r['actual_diff'] - 1] += 1
         tier_err = sum(1 for r in ex if (r['actual_diff'] == 1) != (r['expected_diff'] == 1))
+        tier_err_rt = sum(1 for r in ex if (r['actual_diff_runtime'] == 1) != (r['expected_diff'] == 1))
+        costly = sum(1 for r in ex if r['actual_diff_runtime'] == 1 and r['expected_diff'] >= 2)
+        inverse = sum(1 for r in ex if r['actual_diff_runtime'] > 1 and r['expected_diff'] == 1)
         print("\n  CONFUSIONE DIFFICULTY (righe=atteso, colonne=ottenuto)")
         for i in range(3):
             print(f"  exp={i + 1}: " + "".join(f"{dc[i][j]:5d}" for j in range(3)))
-        print(f"  TIER errato (fallback↔primary): {_fmt_ci(tier_err, len(ex))}")
+        print(f"  TIER errato (fallback↔primary), rete      : {_fmt_ci(tier_err, len(ex))}")
+        print(f"  TIER errato (fallback↔primary), RUNTIME R2: {_fmt_ci(tier_err_rt, len(ex))}")
+        print(f"  Costo asimmetrico runtime: difficili→fallback={costly} | facili→primary={inverse}")
     else:
         nd = sum(1 for r in results if not r.get('ok_diff', True))
         print(f"\n  DIFFICULTY (soglia minima, record storici): {nd} sottostime su {len(results)}")
+
+
+def _print_groups_and_calibration(results: list):
+    """[F8-ii/iii] dominio per gruppo e calibrazione della confidence."""
+    ok = [r for r in results if r.get('actual_class_id', -1) >= 0]
+    groups = {
+        'senza history':       [r for r in ok if not r['has_history']],
+        'history + followup':  [r for r in ok if r['has_history'] and r['expected_followup']],
+        'history + switch':    [r for r in ok if r['has_history'] and not r['expected_followup']],
+    }
+    print("\n  DOMAIN ACCURACY PER GRUPPO")
+    for g, items in groups.items():
+        print(f"  {g:20s} {_fmt_ci(sum(1 for r in items if r['ok_domain']), len(items))}")
+
+    buckets = [(0.0, 0.4), (0.4, 0.6), (0.6, 0.8), (0.8, 1.0001)]
+    print("\n  CALIBRAZIONE (accuratezza dominio per bucket di confidence)")
+    for lo, hi in buckets:
+        items = [r for r in ok if lo <= r['confidence'] < hi]
+        print(f"  conf [{lo:.1f}-{min(hi, 1.0):.1f}) {_fmt_ci(sum(1 for r in items if r['ok_domain']), len(items))}")
+    hi_err = [r for r in ok if r['confidence'] >= 0.8 and not r['ok_domain']]
+    if hi_err:
+        print(f"  ⚠ errori di dominio con conf ≥0.8: {len(hi_err)} → " + ", ".join(r['id'] for r in hi_err[:15]))
 
 
 def _diagnose_thresholds(results: list):

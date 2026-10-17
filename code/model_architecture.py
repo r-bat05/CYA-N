@@ -1,15 +1,20 @@
 """
 model_architecture.py — CYA N | 3 reti INDIPENDENTI (dominio / difficoltà / follow-up),
-funzioni di decisione condivise training+inferenza e contratto delle chiavi del checkpoint.
+funzioni di decisione condivise da training e inferenza, contratto delle chiavi del checkpoint.
 
-[v4] Sostituisce MultiTaskMLP (backbone condiviso + 3 teste). Motivazione: la loss somma
-era dominata dalla CE di difficulty, le soglie fisse 0.75/0.78 sulle sigmoid dipendevano
-dalla calibrazione assoluta e un solo checkpoint doveva servire 3 task diversi.
+Ogni rete è un piccolo MLP che parte dall'embedding MiniLM (384 numeri) e restituisce LOGIT
+GREZZI: sigmoid/softmax si applicano fuori, così loss e decisione restano separate.
 
-Tutte le reti restituiscono LOGIT GREZZI (le attivazioni si applicano fuori).
-  DomainMLP     : 384→256→128→7   (softmax: 0-3 mono, 4-6 pipeline, ordine DOMAIN_NAMES)
-  DifficultyMLP : 384→192→64→1    (+ bias ordinati) → logit [P(d>1), P(d>2)]  (CORAL)
-  FollowupMLP   : 384→128→64→1    (sigmoid)
+  DomainMLP     384→256→128→7   softmax: classi 0-3 mono-dominio, 4-6 pipeline (ordine DOMAIN_NAMES)
+  DifficultyMLP 384→180→45→1    regressione ordinale CORAL → 2 logit [P(d>1), P(d>2)]
+  FollowupMLP   384→180→64→1    sigmoid → P(follow-up)
+
+Struttura di ogni MLP: Linear → LayerNorm → ReLU → Dropout, ripetuta per ogni livello nascosto.
+LayerNorm (e non BatchNorm) perché funziona identica con 1 solo campione, come a runtime.
+
+[v4] Rimossi rispetto alla v3: testa multi-label (tau_pair), scala del dropout, ensemble di modelli
+e descrittore 'arch' nel checkpoint. Erano opzioni spente di default e rendevano il checkpoint e il
+loader più complessi di quanto servisse.
 """
 
 import torch
@@ -33,7 +38,7 @@ def _mlp(d_in: int, hidden: tuple, d_out: int, drops: tuple) -> nn.Sequential:
 
 
 class DomainMLP(nn.Module):
-    '''DomainMLP 384→256→128→7 (softmax, classi 0-3 mono, 4-6 pipeline). Loss: CE con pesi 1/√freq, label smoothing 0.05.'''
+    """384→256→128→7. Loss: cross-entropy con pesi di classe (vedi train_nn.py)."""
     def __init__(self):
         super().__init__()
         self.net = _mlp(EMBEDDING_DIM, (256, 128), N_CLASSES, (0.3, 0.2))
@@ -44,11 +49,11 @@ class DomainMLP(nn.Module):
 
 class DifficultyMLP(nn.Module):
     """
-    Regressione ordinale (CORAL): un solo logit latente z, due bias ORDINATI
-    (b2 = b1 - softplus(gap) ⇒ b2 < b1 ⇒ P(d>2) ≤ P(d>1) sempre).
-    Output [N,2]: logit di P(d>1) e P(d>2).
-
-    DifficultyMLP 384→180→45→1, CORAL ordinale con bias ordinati. Decisione: soglia su P(d>1) per il fallback.
+    Regressione ordinale (CORAL): la rete produce un solo punteggio latente z ("quanto è difficile"),
+    e due bias ORDINATI trasformano z in due probabilità:
+        P(d>1) = sigmoid(z + b1)      P(d>2) = sigmoid(z + b2)      con b2 = b1 - softplus(gap) < b1
+    Poiché b2 < b1, vale sempre P(d>2) ≤ P(d>1): le previsioni non possono contraddirsi.
+    Output [N,2] = i due logit. Loss: BCE sui due target [d>1, d>2].
     """
     def __init__(self):
         super().__init__()
@@ -63,7 +68,7 @@ class DifficultyMLP(nn.Module):
 
 
 class FollowupMLP(nn.Module):
-    "FollowupMLP 384→180→64→1. BCE con pos_weight √(neg/pos) ≤ 3. Soglia tarata sul val."
+    """384→180→64→1. Loss: BCE. Addestrata e valutata solo sui record con history."""
     def __init__(self):
         super().__init__()
         self.net = _mlp(EMBEDDING_DIM, (180, 64), 1, (0.3, 0.2))
@@ -75,13 +80,17 @@ class FollowupMLP(nn.Module):
 MODEL_CLASSES = {'domain': DomainMLP, 'difficulty': DifficultyMLP, 'followup': FollowupMLP}
 
 
+def build_model(task: str) -> nn.Module:
+    return MODEL_CLASSES[task]()
+
+
 # ─── Decisione (UNICA fonte di verità: train_nn.py e nn_classifier.py importano da qui) ───
 
 def decide_domain(logits: torch.Tensor, bias_pipe: float = 0.0) -> torch.Tensor:
     """
     argmax sui 7 logit dopo aver sommato `bias_pipe` ai logit delle classi pipeline (4-6).
     bias>0 → più pipeline (meno miss, più false-pipeline); bias<0 → l'opposto.
-    Accetta [7] o [N,7]. Il bias è l'unico parametro di decisione, tarato sul VAL.
+    Accetta [7] o [N,7]. Il bias è tarato una volta sul VAL a fine training.
     """
     adj = logits.clone()
     adj[..., N_MONO:] += bias_pipe
@@ -101,7 +110,7 @@ def decide_difficulty(logits: torch.Tensor, thr_fallback: float = 0.5) -> torch.
 
 
 # ─── Contratto checkpoint (train_nn.py scrive, nn_classifier.py legge) ───
-CKPT_VERSION      = 2
+CKPT_VERSION      = 4                      # v4: un solo state_dict per task, niente 'arch'
 CKPT_VERSION_KEY  = 'version'
 CKPT_TASKS        = ('domain', 'difficulty', 'followup')   # chiavi di primo livello
 CKPT_STATE_KEY    = 'state_dict'
