@@ -1,6 +1,4 @@
-1. migliorare criteri d'arresto training per ogni rete neurale --> basarsi sull'andamento della loss
-2. ATTACCARE IL BRANCH PATCH_TRAINING_NN A SET_MANUAL_DIF&PATCH_DS IN MODO DA MERGIARE E CREARE UN UNICO BRANCH CON TUTTE SVOLTO (RETE + DATASET)
-3. migliorare dataset con questo prompt
+1. migliorare dataset con questo prompt
 
 ATTACCARE WRONG_QUERY_FILE
 qua ci sono i riepiloghi del testing
